@@ -26,35 +26,6 @@ ${basePrompt}
     return basePrompt;
 };
 
-export const analyzePdfImages = async (base64Images: string[]): Promise<string> => {
-  const ai = getAiClient();
-  
-  const prompt = `You are an expert construction estimator. The following images are pages from a construction project document, which may include drawings, tables, and technical specifications. Analyze all pages and provide a detailed, combined text summary of the entire document. Extract all relevant details, dimensions, materials, quantities, and the full scope of work that would be required to create a comprehensive construction cost estimate. Structure the output clearly.`;
-
-  const textPart = { text: prompt };
-
-  const imageParts = base64Images.map(imgData => ({
-    inlineData: {
-      mimeType: 'image/jpeg',
-      data: imgData,
-    },
-  }));
-  
-  const contents = { parts: [textPart, ...imageParts] };
-
-  try {
-    const response = await ai.models.generateContent({
-      model,
-      contents,
-    });
-    return response.text;
-  } catch (error) {
-    console.error("Error analyzing PDF images with Gemini:", error);
-    throw new Error("Failed to analyze the PDF document. The model might be overloaded or the request is invalid.");
-  }
-};
-
-
 export const continueConversation = async (history: ChatMessage[], referenceText?: string): Promise<string> => {
     const ai = getAiClient();
     const baseSystemInstruction = `You are a world-class civil engineering estimator and project planner. Your primary goal is to engage in a step-by-step conversation with the user to collaboratively define the complete scope of a construction project.

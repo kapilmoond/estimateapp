@@ -1,9 +1,8 @@
 import React, { useState, useCallback } from 'react';
-import { analyzePdfImages } from '../services/geminiService';
-import { getDocument, GlobalWorkerOptions, PDFDocumentProxy, PageViewport } from 'pdfjs-dist';
+import * as pdfjsLib from 'pdfjs-dist';
 
 // Set workerSrc once when the module is loaded.
-GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.172/build/pdf.worker.min.mjs`;
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.172/build/pdf.worker.min.mjs`;
 
 interface FileUploadProps {
   onFileUpload: (text: string, file: File) => void;
@@ -32,42 +31,27 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     setProcessingStatus('Processing file...');
 
     try {
-      let analyzedText = '';
+      let extractedText = '';
       if (file.type === 'text/plain') {
-        analyzedText = await file.text();
+        setProcessingStatus('Reading text file...');
+        extractedText = await file.text();
       } else if (file.type === 'application/pdf') {
         const arrayBuffer = await file.arrayBuffer();
-        const pdf : PDFDocumentProxy = await getDocument({ data: arrayBuffer }).promise;
-        
-        const base64Images: string[] = [];
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
         const numPages = pdf.numPages;
-
+        let fullText = '';
         for (let i = 1; i <= numPages; i++) {
-          setProcessingStatus(`Rendering page ${i} of ${numPages}...`);
+          setProcessingStatus(`Extracting text from page ${i} of ${numPages}...`);
           const page = await pdf.getPage(i);
-          const viewport = page.getViewport({ scale: 1.5 });
-          const canvas = document.createElement('canvas');
-          const context = canvas.getContext('2d');
-          if (!context) {
-            throw new Error('Could not get canvas context');
-          }
-          canvas.height = viewport.height;
-          canvas.width = viewport.width;
-
-          await page.render({ canvasContext: context, viewport: viewport, canvas: canvas } as any).promise;
-          
-          // Get base64 string and remove the data URL prefix
-          const base64Image = canvas.toDataURL('image/jpeg').split(',')[1];
-          base64Images.push(base64Image);
+          const textContent = await page.getTextContent();
+          const pageText = textContent.items.map((item: any) => item.str).join(' ');
+          fullText += pageText + '\n\n';
         }
-        
-        setProcessingStatus('Analyzing document with AI...');
-        analyzedText = await analyzePdfImages(base64Images);
-
+        extractedText = fullText;
       } else {
         throw new Error('Unsupported file type. Please upload a PDF or TXT file.');
       }
-      onFileUpload(analyzedText, file);
+      onFileUpload(extractedText, file);
     } catch (err: any) {
       console.error("Error processing file:", err);
       setError(err.message || 'Failed to process the file.');
