@@ -1,0 +1,7 @@
+{
+  "name": "HSR Construction Estimator",
+  "description": "An intelligent application that generates detailed construction cost estimates using Haryana Schedule of Rates (HSR) data. Users provide a project description, and the app uses a two-step RAG process with the Gemini API to identify relevant HSR items and create a professional estimate, including a detailed quantity breakdown and an abstract of cost.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
