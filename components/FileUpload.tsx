@@ -54,7 +54,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
           canvas.height = viewport.height;
           canvas.width = viewport.width;
 
-          await page.render({ canvasContext: context, viewport: viewport, canvas: canvas } as any).promise;
+          await page.render({ canvasContext: context, viewport: viewport }).promise;
           
           // Get base64 string and remove the data URL prefix
           const base64Image = canvas.toDataURL('image/jpeg').split(',')[1];
