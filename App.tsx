@@ -27,6 +27,8 @@ const App: React.FC = () => {
   const [finalEstimateText, setFinalEstimateText] = useState<string>('');
   const [editInstruction, setEditInstruction] = useState<string>('');
   const [keywordFeedback, setKeywordFeedback] = useState<string>('');
+  const [hsrItemFeedback, setHsrItemFeedback] = useState<string>('');
+  const [refinedHsrItemFeedback, setRefinedHsrItemFeedback] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
   const [loadingMessage, setLoadingMessage] = useState<string>('');
@@ -199,7 +201,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleRefineHsrSearch = async () => {
+  const handleRefineHsrSearch = async (feedback?: string) => {
     setLoadingMessage('AI is refining the search for related HSR items...');
     setIsAiThinking(true);
     setError(null);
@@ -207,7 +209,7 @@ const App: React.FC = () => {
 
     try {
         const foundHsrItemDescriptions = hsrItems.map(item => `${item["HSR No."]} - ${item.Description}`);
-        const newKeywordsByItem = await generateKeywordsForNSItems(finalizedScope, foundHsrItemDescriptions, referenceText);
+        const newKeywordsByItem = await generateKeywordsForNSItems(finalizedScope, foundHsrItemDescriptions, feedback, referenceText);
         const newlyFoundItemsRaw = (Object.keys(newKeywordsByItem).length > 0) ? searchHSR(newKeywordsByItem) : [];
 
         const currentHsrNos = new Set(hsrItems.map(item => item['HSR No.']));
@@ -231,7 +233,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleApproveRefinedHsrItems = async () => {
+  const handleApproveRefinedHsrItems = async (feedback?: string) => {
     const combinedItems = [...hsrItems, ...newlyFoundHsrItems];
     const uniqueItemsMap = new Map<string, HsrItem>();
     combinedItems.forEach(item => {
@@ -257,11 +259,11 @@ const App: React.FC = () => {
     setHsrItems(finalItems);
     setNewlyFoundHsrItems([]);
 
-    await handleGenerateEstimate(finalItems);
+    await handleGenerateEstimate(finalItems, feedback);
   };
 
 
-  const handleGenerateEstimate = async (itemsToEstimate?: HsrItem[]) => {
+  const handleGenerateEstimate = async (itemsToEstimate?: HsrItem[], feedback?: string) => {
     const items = itemsToEstimate || hsrItems;
     if (!items || items.length === 0) {
         setError("No HSR items to generate an estimate for.");
@@ -275,7 +277,7 @@ const App: React.FC = () => {
     setError(null);
     try {
       const recentHistory = conversationHistory.slice(-4); // Last 4 messages for context
-      const estimateText = await generatePlainTextEstimate(finalizedScope, items, recentHistory, undefined, undefined, referenceText);
+      const estimateText = await generatePlainTextEstimate(finalizedScope, items, recentHistory, undefined, feedback, referenceText);
       setFinalEstimateText(estimateText);
       setStep('reviewingEstimate');
     } catch (err: any) {
@@ -413,6 +415,38 @@ const App: React.FC = () => {
             </div>
         );
 
+      case 'approvingHsrItems':
+        return (
+            <div className="mt-8 pt-6 border-t border-gray-200">
+                <h2 className="text-2xl font-bold mb-4 text-gray-800">Step 3: Approve HSR Items</h2>
+                <p className="text-gray-600 mb-4">The following HSR items were found. Please approve them to generate the final estimate. If items from your scope seem to be missing, you can try to refine the search.</p>
+                <HsrItemsDisplay items={hsrItems} />
+                <div className="flex items-center justify-center mt-6 space-x-4">
+                    <button onClick={() => handleGenerateEstimate()} className="px-8 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700" disabled={isAiThinking}>
+                        Approve & Generate Estimate
+                    </button>
+                     <button type="button" onClick={() => setStep('approvingKeywords')} className="px-8 py-3 bg-gray-200 text-gray-700 font-semibold rounded-lg shadow-md hover:bg-gray-300" disabled={isAiThinking}>
+                        Back to Keywords
+                    </button>
+                </div>
+                <form onSubmit={(e) => { e.preventDefault(); handleRefineHsrSearch(hsrItemFeedback); }} className="mt-6 space-y-4 p-4 border-t">
+                    <label htmlFor="hsr-item-feedback" className="block font-semibold text-gray-700">Or, provide feedback to find more/different items:</label>
+                    <textarea
+                        id="hsr-item-feedback"
+                        value={hsrItemFeedback}
+                        onChange={(e) => setHsrItemFeedback(e.target.value)}
+                        placeholder="e.g., 'The items for the foundation seem to be missing reinforcement steel', 'Find more finishing items like painting'"
+                        className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500"
+                        rows={3}
+                        disabled={isAiThinking}
+                    />
+                    <button type="submit" className="px-6 py-2 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 disabled:bg-gray-400" disabled={isAiThinking}>
+                        Refine Search & Generate Estimate
+                    </button>
+                </form>
+            </div>
+        );
+
       case 'approvingRefinedHsrItems':
         return (
             <div className="mt-8 pt-6 border-t border-gray-200">
@@ -425,32 +459,25 @@ const App: React.FC = () => {
                 <h3 className="text-xl font-bold my-4 text-gray-800">Newly Found Items</h3>
                 <HsrItemsDisplay items={newlyFoundHsrItems} />
 
-                <div className="flex items-center justify-center mt-6 space-x-4">
-                    <button onClick={handleApproveRefinedHsrItems} className="px-8 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700" disabled={isAiThinking}>
+                <form onSubmit={(e) => { e.preventDefault(); handleApproveRefinedHsrItems(refinedHsrItemFeedback); }} className="mt-6 space-y-4 p-4 border-t">
+                    <label htmlFor="refined-hsr-item-feedback" className="block font-semibold text-gray-700">Optionally, provide final instructions for the report generation:</label>
+                    <textarea
+                        id="refined-hsr-item-feedback"
+                        value={refinedHsrItemFeedback}
+                        onChange={(e) => setRefinedHsrItemFeedback(e.target.value)}
+                        placeholder="e.g., 'Please put the concrete items first in the report', 'Emphasize the cost of steel'"
+                        className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500"
+                        rows={3}
+                        disabled={isAiThinking}
+                    />
+                    <button type="submit" className="px-6 py-2 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 disabled:bg-gray-400" disabled={isAiThinking}>
                         Approve & Generate Estimate with All Items
                     </button>
+                </form>
+
+                <div className="text-center mt-4">
                      <button type="button" onClick={() => setStep('approvingHsrItems')} className="px-8 py-3 bg-gray-200 text-gray-700 font-semibold rounded-lg shadow-md hover:bg-gray-300" disabled={isAiThinking}>
                         Back to Original Items
-                    </button>
-                </div>
-            </div>
-        );
-        
-      case 'approvingHsrItems':
-        return (
-            <div className="mt-8 pt-6 border-t border-gray-200">
-                <h2 className="text-2xl font-bold mb-4 text-gray-800">Step 3: Approve HSR Items</h2>
-                <p className="text-gray-600 mb-4">The following HSR items were found. Please approve them to generate the final estimate. If items from your scope seem to be missing, you can try to refine the search.</p>
-                <HsrItemsDisplay items={hsrItems} />
-                <div className="flex items-center justify-center mt-6 space-x-4">
-                    <button onClick={handleGenerateEstimate} className="px-8 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700" disabled={isAiThinking}>
-                        Approve & Generate Estimate
-                    </button>
-                    <button onClick={handleRefineHsrSearch} className="px-8 py-3 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 disabled:bg-gray-400" disabled={isAiThinking}>
-                        Refine Search & Generate Estimate
-                    </button>
-                     <button type="button" onClick={() => setStep('approvingKeywords')} className="px-8 py-3 bg-gray-200 text-gray-700 font-semibold rounded-lg shadow-md hover:bg-gray-300" disabled={isAiThinking}>
-                        Back to Keywords
                     </button>
                 </div>
             </div>
@@ -487,6 +514,9 @@ const App: React.FC = () => {
                          </button>
                          <button type="button" onClick={handleFinalizeEstimate} className="px-8 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700" disabled={isAiThinking}>
                             Finalize Report
+                         </button>
+                         <button type="button" onClick={() => setStep('approvingHsrItems')} className="px-8 py-3 bg-gray-200 text-gray-700 font-semibold rounded-lg shadow-md hover:bg-gray-300" disabled={isAiThinking}>
+                            Back to HSR Items
                          </button>
                          <button type="button" onClick={resetState} className="px-8 py-3 bg-gray-200 text-gray-700 font-semibold rounded-lg shadow-md hover:bg-gray-300" disabled={isAiThinking}>
                             Start Over
