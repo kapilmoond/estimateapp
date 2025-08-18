@@ -17,6 +17,7 @@ const naturalSortComparator = (a: string, b: string): number => {
 
 export const searchHSR = (keywordsByItem: KeywordsByItem): HsrItem[] => {
   const allFoundItems = new Map<string, HsrItem>();
+  const perItemLimit = 50; // Limit per item from scope to keep results relevant
 
   // Loop through each project item's set of keywords
   for (const itemKeywords of Object.values(keywordsByItem)) {
@@ -27,9 +28,9 @@ export const searchHSR = (keywordsByItem: KeywordsByItem): HsrItem[] => {
     const lowerCaseKeywords = itemKeywords.map(k => k.toLowerCase().trim()).filter(k => k);
     if (lowerCaseKeywords.length === 0) continue;
 
-    const matchesForItem: { item: HsrItem; matchCount: number }[] = [];
+    const matchesByCount: Map<number, HsrItem[]> = new Map();
 
-    // First pass: find all potential matches and count keyword hits
+    // First pass: find all potential matches and group them by match count
     HSR_DATA.forEach(hsrItem => {
       const description = hsrItem.Description.toLowerCase();
       const hsrNo = hsrItem['HSR No.'].toLowerCase();
@@ -42,24 +43,34 @@ export const searchHSR = (keywordsByItem: KeywordsByItem): HsrItem[] => {
       }
 
       if (matchCount > 0) {
-        matchesForItem.push({ item: hsrItem, matchCount });
+        if (!matchesByCount.has(matchCount)) {
+          matchesByCount.set(matchCount, []);
+        }
+        matchesByCount.get(matchCount)!.push(hsrItem);
       }
     });
-
-    // Sort matches for the current item by the number of keywords matched (descending)
-    matchesForItem.sort((a, b) => b.matchCount - a.matchCount);
     
-    // Add up to 50 of the top-sorted matches for this item to the overall results pool.
-    const perItemLimit = 50;
-    let addedCount = 0;
-    for (const match of matchesForItem) {
-        if (addedCount >= perItemLimit) {
-            break;
+    // Tiered selection
+    let addedCountForItem = 0;
+    const sortedCounts = Array.from(matchesByCount.keys()).sort((a, b) => b - a);
+
+    for (const count of sortedCounts) {
+        if (addedCountForItem >= perItemLimit) break;
+
+        const itemsInTier = matchesByCount.get(count)!;
+        // Shuffle to get a variety if a tier has many items
+        for (let i = itemsInTier.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [itemsInTier[i], itemsInTier[j]] = [itemsInTier[j], itemsInTier[i]];
         }
-        if (!allFoundItems.has(match.item['HSR No.'])) {
-            allFoundItems.set(match.item['HSR No.'], match.item);
+
+        for (const item of itemsInTier) {
+            if (addedCountForItem >= perItemLimit) break;
+            if (!allFoundItems.has(item['HSR No.'])) {
+                allFoundItems.set(item['HSR No.'], item);
+                addedCountForItem++;
+            }
         }
-        addedCount++;
     }
   }
 
@@ -68,6 +79,6 @@ export const searchHSR = (keywordsByItem: KeywordsByItem): HsrItem[] => {
   // Sort final results using natural sort for HSR numbers.
   resultsArray.sort((a, b) => naturalSortComparator(a['HSR No.'], b['HSR No.']));
 
-  // Limit to a reasonable number of total results to not overwhelm the LLM
+  // Limit to a reasonable number of total results
   return resultsArray.slice(0, 1000); 
 };
