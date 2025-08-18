@@ -1,6 +1,10 @@
 import React, { useState, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Set worker path
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.mjs`;
 
 interface FileUploadProps {
   onFileUpload: (files: { file: File; text: string }[]) => void;
@@ -28,6 +32,38 @@ const readExcelFile = (file: File): Promise<string> => {
             fullText += json.map(row => row.join(' ')).join('\n') + '\n';
           }
         });
+        resolve(fullText);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = (err) => {
+      reject(err);
+    };
+    reader.readAsArrayBuffer(file);
+  });
+};
+
+const readPdfFile = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const data = e.target?.result;
+        if (!data || !(data instanceof ArrayBuffer)) {
+          throw new Error("Failed to read file data.");
+        }
+
+        const pdf = await pdfjsLib.getDocument({ data }).promise;
+        const numPages = pdf.numPages;
+        let fullText = '';
+
+        for (let i = 1; i <= numPages; i++) {
+          const page = await pdf.getPage(i);
+          const textContent = await page.getTextContent();
+          const pageText = textContent.items.map(item => (item as any).str).join(' ');
+          fullText += pageText + '\n';
+        }
         resolve(fullText);
       } catch (err) {
         reject(err);
@@ -93,9 +129,11 @@ export const FileUpload: React.FC<FileUploadProps> = ({
           extractedText = await readExcelFile(file);
         } else if (lowerCaseFileName.endsWith('.docx')) {
            extractedText = await readWordFile(file);
+        } else if (lowerCaseFileName.endsWith('.pdf')) {
+            extractedText = await readPdfFile(file);
         } else {
           console.warn(`Unsupported file type: ${file.name}`);
-          setError(`Unsupported file type: ${file.name}. Please upload TXT, Excel, or DOCX files.`);
+          setError(`Unsupported file type: ${file.name}. Please upload TXT, Excel, Word, or PDF files.`);
           continue; 
         }
         newFiles.push({ file, text: extractedText });
@@ -118,7 +156,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg no-print">
       <h3 className="text-lg font-semibold text-gray-700 mb-2">Reference Documents (Optional)</h3>
       <p className="text-sm text-gray-500 mb-4">
-        Upload TXT, Excel (.xlsx), or Word (.docx) files. The AI will use their content to inform its responses.
+        Upload PDF, TXT, Excel (.xlsx), or Word (.docx) files. The AI will use their content to inform its responses.
       </p>
       <div className="flex items-center gap-4">
         <label
@@ -131,7 +169,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
             name="file-upload"
             type="file"
             className="sr-only"
-            accept=".txt,.xls,.xlsx,.docx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            accept=".txt,.xls,.xlsx,.docx,.pdf,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             onChange={handleFileChange}
             disabled={isFileProcessing}
             multiple
