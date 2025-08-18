@@ -14,8 +14,10 @@
         header, footer {
             display: none !important;
         }
-        main, body {
+        body {
           background-color: white !important;
+          padding: 0 !important;
+          margin: 0 !important;
         }
         main {
           padding: 0 !important;
@@ -24,15 +26,19 @@
           border: none !important;
           border-radius: 0 !important;
           max-width: 100% !important;
+          width: 100% !important;
         }
         #report-container {
-          position: static;
-          visibility: visible;
-          width: 100%;
-          border: none;
-          box-shadow: none;
-          padding: 0;
-          margin: 0;
+          position: static !important;
+          visibility: visible !important;
+          width: 100% !important;
+          border: none !important;
+          box-shadow: none !important;
+          padding: 0 !important;
+          margin: 0 !important;
+          border-radius: 0 !important;
+          background: white !important;
+          overflow: visible !important;
         }
         @page {
           margin: 1in;
@@ -46,7 +52,8 @@
     "react-dom/": "https://esm.sh/react-dom@18.2.0/",
     "react/": "https://esm.sh/react@18.2.0/",
     "@google/genai": "https://esm.sh/@google/genai@^1.14.0",
-    "pdfjs-dist": "https://esm.sh/pdfjs-dist@4.4.172"
+    "xlsx": "https://esm.sh/xlsx@0.18.5",
+    "mammoth": "https://esm.sh/mammoth@1.7.2"
   }
 }
 </script>

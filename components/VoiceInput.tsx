@@ -79,8 +79,8 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({ appendToTranscript, disa
     recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
       console.error('Speech recognition error:', event.error);
       // For 'no-speech', onend will be called, and we'll attempt a restart.
-      // For critical errors like permission denial, we should stop trying.
-      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+      // For critical errors like permission denial or network issues, we should stop trying.
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed' || event.error === 'network') {
         intentionalStopRef.current = true; // Prevent automatic restarts
         setIsListening(false);
       }
