@@ -3,6 +3,7 @@ import { HsrItem, ChatMessage, KeywordsByItem } from './types';
 import { continueConversation, generatePlainTextEstimate, generateKeywordsForItems, generateKeywordsForNSItems, regenerateKeywords } from './services/geminiService';
 import { searchHSR } from './services/hsrService';
 import { extractHsrNumbersFromText } from './services/keywordService';
+import { speak } from './services/speechService';
 import { Spinner } from './components/Spinner';
 import { ResultDisplay } from './components/ResultDisplay';
 import { KeywordsDisplay } from './components/KeywordsDisplay';
@@ -32,6 +33,7 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
   const [loadingMessage, setLoadingMessage] = useState<string>('');
+  const [isTtsEnabled, setIsTtsEnabled] = useState<boolean>(false);
   
   const [referenceDocs, setReferenceDocs] = useState<ReferenceDoc[]>([]);
   const [isFileProcessing, setIsFileProcessing] = useState<boolean>(false);
@@ -97,6 +99,9 @@ const App: React.FC = () => {
     try {
       const modelResponse = await continueConversation(newHistory, referenceText);
       setConversationHistory(prev => [...prev, { role: 'model', text: modelResponse }]);
+      if (isTtsEnabled) {
+        speak(modelResponse);
+      }
     } catch (err: any) {
       console.error(err);
       setError(err.message || 'An error occurred while communicating with the AI.');
@@ -553,6 +558,18 @@ const App: React.FC = () => {
             <header className="text-center mb-8">
                 <h1 className="text-4xl font-extrabold text-gray-900">HSR Construction Estimator</h1>
                 <p className="mt-2 text-md text-gray-600">AI-Powered Costing with Haryana Schedule of Rates</p>
+                <div className="flex items-center justify-center mt-4">
+                    <input
+                        type="checkbox"
+                        id="tts-toggle"
+                        checked={isTtsEnabled}
+                        onChange={(e) => setIsTtsEnabled(e.target.checked)}
+                        className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <label htmlFor="tts-toggle" className="ml-2 block text-sm text-gray-900">
+                        Read AI Responses Aloud
+                    </label>
+                </div>
                 {error && (
                     <div className="mt-4 p-4 bg-red-100 text-red-700 border border-red-200 rounded-lg">
                         <strong>Error:</strong> {error}
