@@ -34,6 +34,9 @@ const App: React.FC = () => {
   const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
   const [loadingMessage, setLoadingMessage] = useState<string>('');
   const [isTtsEnabled, setIsTtsEnabled] = useState<boolean>(false);
+  const [speechRate, setSpeechRate] = useState(1);
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState<string | null>(null);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   
   const [referenceDocs, setReferenceDocs] = useState<ReferenceDoc[]>([]);
   const [isFileProcessing, setIsFileProcessing] = useState<boolean>(false);
@@ -49,6 +52,23 @@ const App: React.FC = () => {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, [conversationHistory]);
+
+  useEffect(() => {
+    const loadVoices = () => {
+        setAvailableVoices(window.speechSynthesis.getVoices());
+    };
+
+    // Load voices initially
+    loadVoices();
+
+    // Update when the voice list changes
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+
+    // Cleanup
+    return () => {
+        window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
 
   const resetState = () => {
     setStep('scoping');
@@ -100,7 +120,7 @@ const App: React.FC = () => {
       const modelResponse = await continueConversation(newHistory, referenceText);
       setConversationHistory(prev => [...prev, { role: 'model', text: modelResponse }]);
       if (isTtsEnabled) {
-        speak(modelResponse);
+        speak(modelResponse, speechRate, selectedVoiceURI);
       }
     } catch (err: any) {
       console.error(err);
@@ -570,6 +590,43 @@ const App: React.FC = () => {
                         Read AI Responses Aloud
                     </label>
                 </div>
+                {isTtsEnabled && (
+                    <div className="grid grid-cols-2 gap-4 mt-4 p-4 border-t border-gray-200">
+                        <div>
+                            <label htmlFor="voice-select" className="block text-sm font-medium text-gray-700">
+                                Voice
+                            </label>
+                            <select
+                                id="voice-select"
+                                value={selectedVoiceURI || ''}
+                                onChange={(e) => setSelectedVoiceURI(e.target.value)}
+                                className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
+                            >
+                                <option value="">Default</option>
+                                {availableVoices.map((voice) => (
+                                    <option key={voice.voiceURI} value={voice.voiceURI}>
+                                        {`${voice.name} (${voice.lang})`}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label htmlFor="rate-slider" className="block text-sm font-medium text-gray-700">
+                                Speed: {speechRate}x
+                            </label>
+                            <input
+                                id="rate-slider"
+                                type="range"
+                                min="0.5"
+                                max="2"
+                                step="0.1"
+                                value={speechRate}
+                                onChange={(e) => setSpeechRate(parseFloat(e.target.value))}
+                                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                            />
+                        </div>
+                    </div>
+                )}
                 {error && (
                     <div className="mt-4 p-4 bg-red-100 text-red-700 border border-red-200 rounded-lg">
                         <strong>Error:</strong> {error}
