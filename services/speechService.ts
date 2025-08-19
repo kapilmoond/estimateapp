@@ -12,7 +12,7 @@ if (window.speechSynthesis.onvoiceschanged !== undefined) {
   window.speechSynthesis.onvoiceschanged = loadVoices;
 }
 
-export const speak = (text: string) => {
+export const speak = (text: string, rate: number, voiceURI: string | null) => {
   if (!window.speechSynthesis) {
     console.error("Speech synthesis not supported in this browser.");
     return;
@@ -22,22 +22,28 @@ export const speak = (text: string) => {
 
   const utterance = new SpeechSynthesisUtterance(text);
 
-  // Simple heuristic to detect Hindi
-  const isHindi = /[\u0900-\u097F]/.test(text);
+  utterance.rate = rate;
+
   let selectedVoice: SpeechSynthesisVoice | null = null;
 
-  // Use the pre-loaded voices array.
-  if (isHindi) {
-    selectedVoice = voices.find(voice => voice.lang === 'hi-IN') || null;
+  if (voiceURI) {
+    selectedVoice = voices.find(voice => voice.voiceURI === voiceURI) || null;
   }
 
-  if (!selectedVoice) {
-    selectedVoice = voices.find(voice => voice.lang === 'en-US') || null;
-  }
-
-  // If a specific voice is found, use it. Otherwise, the browser will use its default.
+  // If a specific voice is found, use it. Otherwise, fallback to auto-detection.
   if (selectedVoice) {
     utterance.voice = selectedVoice;
+  } else {
+    const isHindi = /[\u0900-\u097F]/.test(text);
+    if (isHindi) {
+      selectedVoice = voices.find(voice => voice.lang === 'hi-IN') || null;
+    }
+    if (!selectedVoice) {
+      selectedVoice = voices.find(voice => voice.lang === 'en-US') || null;
+    }
+    if (selectedVoice) {
+      utterance.voice = selectedVoice;
+    }
   }
 
   window.speechSynthesis.speak(utterance);
