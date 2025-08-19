@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { HsrItem, ChatMessage, KeywordsByItem } from './types';
-import { continueConversation, generatePlainTextEstimate, generateKeywordsForItems, generateKeywordsForNSItems, regenerateKeywords } from './services/geminiService';
+import { continueConversation, generatePlainTextEstimate, generateKeywordsForItems, regenerateKeywords } from './services/geminiService';
 import { searchHSR } from './services/hsrService';
 import { extractHsrNumbersFromText } from './services/keywordService';
 import { speak } from './services/speechService';
@@ -227,26 +227,37 @@ const App: React.FC = () => {
   };
 
   const handleRefineHsrSearch = async (feedback?: string) => {
-    setLoadingMessage('AI is refining the search for related HSR items...');
+    if (!feedback?.trim()) {
+        setError("Please provide feedback to refine the search.");
+        return;
+    }
+    setLoadingMessage('AI is re-analyzing the scope with your feedback...');
     setIsAiThinking(true);
     setError(null);
     const initialStep = step;
 
     try {
-        const foundHsrItemDescriptions = hsrItems.map(item => `${item["HSR No."]} - ${item.Description}`);
-        const newKeywordsByItem = await generateKeywordsForNSItems(finalizedScope, foundHsrItemDescriptions, feedback, referenceText);
-        const newlyFoundItemsRaw = (Object.keys(newKeywordsByItem).length > 0) ? searchHSR(newKeywordsByItem) : [];
+        // Step 1: Regenerate ALL keywords for the scope using the new feedback
+        const newKeywordsByItem = await regenerateKeywords(finalizedScope, feedback, referenceText);
 
+        // Update the main keywords state as well, since we have a new baseline
+        const allNewKeywords = [...new Set(Object.values(newKeywordsByItem).flat())];
+        setKeywordsByItem(newKeywordsByItem);
+        setKeywords(allNewKeywords);
+
+        // Step 2: Perform a new, full search with the regenerated keywords
+        const newHsrItemsList = searchHSR(newKeywordsByItem);
+
+        // Step 3: Diff the new list against the old list to find what's new
         const currentHsrNos = new Set(hsrItems.map(item => item['HSR No.']));
-        const uniqueNewItems = newlyFoundItemsRaw.filter(item => !currentHsrNos.has(item['HSR No.']));
+        const trulyNewItems = newHsrItemsList.filter(item => !currentHsrNos.has(item['HSR No.']));
 
-        if (uniqueNewItems.length > 0) {
-            setNewlyFoundHsrItems(uniqueNewItems);
+        if (trulyNewItems.length > 0) {
+            setNewlyFoundHsrItems(trulyNewItems);
             setStep('approvingRefinedHsrItems');
         } else {
-            console.log("Refined search did not find any new HSR items.");
-            // If no new items, just go to generate the estimate with the original items.
-            await handleGenerateEstimate(hsrItems);
+            setError("Your feedback did not result in any new HSR items. Please try different feedback or approve the current list.");
+            setStep('approvingHsrItems'); // Stay on the same step
         }
     } catch (err: any) {
         console.error("Error refining HSR search:", err);
