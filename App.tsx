@@ -450,6 +450,9 @@ CORRECTED DRAWING SPECIFICATION:`;
         drawingType: 'svg' as const
       };
 
+      // Update CAD drawing description with the validated specification
+      setCADDrawingDescription(correctedDrawingSpec);
+
       setDrawings(prev => [finalDrawing, ...prev]);
 
       // Add final results to conversation

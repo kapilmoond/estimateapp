@@ -30,16 +30,25 @@ export const CADDrawingManager: React.FC<CADDrawingManagerProps> = ({
   useEffect(() => {
     if (isOpen) {
       loadAllDrawings();
-      if (initialTitle && initialDescription) {
-        setIsCreating(true);
+      if (initialTitle) {
+        setIsCreating(false); // Don't show creation form
         // Auto-generate CAD drawing from the validated specification
-        handleGenerateCADDrawing();
+        console.log('CAD Manager opened with:', { initialTitle, initialDescription });
+        if (initialDescription && initialDescription.length > 50) {
+          handleGenerateCADDrawing();
+        }
       }
     }
   }, [isOpen, initialTitle, initialDescription]);
 
   const handleGenerateCADDrawing = async () => {
-    if (!initialDescription) return;
+    console.log('handleGenerateCADDrawing called with:', { initialTitle, initialDescription });
+
+    if (!initialDescription) {
+      console.log('No initial description provided');
+      alert('No drawing specification provided. Please ensure the two-stage drawing process completed successfully.');
+      return;
+    }
 
     setIsGenerating(true);
     try {
@@ -558,12 +567,33 @@ Generate ONLY the complete SVG code, no explanations:`;
                   <p className="text-gray-500 mb-4">
                     AI-powered technical drawing generation
                   </p>
-                  <button
-                    onClick={() => setIsCreating(true)}
-                    className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                  >
-                    Create New Drawing
-                  </button>
+
+                  {initialTitle && initialDescription ? (
+                    <div className="mb-4">
+                      <p className="text-sm text-gray-600 mb-2">
+                        Ready to generate: <strong>{initialTitle}</strong>
+                      </p>
+                      <button
+                        onClick={handleGenerateCADDrawing}
+                        className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 mr-2"
+                      >
+                        🤖 Generate CAD Drawing with AI
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setIsCreating(true)}
+                      className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                    >
+                      Create New Drawing
+                    </button>
+                  )}
+
+                  <div className="mt-4 text-xs text-gray-500">
+                    <p>Debug Info:</p>
+                    <p>Title: {initialTitle || 'None'}</p>
+                    <p>Description Length: {initialDescription?.length || 0}</p>
+                  </div>
                 </div>
               </div>
             )}
