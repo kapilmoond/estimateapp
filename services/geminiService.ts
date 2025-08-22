@@ -1,7 +1,8 @@
 import { GoogleGenAI, Type, Content } from "@google/genai";
 import { HsrItem, ChatMessage, KeywordsByItem } from '../types';
+import { GuidelinesService } from './guidelinesService';
 
-const getAiClient = () => {
+export const getAiClient = () => {
   const apiKey = localStorage.getItem('gemini-api-key');
   if (!apiKey) {
     throw new Error("API key is not configured. Please set it in the application.");
@@ -9,11 +10,19 @@ const getAiClient = () => {
   return new GoogleGenAI({ apiKey });
 };
 
-const model = "gemini-2.5-flash";
+const model = "gemini-2.5-pro";
 
-const createPromptWithReference = (basePrompt: string, referenceText?: string): string => {
+const createPromptWithReference = (basePrompt: string, referenceText?: string, guidelines?: string): string => {
+    let enhancedPrompt = basePrompt;
+
+    // Add guidelines if provided
+    if (guidelines && guidelines.trim()) {
+        enhancedPrompt = guidelines + '\n\n' + enhancedPrompt;
+    }
+
+    // Add reference documents if provided
     if (referenceText && referenceText.trim()) {
-        return `You have been provided with a reference document by the user. Use the content of this document to inform your response, making it similar or using parts of it as instructed.
+        enhancedPrompt = `You have been provided with a reference document by the user. Use the content of this document to inform your response, making it similar or using parts of it as instructed.
 
 REFERENCE DOCUMENT CONTENT:
 ---
@@ -21,15 +30,26 @@ ${referenceText}
 ---
 
 TASK:
-${basePrompt}
+${enhancedPrompt}
         `;
     }
-    return basePrompt;
+
+    return enhancedPrompt;
 };
 
-export const continueConversation = async (history: ChatMessage[], referenceText?: string): Promise<string> => {
+export const continueConversation = async (history: ChatMessage[], referenceText?: string, mode: 'discussion' | 'design' | 'drawing' = 'discussion'): Promise<string> => {
     const ai = getAiClient();
-    const baseSystemInstruction = `You are a world-class civil engineering estimator and project planner. Your primary goal is to engage in a step-by-step conversation with the user to collaboratively define the complete scope of a construction project.
+
+    // Get active guidelines for the current mode
+    const activeGuidelines = GuidelinesService.getActiveGuidelines();
+    const modeGuidelines = GuidelinesService.getActiveGuidelines(mode);
+    const allActiveGuidelines = [...activeGuidelines, ...modeGuidelines];
+    const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allActiveGuidelines);
+
+    let baseSystemInstruction = '';
+
+    if (mode === 'discussion') {
+        baseSystemInstruction = `You are a world-class civil engineering estimator and project planner. Your primary goal is to engage in a step-by-step conversation with the user to collaboratively define the complete scope of a construction project.
 
 Your Process:
 1. Start by understanding the user's initial high-level request.
@@ -44,8 +64,35 @@ Example of a final item entry:
   - **Dimensions:** 10m x 5m x 1.5m
   - **Specifications:** Ordinary soil.
   - **Proposed Keywords:** [excavation, earthwork, soil, foundation, digging]`;
+    } else if (mode === 'design') {
+        baseSystemInstruction = `You are a professional structural engineer and construction expert. Your role is to provide detailed component design calculations and specifications based on the user's requirements.
 
-    const systemInstruction = createPromptWithReference(baseSystemInstruction, referenceText);
+Your Process:
+1. Understand the specific component the user wants to design
+2. Provide comprehensive structural calculations including load analysis
+3. Specify materials with exact quantities and specifications
+4. Include dimensional details and tolerances
+5. Reference relevant Indian building codes (IS codes, NBC)
+6. Consider safety factors and construction methodology
+7. Provide clear, well-structured design documentation
+
+Focus on practical, implementable designs that comply with Indian construction standards and practices.`;
+    } else if (mode === 'drawing') {
+        baseSystemInstruction = `You are a professional technical draftsman and construction engineer. Your role is to provide detailed instructions for creating technical drawings based on user requirements.
+
+Your Process:
+1. Understand the drawing requirements and component details
+2. Provide specific drawing instructions including views needed (plan, elevation, section)
+3. Specify all critical dimensions and measurements
+4. Include material symbols and construction details
+5. Reference drawing standards (IS 696, IS 962)
+6. Provide clear instructions for creating SVG-based technical drawings
+7. Include title block information and drawing conventions
+
+Focus on creating professional, standards-compliant technical drawings suitable for construction use.`;
+    }
+
+    const systemInstruction = createPromptWithReference(baseSystemInstruction, referenceText, guidelinesText);
 
     const contents: Content[] = history.map(msg => ({
         role: msg.role,
@@ -70,6 +117,12 @@ Example of a final item entry:
 
 export const generateKeywordsForItems = async (scope: string, feedback?: string, referenceText?: string): Promise<KeywordsByItem> => {
     const ai = getAiClient();
+
+    // Get active guidelines for keyword generation
+    const activeGuidelines = GuidelinesService.getActiveGuidelines();
+    const estimationGuidelines = GuidelinesService.getActiveGuidelines('estimation');
+    const allActiveGuidelines = [...activeGuidelines, ...estimationGuidelines];
+    const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allActiveGuidelines);
 
     const feedbackInstruction = feedback ? `
 **PRIORITY INSTRUCTION: USER FEEDBACK**
@@ -98,7 +151,7 @@ Project Scope:
 ${scope}
 ---
 `;
-    const fullPrompt = createPromptWithReference(basePrompt, referenceText);
+    const fullPrompt = createPromptWithReference(basePrompt, referenceText, guidelinesText);
 
     try {
         const response = await ai.models.generateContent({

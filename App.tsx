@@ -1,15 +1,27 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { HsrItem, ChatMessage, KeywordsByItem } from './types';
+import { HsrItem, ChatMessage, KeywordsByItem, OutputMode, UserGuideline, ComponentDesign, TechnicalDrawing, ConversationThread } from './types';
 import { continueConversation, generatePlainTextEstimate, generateKeywordsForItems } from './services/geminiService';
 import { searchHSR } from './services/hsrService';
 import { extractHsrNumbersFromText } from './services/keywordService';
 import { speak } from './services/speechService';
+import { GuidelinesService } from './services/guidelinesService';
+import { ThreadService } from './services/threadService';
+import { DesignService } from './services/designService';
+import { DrawingService } from './services/drawingService';
 import { Spinner } from './components/Spinner';
 import { ResultDisplay } from './components/ResultDisplay';
 import { KeywordsDisplay } from './components/KeywordsDisplay';
 import { HsrItemsDisplay } from './components/HsrItemsDisplay';
 import { VoiceInput } from './components/VoiceInput';
 import { FileUpload } from './components/FileUpload';
+import { GuidelinesManager } from './components/GuidelinesManager';
+import { OutputModeSelector } from './components/OutputModeSelector';
+import { DesignDisplay } from './components/DesignDisplay';
+import { DrawingDisplay } from './components/DrawingDisplay';
+import { GuidelinesManager } from './components/GuidelinesManager';
+import { OutputModeSelector } from './components/OutputModeSelector';
+import { DesignDisplay } from './components/DesignDisplay';
+import { DrawingDisplay } from './components/DrawingDisplay';
 
 type Step = 'scoping' | 'generatingKeywords' | 'approvingKeywords' | 'approvingHsrItems' | 'approvingRefinedHsrItems' | 'generatingEstimate' | 'reviewingEstimate' | 'done';
 type ReferenceDoc = { file: File; text: string };
@@ -39,9 +51,18 @@ const App: React.FC = () => {
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [apiKey, setApiKey] = useState<string>('');
   const [apiKeyInput, setApiKeyInput] = useState<string>('');
-  
+
   const [referenceDocs, setReferenceDocs] = useState<ReferenceDoc[]>([]);
   const [isFileProcessing, setIsFileProcessing] = useState<boolean>(false);
+
+  // Enhanced state for integrated workflow
+  const [outputMode, setOutputMode] = useState<OutputMode>('discussion');
+  const [currentThread, setCurrentThread] = useState<ConversationThread | null>(null);
+  const [guidelines, setGuidelines] = useState<UserGuideline[]>([]);
+  const [designs, setDesigns] = useState<ComponentDesign[]>([]);
+  const [drawings, setDrawings] = useState<TechnicalDrawing[]>([]);
+  const [isGuidelinesOpen, setIsGuidelinesOpen] = useState<boolean>(false);
+  const [showProjectData, setShowProjectData] = useState<boolean>(false);
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
@@ -60,7 +81,27 @@ const App: React.FC = () => {
     if (storedApiKey) {
         setApiKey(storedApiKey);
     }
+
+    // Load guidelines and project data
+    loadGuidelines();
+    loadDesigns();
+    loadDrawings();
   }, []);
+
+  const loadGuidelines = () => {
+    const loadedGuidelines = GuidelinesService.loadGuidelines();
+    setGuidelines(loadedGuidelines);
+  };
+
+  const loadDesigns = () => {
+    const loadedDesigns = DesignService.loadDesigns();
+    setDesigns(loadedDesigns);
+  };
+
+  const loadDrawings = () => {
+    const loadedDrawings = DrawingService.loadDrawings();
+    setDrawings(loadedDrawings);
+  };
 
   useEffect(() => {
     const loadVoices = () => {
@@ -94,6 +135,11 @@ const App: React.FC = () => {
     setLoadingMessage('');
     setReferenceDocs([]);
     setIsFileProcessing(false);
+    setOutputMode('discussion');
+    setCurrentThread(null);
+    setShowProjectData(false);
+    // Clear all threads for new project
+    ThreadService.clearAllThreads();
   };
   
   const handleFileUpload = (newFiles: ReferenceDoc[]) => {
@@ -119,25 +165,163 @@ const App: React.FC = () => {
     if (!currentMessage.trim() || isAiThinking) return;
 
     const newMessage: ChatMessage = { role: 'user', text: currentMessage };
-    const newHistory = [...conversationHistory, newMessage];
-    setConversationHistory(newHistory);
+
+    // Handle different output modes
+    if (outputMode === 'design') {
+      await handleDesignRequest(currentMessage);
+    } else if (outputMode === 'drawing') {
+      await handleDrawingRequest(currentMessage);
+    } else {
+      // Regular discussion mode
+      const newHistory = [...conversationHistory, newMessage];
+      setConversationHistory(newHistory);
+      setCurrentMessage('');
+      setLoadingMessage('Thinking...');
+      setIsAiThinking(true);
+      setError(null);
+
+      try {
+        const modelResponse = await continueConversation(newHistory, referenceText, outputMode);
+        setConversationHistory(prev => [...prev, { role: 'model', text: modelResponse }]);
+
+        // Save to thread
+        if (currentThread) {
+          ThreadService.addMessageToThread(currentThread.id, newMessage);
+          ThreadService.addMessageToThread(currentThread.id, { role: 'model', text: modelResponse });
+        } else {
+          const thread = ThreadService.createThread(outputMode, newMessage);
+          ThreadService.addMessageToThread(thread.id, { role: 'model', text: modelResponse });
+          setCurrentThread(thread);
+        }
+
+        if (isTtsEnabled) {
+          speak(modelResponse, speechRate, selectedVoiceURI);
+        }
+      } catch (err: any) {
+        console.error(err);
+        setError(err.message || 'An error occurred while communicating with the AI.');
+      } finally {
+        setIsAiThinking(false);
+        setLoadingMessage('');
+      }
+    }
+
     setCurrentMessage('');
-    setLoadingMessage('Thinking...');
+  };
+
+  const handleDesignRequest = async (userInput: string) => {
+    setLoadingMessage('Generating component design...');
     setIsAiThinking(true);
     setError(null);
 
     try {
-      const modelResponse = await continueConversation(newHistory, referenceText);
-      setConversationHistory(prev => [...prev, { role: 'model', text: modelResponse }]);
-      if (isTtsEnabled) {
-        speak(modelResponse, speechRate, selectedVoiceURI);
-      }
+      // Extract component name from user input or use a default
+      const componentMatch = userInput.match(/design\s+(?:for\s+)?(.+?)(?:\s|$)/i);
+      const componentName = componentMatch ? componentMatch[1].trim() : 'Component';
+
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const designGuidelines = GuidelinesService.getActiveGuidelines('design');
+      const allGuidelines = [...activeGuidelines, ...designGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+
+      const design = await DesignService.generateComponentDesign(
+        componentName,
+        scopeContext,
+        userInput,
+        guidelinesText,
+        referenceText
+      );
+
+      loadDesigns();
+      setLoadingMessage('');
+
+      // Add to conversation history for reference
+      setConversationHistory(prev => [
+        ...prev,
+        { role: 'user', text: userInput },
+        { role: 'model', text: `Design generated for ${componentName}. You can view the detailed design in the Design Display section below.` }
+      ]);
+
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'An error occurred while communicating with the AI.');
+      setError(err.message || 'An error occurred while generating the design.');
     } finally {
       setIsAiThinking(false);
       setLoadingMessage('');
+    }
+  };
+
+  const handleDrawingRequest = async (userInput: string) => {
+    setLoadingMessage('Generating technical drawing...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Extract drawing details from user input
+      const titleMatch = userInput.match(/drawing\s+(?:for\s+)?(.+?)(?:\s|$)/i);
+      const title = titleMatch ? titleMatch[1].trim() : 'Technical Drawing';
+      const componentName = title;
+
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const drawingGuidelines = GuidelinesService.getActiveGuidelines('drawing');
+      const allGuidelines = [...activeGuidelines, ...drawingGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+      const designContext = ThreadService.getAllContextForMode('design');
+
+      const drawing = await DrawingService.generateTechnicalDrawing(
+        title,
+        userInput,
+        componentName,
+        userInput,
+        guidelinesText,
+        designContext,
+        referenceText
+      );
+
+      loadDrawings();
+      setLoadingMessage('');
+
+      // Add to conversation history for reference
+      setConversationHistory(prev => [
+        ...prev,
+        { role: 'user', text: userInput },
+        { role: 'model', text: `Technical drawing generated for ${title}. You can view and edit the drawing in the Drawing Display section below.` }
+      ]);
+
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'An error occurred while generating the drawing.');
+    } finally {
+      setIsAiThinking(false);
+      setLoadingMessage('');
+    }
+  };
+
+  const handleOutputModeChange = (mode: OutputMode) => {
+    setOutputMode(mode);
+    setCurrentThread(null);
+
+    // Load existing thread for this mode if available
+    const existingThreads = ThreadService.getThreadsByMode(mode);
+    if (existingThreads.length > 0) {
+      const latestThread = existingThreads.sort((a, b) =>
+        b.updatedAt.getTime() - a.updatedAt.getTime()
+      )[0];
+      setCurrentThread(latestThread);
+
+      // Update conversation history with thread messages
+      if (mode === 'discussion') {
+        setConversationHistory(latestThread.messages);
+      }
+    } else if (mode === 'discussion') {
+      // Reset to initial state for discussion mode
+      setConversationHistory([
+        { role: 'model', text: 'Hello! I am your AI assistant for construction estimation. Please describe the project you want to build, and we can define its scope together.' }
+      ]);
     }
   };
 
@@ -381,7 +565,16 @@ const App: React.FC = () => {
       case 'scoping':
         return (
           <div>
-            <h2 className="text-2xl font-bold mb-4 text-gray-800">Step 1: Define Project Scope</h2>
+            <h2 className="text-2xl font-bold mb-4 text-gray-800">Step 1: Integrated Project Definition</h2>
+
+            {/* Output Mode Selector */}
+            <OutputModeSelector
+              currentMode={outputMode}
+              onModeChange={handleOutputModeChange}
+              disabled={isAiThinking}
+            />
+
+            {/* Chat Interface */}
             <div ref={chatContainerRef} className="h-96 overflow-y-auto p-4 bg-gray-50 border border-gray-200 rounded-lg mb-4 space-y-4">
               {conversationHistory.map((msg, index) => (
                 <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -401,16 +594,22 @@ const App: React.FC = () => {
                 </div>
                )}
             </div>
-            <form onSubmit={handleSendMessage} className="flex gap-2">
+
+            {/* Input Form */}
+            <form onSubmit={handleSendMessage} className="flex gap-2 mb-6">
               <input
                 type="text"
                 value={currentMessage}
                 onChange={(e) => setCurrentMessage(e.target.value)}
-                placeholder="Your message..."
+                placeholder={
+                  outputMode === 'discussion' ? "Describe your project..." :
+                  outputMode === 'design' ? "Request component design (e.g., 'Design foundation for 2-story building')" :
+                  "Request technical drawing (e.g., 'Drawing for foundation plan')"
+                }
                 className="flex-grow p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500"
                 disabled={isAiThinking}
               />
-               <VoiceInput 
+               <VoiceInput
                 appendToTranscript={(text) => setCurrentMessage(prev => prev + text)}
                 disabled={isAiThinking}
               />
@@ -418,7 +617,32 @@ const App: React.FC = () => {
                 Send
               </button>
             </form>
-            <div className="text-center mt-6">
+
+            {/* Project Data Display */}
+            <div className="mb-6">
+              <button
+                onClick={() => setShowProjectData(!showProjectData)}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+              >
+                <svg className={`w-4 h-4 transform transition-transform ${showProjectData ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+                View Project Data ({designs.length} designs, {drawings.length} drawings)
+              </button>
+
+              {showProjectData && (
+                <div className="mt-4 space-y-6">
+                  {/* Design Display */}
+                  <DesignDisplay designs={designs} onDesignUpdate={loadDesigns} />
+
+                  {/* Drawing Display */}
+                  <DrawingDisplay drawings={drawings} onDrawingUpdate={loadDrawings} />
+                </div>
+              )}
+            </div>
+
+            {/* Finalize Scope Button */}
+            <div className="text-center">
                  <button onClick={handleFinalizeScope} className="px-8 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 disabled:bg-gray-400" disabled={isAiThinking || conversationHistory.length <= 1}>
                     Finalize Scope & Generate Keywords
                  </button>
@@ -597,8 +821,24 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-gray-100 p-4 sm:p-6 lg:p-8">
         <main className="max-w-4xl mx-auto bg-white p-6 sm:p-8 rounded-xl shadow-lg">
             <header className="text-center mb-8">
-                <h1 className="text-4xl font-extrabold text-gray-900">HSR Construction Estimator</h1>
-                <p className="mt-2 text-md text-gray-600">AI-Powered Costing with Haryana Schedule of Rates</p>
+                <div className="flex items-center justify-between mb-4">
+                    <div></div>
+                    <div>
+                        <h1 className="text-4xl font-extrabold text-gray-900">HSR Construction Estimator</h1>
+                        <p className="mt-2 text-md text-gray-600">AI-Powered Costing with Haryana Schedule of Rates</p>
+                    </div>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => setIsGuidelinesOpen(true)}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                            title="Manage Guidelines"
+                        >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
                 <div className="flex items-center justify-center mt-4">
                     <input
                         type="checkbox"
@@ -686,8 +926,16 @@ const App: React.FC = () => {
             />
             
             {renderMainContent()}
-            
+
         </main>
+
+        {/* Guidelines Manager Modal */}
+        <GuidelinesManager
+          isOpen={isGuidelinesOpen}
+          onClose={() => setIsGuidelinesOpen(false)}
+          onGuidelinesUpdate={loadGuidelines}
+        />
+
          <footer className="text-center mt-8 text-sm text-gray-500 no-print">
             <p>&copy; {new Date().getFullYear()} HSR Construction Estimator. All rights reserved.</p>
         </footer>
