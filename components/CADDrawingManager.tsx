@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CADDrawingService } from '../services/cadDrawingService';
-import { CADDrawingCanvas } from './CADDrawingCanvas';
+import { LLMService } from '../services/llmService';
 import { CADDrawingData, CADLayer } from '../types';
 
 interface CADDrawingManagerProps {
@@ -24,15 +24,143 @@ export const CADDrawingManager: React.FC<CADDrawingManagerProps> = ({
   const [newDrawingTitle, setNewDrawingTitle] = useState(initialTitle);
   const [newDrawingDescription, setNewDrawingDescription] = useState(initialDescription);
   const [activeTab, setActiveTab] = useState<'canvas' | 'layers' | 'properties'>('canvas');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedSVG, setGeneratedSVG] = useState<string>('');
 
   useEffect(() => {
     if (isOpen) {
       loadAllDrawings();
       if (initialTitle && initialDescription) {
         setIsCreating(true);
+        // Auto-generate CAD drawing from the validated specification
+        handleGenerateCADDrawing();
       }
     }
   }, [isOpen, initialTitle, initialDescription]);
+
+  const handleGenerateCADDrawing = async () => {
+    if (!initialDescription) return;
+
+    setIsGenerating(true);
+    try {
+      const cadPrompt = `You are a professional CAD drawing generator. Convert the following validated drawing specification into a precise, professional SVG drawing suitable for construction use.
+
+VALIDATED DRAWING SPECIFICATION:
+${initialDescription}
+
+DRAWING TITLE: ${initialTitle}
+
+Generate a complete, professional SVG drawing with the following requirements:
+
+1. **SVG Structure**:
+   - Use viewBox="0 0 800 600" for standard drawing size
+   - Include proper xmlns="http://www.w3.org/2000/svg"
+   - Use professional coordinate system
+
+2. **Drawing Elements**:
+   - Main structural elements with thick lines (stroke-width="3")
+   - Dimension lines with thinner lines (stroke-width="1")
+   - Clear, readable text (font-size="14" minimum)
+   - Proper spacing and layout
+
+3. **Professional Standards**:
+   - Title block at bottom with drawing info
+   - Proper dimensioning with arrows and values
+   - Clear object lines vs dimension lines
+   - Professional appearance suitable for construction
+
+4. **Technical Accuracy**:
+   - All elements from the specification included
+   - Proper proportions and scaling
+   - Realistic measurements and dimensions
+   - Construction-ready details
+
+Generate ONLY the complete SVG code, no explanations:`;
+
+      const svgContent = await LLMService.generateContent(cadPrompt);
+
+      // Extract SVG from response
+      const svgMatch = svgContent.match(/<svg[\s\S]*?<\/svg>/i);
+      const finalSVG = svgMatch ? svgMatch[0] : svgContent;
+
+      setGeneratedSVG(finalSVG);
+
+      // Create CAD drawing data
+      const drawing = CADDrawingService.createNewDrawing(initialTitle, initialDescription);
+      drawing.title = initialTitle;
+      drawing.description = initialDescription;
+
+      CADDrawingService.saveDrawing(drawing);
+      setCurrentDrawing(drawing);
+      setIsCreating(false);
+      loadAllDrawings();
+      onDrawingUpdate();
+
+    } catch (error) {
+      console.error('Failed to generate CAD drawing:', error);
+      alert('Failed to generate CAD drawing. Please try again.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleExportSVG = () => {
+    if (!generatedSVG) return;
+
+    const blob = new Blob([generatedSVG], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${initialTitle.replace(/\s+/g, '_')}_CAD_Drawing.svg`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handlePrintDrawing = () => {
+    if (!generatedSVG) return;
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const printContent = `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>${initialTitle} - CAD Drawing</title>
+    <style>
+        body { margin: 0; padding: 20px; font-family: Arial, sans-serif; }
+        .drawing-container { text-align: center; }
+        svg { max-width: 100%; height: auto; border: 1px solid #ccc; }
+        @media print {
+            body { margin: 0; padding: 10px; }
+            .no-print { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="drawing-container">
+        <h2>${initialTitle}</h2>
+        <p>Professional CAD Drawing | Generated: ${new Date().toLocaleDateString()}</p>
+        ${generatedSVG}
+        <div class="no-print" style="margin-top: 20px;">
+            <button onclick="window.print()">Print Drawing</button>
+            <button onclick="window.close()">Close</button>
+        </div>
+    </div>
+</body>
+</html>`;
+
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+  };
+
+  const handleRegenerateDrawing = async () => {
+    if (confirm('Regenerate the CAD drawing? This will create a new version.')) {
+      await handleGenerateCADDrawing();
+    }
+  };
 
   const loadAllDrawings = () => {
     const drawings = CADDrawingService.loadAllDrawings();
@@ -340,13 +468,86 @@ export const CADDrawingManager: React.FC<CADDrawingManagerProps> = ({
 
           {/* Main Canvas Area */}
           <div className="flex-1 flex flex-col">
-            {currentDrawing ? (
-              <CADDrawingCanvas
-                drawing={currentDrawing}
-                onDrawingUpdate={handleDrawingUpdate}
-                width={800}
-                height={600}
-              />
+            {isGenerating ? (
+              <div className="flex-1 flex items-center justify-center bg-gray-100">
+                <div className="text-center">
+                  <div className="animate-spin text-6xl mb-4">⚙️</div>
+                  <h3 className="text-xl font-semibold text-gray-700 mb-2">
+                    Generating Professional CAD Drawing
+                  </h3>
+                  <p className="text-gray-500">
+                    AI is creating your technical drawing...
+                  </p>
+                </div>
+              </div>
+            ) : generatedSVG ? (
+              <div className="flex-1 flex flex-col bg-white">
+                {/* Drawing Toolbar */}
+                <div className="bg-gray-50 border-b border-gray-200 p-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold text-gray-800">
+                      {currentDrawing?.title || initialTitle}
+                    </h3>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => handleExportSVG()}
+                        className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
+                      >
+                        📄 Export SVG
+                      </button>
+                      <button
+                        onClick={() => handlePrintDrawing()}
+                        className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+                      >
+                        🖨️ Print
+                      </button>
+                      <button
+                        onClick={() => handleRegenerateDrawing()}
+                        className="px-3 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 text-sm"
+                      >
+                        🔄 Regenerate
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* SVG Display Area */}
+                <div className="flex-1 p-4 overflow-auto bg-gray-50">
+                  <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-sm">
+                    <div
+                      className="w-full flex justify-center"
+                      dangerouslySetInnerHTML={{ __html: generatedSVG }}
+                    />
+                  </div>
+                </div>
+
+                {/* Drawing Info */}
+                <div className="bg-gray-50 border-t border-gray-200 p-4">
+                  <div className="text-sm text-gray-600">
+                    <p><strong>Drawing:</strong> {currentDrawing?.title || initialTitle}</p>
+                    <p><strong>Generated:</strong> {new Date().toLocaleString()}</p>
+                    <p><strong>Status:</strong> Professional CAD Drawing Ready</p>
+                  </div>
+                </div>
+              </div>
+            ) : currentDrawing ? (
+              <div className="flex-1 flex items-center justify-center bg-gray-100">
+                <div className="text-center">
+                  <div className="text-6xl mb-4">📐</div>
+                  <h3 className="text-xl font-semibold text-gray-700 mb-2">
+                    CAD Drawing Ready
+                  </h3>
+                  <p className="text-gray-500 mb-4">
+                    {currentDrawing.title}
+                  </p>
+                  <button
+                    onClick={handleGenerateCADDrawing}
+                    className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    Generate CAD Drawing
+                  </button>
+                </div>
+              </div>
             ) : (
               <div className="flex-1 flex items-center justify-center bg-gray-100">
                 <div className="text-center">
@@ -355,7 +556,7 @@ export const CADDrawingManager: React.FC<CADDrawingManagerProps> = ({
                     Professional CAD Drawing System
                   </h3>
                   <p className="text-gray-500 mb-4">
-                    Create technical drawings with professional CAD tools
+                    AI-powered technical drawing generation
                   </p>
                   <button
                     onClick={() => setIsCreating(true)}
