@@ -26,18 +26,7 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
     DrawingService.downloadDrawingAsSVG(drawing);
   };
 
-  const handleDownloadDXF = (drawing: TechnicalDrawing) => {
-    DrawingService.downloadDrawingAsDXF(drawing);
-  };
 
-  const handleDownloadPDF = async (drawing: TechnicalDrawing) => {
-    try {
-      await DrawingService.downloadDrawingAsPDF(drawing);
-    } catch (error) {
-      console.error('Error downloading PDF:', error);
-      alert('Failed to download PDF. Please try again.');
-    }
-  };
 
   const handlePrintDrawing = (drawing: TechnicalDrawing) => {
     DrawingService.printDrawing(drawing);
@@ -110,27 +99,7 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
             </div>
 
             {/* Action Buttons */}
-            <div className="grid grid-cols-2 gap-1">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDownloadDXF(drawing);
-                }}
-                className="px-2 py-1 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700"
-                title="Download Professional DXF CAD File"
-              >
-                DXF
-              </button>
-
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDownloadPDF(drawing);
-                }}
-                className="px-2 py-1 bg-purple-600 text-white text-xs rounded hover:bg-purple-700"
-              >
-                PDF
-              </button>
+            <div className="grid grid-cols-1 gap-1">
 
               <button
                 onClick={(e) => {
@@ -263,28 +232,8 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
             )}
           </div>
 
-          {/* Professional CAD Export Buttons */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <button
-              onClick={() => handleDownloadDXF(selectedDrawing)}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center justify-center gap-2"
-              title="Download Professional DXF CAD File (ezdxf equivalent)"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              DXF CAD
-            </button>
-
-            <button
-              onClick={() => handleDownloadPDF(selectedDrawing)}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center justify-center gap-2"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              PDF
-            </button>
+          {/* Professional SVG Export Buttons */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
             <button
               onClick={() => handleDownloadSVG(selectedDrawing)}
@@ -308,20 +257,15 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
 
             <button
               onClick={() => {
-                if (selectedDrawing.dxfContent) {
-                  navigator.clipboard.writeText(selectedDrawing.dxfContent);
-                  alert('DXF content copied to clipboard!');
-                } else {
-                  navigator.clipboard.writeText(selectedDrawing.svgContent);
-                  alert('SVG content copied to clipboard!');
-                }
+                navigator.clipboard.writeText(selectedDrawing.svgContent);
+                alert('SVG code copied to clipboard!');
               }}
               className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center justify-center gap-2"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
               </svg>
-              Copy
+              Copy SVG Code
             </button>
           </div>
         </div>
