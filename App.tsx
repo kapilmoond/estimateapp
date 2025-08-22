@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { HsrItem, ChatMessage, KeywordsByItem } from './types';
-import { continueConversation, generatePlainTextEstimate, generateKeywordsForItems, regenerateKeywords } from './services/geminiService';
+import { continueConversation, generatePlainTextEstimate, generateKeywordsForItems } from './services/geminiService';
 import { searchHSR } from './services/hsrService';
 import { extractHsrNumbersFromText } from './services/keywordService';
 import { speak } from './services/speechService';
@@ -37,6 +37,8 @@ const App: React.FC = () => {
   const [speechRate, setSpeechRate] = useState(1);
   const [selectedVoiceURI, setSelectedVoiceURI] = useState<string | null>(null);
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [apiKey, setApiKey] = useState<string>('');
+  const [apiKeyInput, setApiKeyInput] = useState<string>('');
   
   const [referenceDocs, setReferenceDocs] = useState<ReferenceDoc[]>([]);
   const [isFileProcessing, setIsFileProcessing] = useState<boolean>(false);
@@ -52,6 +54,13 @@ const App: React.FC = () => {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, [conversationHistory]);
+
+  useEffect(() => {
+    const storedApiKey = localStorage.getItem('gemini-api-key');
+    if (storedApiKey) {
+        setApiKey(storedApiKey);
+    }
+  }, []);
 
   useEffect(() => {
     const loadVoices = () => {
@@ -99,14 +108,15 @@ const App: React.FC = () => {
     setReferenceDocs(prevDocs => prevDocs.filter(doc => doc.file.name !== fileNameToRemove));
   };
 
+  const handleApiKeySave = () => {
+    localStorage.setItem('gemini-api-key', apiKeyInput);
+    setApiKey(apiKeyInput);
+    setApiKeyInput('');
+  };
+
   const handleSendMessage = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!currentMessage.trim() || isAiThinking) return;
-
-    if (!process.env.API_KEY) {
-      setError('API key is not configured. Please set the API_KEY environment variable.');
-      return;
-    }
 
     const newMessage: ChatMessage = { role: 'user', text: currentMessage };
     const newHistory = [...conversationHistory, newMessage];
@@ -182,7 +192,7 @@ const App: React.FC = () => {
     setError(null);
 
     try {
-        const regeneratedKeywords = await regenerateKeywords(finalizedScope, keywordFeedback, referenceText);
+        const regeneratedKeywords = await generateKeywordsForItems(finalizedScope, keywordFeedback, referenceText);
 
         const hsrNumbers = extractHsrNumbersFromText(finalizedScope);
 
@@ -644,6 +654,28 @@ const App: React.FC = () => {
                     </div>
                 )}
             </header>
+
+            {!apiKey && (
+                <div className="p-4 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 mb-6 rounded-r-lg">
+                    <h3 className="font-bold">Gemini API Key Required</h3>
+                    <p>Please enter your API key to use the application. Your key will be saved in your browser's local storage.</p>
+                    <div className="flex items-center mt-2">
+                        <input
+                            type="password"
+                            value={apiKeyInput}
+                            onChange={(e) => setApiKeyInput(e.target.value)}
+                            className="p-2 border border-gray-300 rounded-l-md w-full"
+                            placeholder="Enter your Gemini API Key"
+                        />
+                        <button
+                            onClick={handleApiKeySave}
+                            className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-r-md hover:bg-blue-700"
+                        >
+                            Save
+                        </button>
+                    </div>
+                </div>
+            )}
             
             <FileUpload 
               onFileUpload={handleFileUpload}
