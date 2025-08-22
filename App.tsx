@@ -23,6 +23,7 @@ import { ContextManager } from './components/ContextManager';
 import { LLMProviderSelector } from './components/LLMProviderSelector';
 import { KnowledgeBaseManager } from './components/KnowledgeBaseManager';
 import { KnowledgeBaseDisplay } from './components/KnowledgeBaseDisplay';
+import { CADDrawingManager } from './components/CADDrawingManager';
 import { LLMService } from './services/llmService';
 import { RAGService } from './services/ragService';
 
@@ -67,7 +68,10 @@ const App: React.FC = () => {
   const [isGuidelinesOpen, setIsGuidelinesOpen] = useState<boolean>(false);
   const [isLLMSettingsOpen, setIsLLMSettingsOpen] = useState<boolean>(false);
   const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState<boolean>(false);
+  const [isCADDrawingOpen, setIsCADDrawingOpen] = useState<boolean>(false);
   const [includeKnowledgeBase, setIncludeKnowledgeBase] = useState<boolean>(false);
+  const [cadDrawingTitle, setCADDrawingTitle] = useState<string>('');
+  const [cadDrawingDescription, setCADDrawingDescription] = useState<string>('');
   const [currentProvider, setCurrentProvider] = useState<string>(LLMService.getCurrentProvider());
   const [currentModel, setCurrentModel] = useState<string>(LLMService.getCurrentModel());
   const [showProjectData, setShowProjectData] = useState<boolean>(false);
@@ -319,6 +323,11 @@ const App: React.FC = () => {
       const titleMatch = userInput.match(/drawing\s+(?:for\s+)?(.+?)(?:\s|$)/i);
       const title = titleMatch ? titleMatch[1].trim() : 'Technical Drawing';
       const componentName = title;
+
+      // Set up CAD drawing parameters and open CAD interface
+      setCADDrawingTitle(title);
+      setCADDrawingDescription(`Technical drawing for ${componentName}: ${userInput}`);
+      setIsCADDrawingOpen(true);
 
       const activeGuidelines = GuidelinesService.getActiveGuidelines();
       const drawingGuidelines = GuidelinesService.getActiveGuidelines('drawing');
@@ -972,6 +981,16 @@ const App: React.FC = () => {
                         </button>
 
                         <button
+                            onClick={() => setIsCADDrawingOpen(true)}
+                            className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 text-sm"
+                            title="Professional CAD Drawing"
+                        >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zM21 5a2 2 0 00-2-2h-4a2 2 0 00-2 2v12a4 4 0 004 4h4a2 2 0 002-2V5z" />
+                            </svg>
+                        </button>
+
+                        <button
                             onClick={() => setIsGuidelinesOpen(true)}
                             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
                             title="Manage Guidelines"
@@ -1093,6 +1112,15 @@ const App: React.FC = () => {
           isOpen={isKnowledgeBaseOpen}
           onClose={() => setIsKnowledgeBaseOpen(false)}
           onKnowledgeBaseUpdate={handleKnowledgeBaseUpdate}
+        />
+
+        {/* CAD Drawing Manager Modal */}
+        <CADDrawingManager
+          isOpen={isCADDrawingOpen}
+          onClose={() => setIsCADDrawingOpen(false)}
+          onDrawingUpdate={handleKnowledgeBaseUpdate}
+          initialTitle={cadDrawingTitle}
+          initialDescription={cadDrawingDescription}
         />
 
         {/* Guidelines Manager Modal */}
