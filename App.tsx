@@ -24,10 +24,9 @@ import { LLMProviderSelector } from './components/LLMProviderSelector';
 import { KnowledgeBaseManager } from './components/KnowledgeBaseManager';
 import { KnowledgeBaseDisplay } from './components/KnowledgeBaseDisplay';
 import { CADDrawingManager } from './components/CADDrawingManager';
-import { DrawingValidationDisplay } from './components/DrawingValidationDisplay';
 import { LLMService } from './services/llmService';
 import { RAGService } from './services/ragService';
-import { DrawingValidationService, DrawingValidationResult } from './services/drawingValidationService';
+import { DrawingValidationService } from './services/drawingValidationService';
 
 type Step = 'scoping' | 'generatingKeywords' | 'approvingKeywords' | 'approvingHsrItems' | 'approvingRefinedHsrItems' | 'generatingEstimate' | 'reviewingEstimate' | 'done';
 type ReferenceDoc = { file: File; text: string };
@@ -74,9 +73,6 @@ const App: React.FC = () => {
   const [includeKnowledgeBase, setIncludeKnowledgeBase] = useState<boolean>(false);
   const [cadDrawingTitle, setCADDrawingTitle] = useState<string>('');
   const [cadDrawingDescription, setCADDrawingDescription] = useState<string>('');
-  const [validationResult, setValidationResult] = useState<DrawingValidationResult | null>(null);
-  const [showValidation, setShowValidation] = useState<boolean>(false);
-  const [currentDrawingSpec, setCurrentDrawingSpec] = useState<string>('');
   const [currentProvider, setCurrentProvider] = useState<string>(LLMService.getCurrentProvider());
   const [currentModel, setCurrentModel] = useState<string>(LLMService.getCurrentModel());
   const [showProjectData, setShowProjectData] = useState<boolean>(false);
@@ -137,35 +133,14 @@ const App: React.FC = () => {
     setContextKey(prev => prev + 1);
   };
 
-  const handleValidationProceedToCAD = (correctedSpec: string) => {
-    // Update the drawing specification with corrected version
-    setCADDrawingDescription(correctedSpec);
-    setShowValidation(false);
-    setIsCADDrawingOpen(true);
+  // Handle regeneration requests for drawings
+  const handleDrawingRegeneration = async (userInput: string, modifications?: string) => {
+    const fullInput = modifications
+      ? `${userInput}\n\nModifications requested: ${modifications}`
+      : userInput;
 
-    // Add to conversation history
-    setConversationHistory(prev => [
-      ...prev,
-      { role: 'model', text: `Proceeding to Professional CAD Drawing Interface with validated specification. You can now create precise technical drawings using the CAD tools.` }
-    ]);
-  };
-
-  const handleValidationRegenerate = async () => {
-    setShowValidation(false);
-    // Regenerate the drawing specification
-    if (currentDrawingSpec) {
-      // Re-run the drawing request with the current parameters
-      const lastUserMessage = conversationHistory.filter(msg => msg.role === 'user').pop();
-      if (lastUserMessage) {
-        await handleDrawingRequest(lastUserMessage.text);
-      }
-    }
-  };
-
-  const handleValidationCancel = () => {
-    setShowValidation(false);
-    setValidationResult(null);
-    setCurrentDrawingSpec('');
+    // Run the same two-stage process for regeneration
+    await handleDrawingRequest(fullInput);
   };
 
   useEffect(() => {
@@ -350,7 +325,7 @@ const App: React.FC = () => {
   };
 
   const handleDrawingRequest = async (userInput: string) => {
-    setLoadingMessage('Generating technical drawing specification...');
+    setLoadingMessage('STAGE 1: Generating initial drawing specification...');
     setIsAiThinking(true);
     setError(null);
 
@@ -393,19 +368,16 @@ const App: React.FC = () => {
         referenceText
       );
 
-      // Store the initial specification
-      setCurrentDrawingSpec(drawing.svgContent);
-
       // Add to conversation history for Stage 1
       setConversationHistory(prev => [
         ...prev,
         { role: 'user', text: userInput },
-        { role: 'model', text: `STAGE 1 - Initial Drawing Specification Generated for ${title}:\n\n${drawing.description}\n\nNow validating for errors and improvements...` }
+        { role: 'model', text: `STAGE 1 COMPLETE - Initial Drawing Specification Generated for ${title}:\n\n${drawing.description}\n\nProceeding to Stage 2 validation...` }
       ]);
 
-      setLoadingMessage('Validating drawing specification for errors...');
+      setLoadingMessage('STAGE 2: AI validating specification for errors and improvements...');
 
-      // STAGE 2: Validate the drawing specification
+      // STAGE 2: Validate and correct the drawing specification automatically
       const contextInfo = `${scopeContext}\n${designContext}\n${guidelinesText}`;
       const validation = await DrawingValidationService.validateDrawingSpecification(
         drawing.svgContent,
@@ -415,13 +387,24 @@ const App: React.FC = () => {
         contextInfo
       );
 
-      setValidationResult(validation);
-      setShowValidation(true);
+      // Create final corrected drawing with validation results
+      const finalDrawing = {
+        ...drawing,
+        description: `${drawing.description}\n\nVALIDATION APPLIED:\n${validation.correctedSpecification}`,
+        svgContent: validation.correctedSpecification,
+        drawingType: 'svg' as const
+      };
 
-      // Add validation results to conversation
+      setDrawings(prev => [finalDrawing, ...prev]);
+
+      // Add final results to conversation
+      const issuesSummary = validation.issues.length > 0
+        ? `Found and corrected ${validation.issues.length} issues: ${validation.issues.map(i => i.type).join(', ')}`
+        : 'No issues found - specification was already optimal';
+
       setConversationHistory(prev => [
         ...prev,
-        { role: 'model', text: `STAGE 2 - Drawing Validation Complete:\n\n${DrawingValidationService.formatValidationResults(validation)}\n\nReview the validation results and proceed to CAD drawing when ready.` }
+        { role: 'model', text: `STAGE 2 COMPLETE - Drawing Validation and Correction Applied:\n\n${issuesSummary}\n\nFinal validated drawing is ready. You can view it below or open the Professional CAD interface for detailed editing.\n\nTo regenerate with modifications, simply request changes and the two-stage process will run again.` }
       ]);
 
       loadDrawings();
@@ -1182,16 +1165,7 @@ const App: React.FC = () => {
           initialDescription={cadDrawingDescription}
         />
 
-        {/* Drawing Validation Display */}
-        {validationResult && (
-          <DrawingValidationDisplay
-            validationResult={validationResult}
-            onProceedToCAD={handleValidationProceedToCAD}
-            onRegenerate={handleValidationRegenerate}
-            onCancel={handleValidationCancel}
-            isVisible={showValidation}
-          />
-        )}
+
 
         {/* Guidelines Manager Modal */}
         <GuidelinesManager
