@@ -26,6 +26,15 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
     DrawingService.downloadDrawingAsSVG(drawing);
   };
 
+  const handleDownloadPDF = async (drawing: TechnicalDrawing) => {
+    try {
+      await DrawingService.downloadDrawingAsPDF(drawing);
+    } catch (error) {
+      console.error('Error downloading PDF:', error);
+      alert('Failed to download PDF. Please try again.');
+    }
+  };
+
   const handlePrintDrawing = (drawing: TechnicalDrawing) => {
     DrawingService.printDrawing(drawing);
   };
@@ -85,40 +94,55 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
             
             {/* Drawing Preview */}
             <div className="mb-3 bg-gray-100 rounded p-2">
-              <div 
-                className="w-full h-24 bg-white rounded border overflow-hidden"
-                dangerouslySetInnerHTML={{ __html: drawing.svgContent }}
-              />
+              <div
+                className="w-full h-32 bg-white rounded border overflow-hidden flex items-center justify-center"
+                style={{ minHeight: '128px' }}
+              >
+                <div
+                  className="max-w-full max-h-full"
+                  dangerouslySetInnerHTML={{ __html: drawing.svgContent }}
+                />
+              </div>
             </div>
 
             {/* Action Buttons */}
-            <div className="flex gap-2">
+            <div className="grid grid-cols-2 gap-1">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   handlePrintDrawing(drawing);
                 }}
-                className="flex-1 px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
+                className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
               >
                 Print
               </button>
-              
+
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   handleDownloadSVG(drawing);
                 }}
-                className="flex-1 px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700"
+                className="px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700"
               >
-                Download
+                SVG
               </button>
-              
+
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDownloadPDF(drawing);
+                }}
+                className="px-2 py-1 bg-purple-600 text-white text-xs rounded hover:bg-purple-700"
+              >
+                PDF
+              </button>
+
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   handleDeleteDrawing(drawing.id);
                 }}
-                className="px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700"
+                className="px-2 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700"
               >
                 Delete
               </button>
@@ -172,17 +196,17 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
             </div>
           </div>
 
-          {/* SVG Editor */}
+          {/* Professional Drawing Viewer */}
           <div className="bg-white p-4 rounded-lg border border-gray-200 mb-6">
             <div className="flex items-center justify-between mb-4">
-              <h5 className="font-semibold text-gray-700">Drawing Preview & Editor</h5>
+              <h5 className="font-semibold text-gray-700">Professional CAD Drawing</h5>
               <div className="flex gap-2">
                 {!isEditing ? (
                   <button
                     onClick={() => handleEditSVG(selectedDrawing)}
                     className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
                   >
-                    Edit SVG
+                    Edit Drawing
                   </button>
                 ) : (
                   <>
@@ -213,46 +237,70 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
                 />
                 <div className="bg-gray-100 p-4 rounded">
                   <p className="text-sm font-medium text-gray-700 mb-2">Live Preview:</p>
-                  <div 
-                    className="w-full bg-white border rounded p-4"
+                  <div
+                    className="w-full bg-white border rounded p-4 min-h-[300px] flex items-center justify-center"
                     dangerouslySetInnerHTML={{ __html: editedSVG }}
                   />
                 </div>
               </div>
             ) : (
               <div className="bg-gray-100 p-4 rounded">
-                <div 
-                  className="w-full bg-white border rounded p-4"
-                  dangerouslySetInnerHTML={{ __html: selectedDrawing.svgContent }}
-                />
+                <div
+                  className="w-full bg-white border rounded p-4 min-h-[400px] flex items-center justify-center overflow-auto"
+                  style={{ maxHeight: '600px' }}
+                >
+                  <div
+                    className="max-w-full max-h-full"
+                    dangerouslySetInnerHTML={{ __html: selectedDrawing.svgContent }}
+                  />
+                </div>
               </div>
             )}
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex gap-4">
+          {/* Enhanced Action Buttons */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <button
               onClick={() => handlePrintDrawing(selectedDrawing)}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2"
             >
-              Print Drawing
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+              </svg>
+              Print
             </button>
-            
+
             <button
               onClick={() => handleDownloadSVG(selectedDrawing)}
-              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center justify-center gap-2"
             >
-              Download SVG
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              SVG
             </button>
-            
+
+            <button
+              onClick={() => handleDownloadPDF(selectedDrawing)}
+              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center justify-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              PDF
+            </button>
+
             <button
               onClick={() => {
                 navigator.clipboard.writeText(selectedDrawing.svgContent);
                 alert('SVG content copied to clipboard!');
               }}
-              className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center justify-center gap-2"
             >
-              Copy SVG Code
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+              Copy
             </button>
           </div>
         </div>

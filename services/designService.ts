@@ -113,7 +113,7 @@ Provide a detailed, professional design document in plain text format that can b
 
   static async generateHTMLDesign(design: ComponentDesign): Promise<string> {
     const ai = getAiClient();
-    
+
     const prompt = `Convert the following plain text design document into a well-formatted HTML document suitable for printing and professional presentation.
 
 **REQUIREMENTS:**
@@ -123,12 +123,13 @@ Provide a detailed, professional design document in plain text format that can b
 4. Make it print-friendly with appropriate page breaks
 5. Include a header with project title and date
 6. Use professional fonts and spacing
+7. IMPORTANT: Provide ONLY the raw HTML content without any markdown code blocks or \`\`\`html tags
 
 **ORIGINAL DESIGN DOCUMENT:**
 ${design.designContent}
 
 **OUTPUT:**
-Provide only the complete HTML document, starting with <!DOCTYPE html> and ending with </html>. The document should be ready for download and printing.`;
+Provide only the complete HTML document content, starting with <!DOCTYPE html> and ending with </html>. Do not wrap the output in any markdown code blocks. The document should be ready for download and printing.`;
 
     try {
       const response = await ai.models.generateContent({
@@ -136,12 +137,22 @@ Provide only the complete HTML document, starting with <!DOCTYPE html> and endin
         contents: prompt,
       });
 
-      const htmlContent = response.text;
-      
+      let htmlContent = response.text;
+
+      // Clean up any markdown code blocks that might be included
+      htmlContent = htmlContent.replace(/```html\s*/g, '');
+      htmlContent = htmlContent.replace(/```\s*$/g, '');
+      htmlContent = htmlContent.trim();
+
+      // Ensure it starts with DOCTYPE
+      if (!htmlContent.toLowerCase().startsWith('<!doctype')) {
+        htmlContent = `<!DOCTYPE html>\n${htmlContent}`;
+      }
+
       // Update the design with HTML content
       design.htmlContent = htmlContent;
       this.updateDesign(design.id, { htmlContent });
-      
+
       return htmlContent;
     } catch (error) {
       console.error('Error generating HTML design:', error);

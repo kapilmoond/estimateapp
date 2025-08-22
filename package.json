@@ -13,6 +13,9 @@
   },
   "dependencies": {
     "@google/genai": "^1.14.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^3.0.1",
+    "konva": "^9.3.22",
     "mammoth": "1.7.2",
     "pdfjs-dist": "^5.4.54",
     "react": "18.2.0",
@@ -20,6 +23,7 @@
     "xlsx": "0.18.5"
   },
   "devDependencies": {
+    "@types/fabric": "^5.3.10",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.1",
     "gh-pages": "^6.3.0",
