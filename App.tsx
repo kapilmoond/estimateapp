@@ -248,7 +248,7 @@ const App: React.FC = () => {
 
     try {
         // Step 1: Regenerate ALL keywords for the scope using the new feedback
-        const newKeywordsByItem = await regenerateKeywords(finalizedScope, feedback, referenceText);
+        const newKeywordsByItem = await generateKeywordsForItems(finalizedScope, feedback, referenceText);
 
         // Update the main keywords state as well, since we have a new baseline
         const allNewKeywords = [...new Set(Object.values(newKeywordsByItem).flat())];
