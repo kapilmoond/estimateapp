@@ -2,7 +2,7 @@
   "name": "hsr-construction-estimator",
   "private": true,
   "version": "0.0.0",
-  "homepage": "https://YOUR_USERNAME.github.io/YOUR_REPONAME",
+  "homepage": "https://kapilmoond.github.io/estimateapp",
   "type": "module",
   "scripts": {
     "dev": "vite",
