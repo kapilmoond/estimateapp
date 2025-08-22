@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { TechnicalDrawing } from '../types';
+import { DXFService } from '../services/dxfService';
 import { DrawingService } from '../services/drawingService';
 
 interface DrawingDisplayProps {
@@ -15,6 +16,55 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [regenerationInstructions, setRegenerationInstructions] = useState('');
+  const [dxfPreview, setDxfPreview] = useState<string>('');
+
+  // Load DXF preview when drawing is selected
+  React.useEffect(() => {
+    if (selectedDrawing) {
+      loadDXFPreview();
+    }
+  }, [selectedDrawing]);
+
+  // Auto-select first drawing
+  React.useEffect(() => {
+    if (drawings.length > 0 && !selectedDrawing) {
+      setSelectedDrawing(drawings[0]);
+    }
+  }, [drawings, selectedDrawing]);
+
+  const loadDXFPreview = async () => {
+    if (!selectedDrawing) return;
+
+    try {
+      const preview = await DXFService.getDXFPreview(selectedDrawing);
+      setDxfPreview(preview);
+    } catch (error) {
+      console.error('Failed to load DXF preview:', error);
+      // Use placeholder if preview fails
+      setDxfPreview(createPlaceholderSVG(selectedDrawing.title));
+    }
+  };
+
+  const createPlaceholderSVG = (title: string): string => {
+    return `
+      <svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">
+        <rect width="800" height="600" fill="#f8f9fa" stroke="#dee2e6" stroke-width="2"/>
+        <text x="400" y="280" text-anchor="middle" font-family="Arial" font-size="24" fill="#6c757d">
+          🏗️ Professional DXF Drawing
+        </text>
+        <text x="400" y="320" text-anchor="middle" font-family="Arial" font-size="18" fill="#6c757d">
+          ${title}
+        </text>
+        <text x="400" y="360" text-anchor="middle" font-family="Arial" font-size="14" fill="#6c757d">
+          Download DXF file to view in CAD software
+        </text>
+        <rect x="350" y="380" width="100" height="40" fill="#007bff" rx="5"/>
+        <text x="400" y="405" text-anchor="middle" font-family="Arial" font-size="14" fill="white">
+          Download DXF
+        </text>
+      </svg>
+    `;
+  };
 
   const handleDeleteDrawing = (drawingId: string) => {
     if (window.confirm('Are you sure you want to delete this drawing?')) {
@@ -26,8 +76,13 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
     }
   };
 
-  const handleDownloadSVG = (drawing: TechnicalDrawing) => {
-    DrawingService.downloadDrawingAsSVG(drawing);
+  const handleDownloadDXF = async (drawing: TechnicalDrawing) => {
+    try {
+      await DXFService.downloadDXF(drawing);
+    } catch (error) {
+      console.error('Download failed:', error);
+      alert('Failed to download DXF file. Please try again.');
+    }
   };
 
 
@@ -54,6 +109,31 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
   const handleCancelEdit = () => {
     setIsEditing(false);
     setEditedSVG('');
+  };
+
+  const handleRegenerateWithInstructions = async () => {
+    if (!selectedDrawing || !regenerationInstructions.trim()) {
+      alert('Please provide instructions for regenerating the drawing.');
+      return;
+    }
+
+    if (onRegenerateDrawing) {
+      try {
+        setIsRegenerating(true);
+        await onRegenerateDrawing(selectedDrawing.id, regenerationInstructions);
+        setRegenerationInstructions('');
+        setIsRegenerating(false);
+      } catch (error) {
+        console.error('Regeneration failed:', error);
+        alert('Failed to regenerate drawing. Please try again.');
+        setIsRegenerating(false);
+      }
+    }
+  };
+
+  const handleCancelRegeneration = () => {
+    setIsRegenerating(false);
+    setRegenerationInstructions('');
   };
 
   if (drawings.length === 0) {
@@ -97,7 +177,7 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
               >
                 <div
                   className="max-w-full max-h-full"
-                  dangerouslySetInnerHTML={{ __html: drawing.svgContent }}
+                  dangerouslySetInnerHTML={{ __html: selectedDrawing?.id === drawing.id ? dxfPreview : createPlaceholderSVG(drawing.title) }}
                 />
               </div>
             </div>
@@ -253,7 +333,7 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
                       minWidth: '800px',
                       minHeight: '600px'
                     }}
-                    dangerouslySetInnerHTML={{ __html: selectedDrawing.svgContent }}
+                    dangerouslySetInnerHTML={{ __html: dxfPreview || createPlaceholderSVG(selectedDrawing.title) }}
                   />
                 </div>
                 {!isFullscreen && (
@@ -271,13 +351,13 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
             <button
-              onClick={() => handleDownloadSVG(selectedDrawing)}
+              onClick={() => handleDownloadDXF(selectedDrawing)}
               className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center justify-center gap-2"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
-              SVG
+              DXF
             </button>
 
             <button
@@ -288,6 +368,16 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
               </svg>
               Print
+            </button>
+
+            <button
+              onClick={() => setIsRegenerating(true)}
+              className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 flex items-center justify-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Regenerate
             </button>
 
             <button
@@ -303,6 +393,37 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
               Copy SVG Code
             </button>
           </div>
+
+          {/* Regeneration Interface */}
+          {isRegenerating && (
+            <div className="mt-6 p-4 bg-orange-50 border border-orange-200 rounded-lg">
+              <h4 className="font-semibold text-orange-800 mb-3">🔄 Regenerate Drawing with Instructions</h4>
+              <p className="text-sm text-orange-700 mb-3">
+                Provide specific instructions for how you want the drawing modified:
+              </p>
+              <textarea
+                value={regenerationInstructions}
+                onChange={(e) => setRegenerationInstructions(e.target.value)}
+                className="w-full h-24 p-3 border border-orange-300 rounded-lg resize-none"
+                placeholder="Example: Make the beam 8 meters long instead of 6 meters, add more reinforcement details, change the foundation depth to 1.5 meters..."
+              />
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={handleRegenerateWithInstructions}
+                  disabled={!regenerationInstructions.trim()}
+                  className="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                >
+                  ✅ Regenerate Drawing
+                </button>
+                <button
+                  onClick={handleCancelRegeneration}
+                  className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+                >
+                  ❌ Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

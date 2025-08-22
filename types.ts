@@ -55,18 +55,53 @@ export interface TechnicalDrawing {
   id: string;
   title: string;
   description: string;
-  svgContent: string;
+  dxfContent: string;  // Base64 encoded DXF content
+  dxfFilename: string; // DXF filename
   dimensions: { width: number; height: number };
   scale: string;
   componentName: string;
   createdAt: Date;
   includeInContext?: boolean;
-  // Enhanced CAD properties
-  cadData?: CADDrawingData;
-  drawingType: 'svg' | 'cad';
+  // Professional DXF properties
+  dxfData: DXFDrawingData;
+  drawingType: 'dxf';  // Only DXF supported now
 }
 
-// Professional CAD Drawing Types
+// Professional DXF Drawing Types
+export interface DXFDrawingData {
+  id: string;
+  title: string;
+  description: string;
+  elements: DXFElement[];
+  layers: string[];
+  units: 'mm' | 'm' | 'ft' | 'in';
+  scale: string;
+  paperSize: string;
+  createdAt: Date;
+  modifiedAt: Date;
+}
+
+export interface DXFElement {
+  id: string;
+  type: 'concrete_beam' | 'steel_column' | 'foundation' | 'wall' | 'slab' | 'reinforcement';
+  layer: string;
+  specifications: {
+    [key: string]: any;
+  };
+  coordinates: {
+    x: number;
+    y: number;
+    z?: number;
+  };
+  dimensions: {
+    length?: number;
+    width?: number;
+    height?: number;
+    diameter?: number;
+  };
+}
+
+// Legacy CAD Drawing Types (deprecated - use DXF instead)
 export interface CADDrawingData {
   id: string;
   title: string;
@@ -203,13 +238,14 @@ export interface CADSnapMode {
 }
 
 // Export/Import Types
-export interface CADExportOptions {
-  format: 'dxf' | 'pdf' | 'svg' | 'png' | 'jpg';
+export interface DXFExportOptions {
+  format: 'dxf' | 'pdf' | 'png' | 'jpg';  // Removed SVG - DXF is primary
   scale: number;
   paperSize?: string;
   orientation?: 'portrait' | 'landscape';
   layers?: string[];
   quality?: 'low' | 'medium' | 'high';
+  units?: 'mm' | 'm' | 'ft' | 'in';
 }
 
 export interface CADImportResult {

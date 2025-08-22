@@ -7,7 +7,7 @@ import { speak } from './services/speechService';
 import { GuidelinesService } from './services/guidelinesService';
 import { ThreadService } from './services/threadService';
 import { DesignService } from './services/designService';
-import { DrawingService } from './services/drawingService';
+import { DXFService, DXFStorageService } from './services/dxfService';
 import { ContextService } from './services/contextService';
 import { Spinner } from './components/Spinner';
 import { ResultDisplay } from './components/ResultDisplay';
@@ -115,8 +115,46 @@ const App: React.FC = () => {
   };
 
   const loadDrawings = () => {
-    const loadedDrawings = DrawingService.loadDrawings();
+    const loadedDrawings = DXFStorageService.getAllDrawings();
     setDrawings(loadedDrawings);
+  };
+
+  const handleRegenerateDrawing = async (drawingId: string, instructions: string) => {
+    try {
+      const originalDrawing = drawings.find(d => d.id === drawingId);
+      if (!originalDrawing) {
+        throw new Error('Drawing not found');
+      }
+
+      setIsAiThinking(true);
+      setLoadingMessage('🔄 Regenerating drawing with your instructions...');
+
+      // Use DXF service to regenerate with instructions
+      const regeneratedDrawing = await DXFService.regenerateDXFWithInstructions(
+        originalDrawing,
+        instructions
+      );
+
+      // Save the regenerated drawing
+      DXFStorageService.saveDrawing(regeneratedDrawing);
+
+      // Update the drawings list
+      setDrawings(prev => [regeneratedDrawing, ...prev.filter(d => d.id !== drawingId)]);
+
+      // Add to conversation history
+      setConversationHistory(prev => [
+        ...prev,
+        { role: 'user', text: `Regenerate drawing: ${instructions}` },
+        { role: 'model', text: `✅ DRAWING REGENERATED SUCCESSFULLY!\n\n🔄 **Updated:** ${regeneratedDrawing.title}\n\n📝 **Your Instructions:** ${instructions}\n\n📁 **New File:** ${regeneratedDrawing.dxfFilename}\n\n🎯 **Changes Applied:** The drawing has been updated according to your specifications while maintaining professional CAD standards.` }
+      ]);
+
+    } catch (error) {
+      console.error('Regeneration failed:', error);
+      setError(`Failed to regenerate drawing: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsAiThinking(false);
+      setLoadingMessage('');
+    }
   };
 
   const handleContextUpdate = () => {
@@ -350,15 +388,11 @@ const App: React.FC = () => {
         enhancedUserInput = enhancedPrompt;
       }
 
-      // STAGE 1: Generate initial drawing specification
-      const drawing = await DrawingService.generateTechnicalDrawing(
+      // STAGE 1: Generate initial DXF drawing specification
+      const drawing = await DXFService.generateDXFFromDescription(
         title,
         enhancedUserInput,
-        componentName,
-        enhancedUserInput,
-        guidelinesText,
-        designContext,
-        referenceText
+        enhancedUserInput
       );
 
       // Add to conversation history for Stage 1
@@ -378,7 +412,8 @@ DRAWING TITLE: ${title}
 COMPONENT: ${componentName}
 
 COMPLETE DRAWING TO VALIDATE:
-${drawing.svgContent}
+${drawing.description}
+DXF File: ${drawing.dxfFilename}
 
 CONTEXT INFORMATION:
 ${scopeContext}
@@ -475,24 +510,16 @@ Generate ONLY the complete SVG code, no explanations:`;
 
       const cadSVGContent = await LLMService.generateContent(cadPrompt);
 
-      // Extract SVG from response
-      const svgMatch = cadSVGContent.match(/<svg[\s\S]*?<\/svg>/i);
-      const finalCADSVG = svgMatch ? svgMatch[0] : cadSVGContent;
+      // DXF drawing is already generated and ready to use
 
-      // Create final CAD drawing
-      const finalDrawing = {
-        ...drawing,
-        description: `Professional CAD drawing for ${componentName}`,
-        svgContent: finalCADSVG,
-        drawingType: 'cad' as const
-      };
-
-      setDrawings(prev => [finalDrawing, ...prev]);
+      // Save the DXF drawing
+      DXFStorageService.saveDrawing(drawing);
+      setDrawings(prev => [drawing, ...prev]);
 
       // Add final results to conversation
       setConversationHistory(prev => [
         ...prev,
-        { role: 'model', text: `STAGE 2 COMPLETE - Professional Quality Validation Applied:\n\nThe drawing has been thoroughly analyzed and corrected for:\n• Object placement and completeness\n• Overlapping elements\n• Text and annotation quality\n• Line weights and styles\n• Dimensioning standards\n• Layout and professional appearance\n• Technical accuracy\n\nFinal validated drawing is ready. You can view it below or open the Professional CAD interface for detailed editing.\n\nTo regenerate with modifications, simply request changes and the two-stage process will run again.` }
+        { role: 'model', text: `✅ PROFESSIONAL DXF DRAWING GENERATED SUCCESSFULLY!\n\n🏗️ **${title}**\n\n📋 **Description:** ${drawing.description}\n\n📁 **File:** ${drawing.dxfFilename}\n\n🎯 **Features:**\n• Professional CAD-quality DXF format\n• Construction industry standards\n• Proper dimensions and annotations\n• Standard layers and line weights\n• Compatible with AutoCAD, Revit, and other CAD software\n\n💾 **Download:** Click the download button below to get your professional DXF file.\n\n🔄 **Regenerate:** To modify the drawing, simply provide new instructions and the system will generate an updated version.` }
       ]);
 
       loadDrawings();
@@ -885,7 +912,7 @@ Generate ONLY the complete SVG code, no explanations:`;
                   <DrawingDisplay
                     drawings={drawings}
                     onDrawingUpdate={loadDrawings}
-                    onContextUpdate={handleContextUpdate}
+                    onRegenerateDrawing={handleRegenerateDrawing}
                   />
 
                   {/* Context Manager */}
