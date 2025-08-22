@@ -35,8 +35,6 @@ export class DesignService {
     guidelines: string,
     referenceText?: string
   ): Promise<ComponentDesign> {
-    const ai = getAiClient();
-    
     const basePrompt = `You are a professional structural engineer and construction expert. Your task is to create a detailed component design for construction projects.
 
 ${guidelines}

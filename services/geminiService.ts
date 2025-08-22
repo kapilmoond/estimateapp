@@ -44,6 +44,17 @@ ${enhancedPrompt}
 };
 
 export const continueConversation = async (history: ChatMessage[], referenceText?: string, mode: 'discussion' | 'design' | 'drawing' = 'discussion'): Promise<string> => {
+    // Check if we're using Gemini provider for advanced features, otherwise use simple LLM service
+    const currentProvider = LLMService.getCurrentProvider();
+
+    if (currentProvider !== 'gemini') {
+        // For non-Gemini providers, use simple text generation
+        const conversationText = history.map(msg => `${msg.role.toUpperCase()}: ${msg.text}`).join('\n');
+        const prompt = `Continue this conversation in a helpful and professional manner:\n\n${conversationText}\n\nASSISTANT:`;
+        return await LLMService.generateContent(prompt);
+    }
+
+    // For Gemini, use advanced features
     const ai = getAiClient();
 
     // Get active guidelines for the current mode
@@ -122,6 +133,44 @@ Focus on creating professional, standards-compliant technical drawings suitable 
 };
 
 export const generateKeywordsForItems = async (scope: string, feedback?: string, referenceText?: string): Promise<KeywordsByItem> => {
+    // Check if we're using Gemini provider for structured output, otherwise use simple parsing
+    const currentProvider = LLMService.getCurrentProvider();
+
+    if (currentProvider !== 'gemini') {
+        // For non-Gemini providers, use simple text generation and parse manually
+        const prompt = `Generate exactly 5 keywords for each construction item in this scope. Format as JSON array:
+
+Scope: ${scope}
+${feedback ? `Feedback: ${feedback}` : ''}
+
+Return a JSON array of objects with "itemDescription" and "keywords" (array of 5 strings) properties.`;
+
+        const response = await LLMService.generateContent(prompt);
+
+        try {
+            // Try to parse JSON response
+            const jsonMatch = response.match(/\[[\s\S]*\]/);
+            if (jsonMatch) {
+                const parsedResponse = JSON.parse(jsonMatch[0]);
+                const keywordsByItem: KeywordsByItem = {};
+                parsedResponse.forEach((item: any) => {
+                    if (item.itemDescription && item.keywords) {
+                        keywordsByItem[item.itemDescription] = item.keywords;
+                    }
+                });
+                return keywordsByItem;
+            }
+        } catch (error) {
+            console.warn('Could not parse JSON response, using fallback');
+        }
+
+        // Fallback: create simple keywords
+        const keywordsByItem: KeywordsByItem = {};
+        keywordsByItem[scope] = ['construction', 'building', 'material', 'work', 'project'];
+        return keywordsByItem;
+    }
+
+    // For Gemini, use structured output
     const ai = getAiClient();
 
     // Get active guidelines for keyword generation
@@ -206,6 +255,44 @@ ${scope}
 };
 
 export const generatePlainTextEstimate = async (finalizedScope: string, hsrItems: HsrItem[], conversationHistory: ChatMessage[], previousText?: string, editInstruction?: string, referenceText?: string): Promise<string> => {
+    // Check if we're using Gemini provider for advanced features, otherwise use simple LLM service
+    const currentProvider = LLMService.getCurrentProvider();
+
+    if (currentProvider !== 'gemini') {
+        // For non-Gemini providers, use simple text generation
+        const hsrItemsString = JSON.stringify(hsrItems, null, 2);
+        const conversationHistoryString = conversationHistory.map(m => `${m.role.toUpperCase()}: ${m.text}`).join('\n');
+
+        let prompt: string;
+        if (editInstruction && previousText) {
+            prompt = `Please edit the following construction estimate based on the instruction provided:
+
+PREVIOUS ESTIMATE:
+${previousText}
+
+EDIT INSTRUCTION:
+${editInstruction}
+
+Please provide the updated estimate maintaining professional formatting and accuracy.`;
+        } else {
+            prompt = `Create a detailed construction cost estimate based on the following information:
+
+SCOPE OF WORK:
+${finalizedScope}
+
+HSR ITEMS FOUND:
+${hsrItemsString}
+
+CONVERSATION HISTORY:
+${conversationHistoryString}
+
+Please create a comprehensive, professional construction estimate with proper formatting, quantities, rates, and totals.`;
+        }
+
+        return await LLMService.generateContent(prompt);
+    }
+
+    // For Gemini, use advanced features
     const ai = getAiClient();
     const hsrItemsString = JSON.stringify(hsrItems, null, 2);
     const conversationHistoryString = conversationHistory.map(m => `${m.role.toUpperCase()}: ${m.text}`).join('\n');

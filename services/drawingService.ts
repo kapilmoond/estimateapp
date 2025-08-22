@@ -38,8 +38,6 @@ export class DrawingService {
     designContext?: string,
     referenceText?: string
   ): Promise<TechnicalDrawing> {
-    const ai = getAiClient();
-
     const basePrompt = `You are a professional structural engineer and CAD draftsman with expertise in construction drawings. Create a detailed technical drawing specification for a construction component.
 
 ${guidelines}
