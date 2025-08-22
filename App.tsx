@@ -26,7 +26,6 @@ import { KnowledgeBaseDisplay } from './components/KnowledgeBaseDisplay';
 import { CADDrawingManager } from './components/CADDrawingManager';
 import { LLMService } from './services/llmService';
 import { RAGService } from './services/ragService';
-import { DrawingValidationService } from './services/drawingValidationService';
 
 type Step = 'scoping' | 'generatingKeywords' | 'approvingKeywords' | 'approvingHsrItems' | 'approvingRefinedHsrItems' | 'generatingEstimate' | 'reviewingEstimate' | 'done';
 type ReferenceDoc = { file: File; text: string };
@@ -375,36 +374,88 @@ const App: React.FC = () => {
         { role: 'model', text: `STAGE 1 COMPLETE - Initial Drawing Specification Generated for ${title}:\n\n${drawing.description}\n\nProceeding to Stage 2 validation...` }
       ]);
 
-      setLoadingMessage('STAGE 2: AI validating specification for errors and improvements...');
+      setLoadingMessage('STAGE 2: AI analyzing drawing for professional quality issues...');
 
-      // STAGE 2: Validate and correct the drawing specification automatically
-      const contextInfo = `${scopeContext}\n${designContext}\n${guidelinesText}`;
-      const validation = await DrawingValidationService.validateDrawingSpecification(
-        drawing.svgContent,
-        title,
-        componentName,
-        userInput,
-        contextInfo
-      );
+      // STAGE 2: Second separate LLM call to validate the complete drawing
+      const validationPrompt = `You are a professional CAD drawing validator and quality control expert. Analyze the following COMPLETE drawing specification and check for ALL possible issues that could make it unprofessional or incorrect.
 
-      // Create final corrected drawing with validation results
+ORIGINAL USER REQUEST: ${userInput}
+DRAWING TITLE: ${title}
+COMPONENT: ${componentName}
+
+COMPLETE DRAWING TO VALIDATE:
+${drawing.svgContent}
+
+CONTEXT INFORMATION:
+${scopeContext}
+${designContext}
+${guidelinesText}
+
+Please analyze this drawing specification thoroughly and check for:
+
+1. **OBJECT PLACEMENT & COMPLETENESS**:
+   - Are all required objects from user request included?
+   - Are objects positioned correctly relative to each other?
+   - Are structural elements properly aligned and connected?
+   - Are all necessary components present (foundations, connections, supports)?
+
+2. **OVERLAPPING ISSUES**:
+   - Are there any drawing elements overlapping each other?
+   - Do dimension lines overlap with drawing objects?
+   - Are text annotations overlapping with lines or other text?
+   - Are symbols or hatching patterns conflicting?
+
+3. **TEXT AND ANNOTATION QUALITY**:
+   - Are text sizes appropriate and readable (minimum 12px for technical drawings)?
+   - Are all text labels properly positioned without overlaps?
+   - Are dimension values clearly readable and not obscured?
+   - Are all annotations spelled correctly and technically accurate?
+
+4. **LINE WEIGHTS AND STYLES**:
+   - Are object lines thick enough (2-3px for main elements)?
+   - Are dimension lines thinner (1-2px) than object lines?
+   - Are hidden lines properly dashed or dotted?
+   - Are construction lines distinguished from finished lines?
+
+5. **DIMENSIONING STANDARDS**:
+   - Are all critical dimensions included?
+   - Are dimension lines properly positioned with adequate spacing?
+   - Are dimension arrows clear and properly sized?
+   - Are dimension values realistic and consistent with scale?
+
+6. **LAYOUT AND PROFESSIONAL APPEARANCE**:
+   - Is the drawing well-organized and balanced on the page?
+   - Is the title block complete with all required information?
+   - Are views properly positioned and scaled?
+   - Does the overall layout look professional?
+
+7. **TECHNICAL ACCURACY**:
+   - Do the specifications match the user requirements?
+   - Are construction details technically feasible?
+   - Are material specifications appropriate?
+   - Are connection details properly shown?
+
+Provide a CORRECTED and IMPROVED version of the complete drawing specification that fixes ALL identified issues. Make sure the corrected version is a complete, professional-quality technical drawing.
+
+CORRECTED DRAWING SPECIFICATION:`;
+
+      // Make the second LLM call for validation
+      const correctedDrawingSpec = await LLMService.generateContent(validationPrompt);
+
+      // Create final corrected drawing
       const finalDrawing = {
         ...drawing,
-        description: `${drawing.description}\n\nVALIDATION APPLIED:\n${validation.correctedSpecification}`,
-        svgContent: validation.correctedSpecification,
+        description: `Professional validated drawing for ${componentName}`,
+        svgContent: correctedDrawingSpec,
         drawingType: 'svg' as const
       };
 
       setDrawings(prev => [finalDrawing, ...prev]);
 
       // Add final results to conversation
-      const issuesSummary = validation.issues.length > 0
-        ? `Found and corrected ${validation.issues.length} issues: ${validation.issues.map(i => i.type).join(', ')}`
-        : 'No issues found - specification was already optimal';
-
       setConversationHistory(prev => [
         ...prev,
-        { role: 'model', text: `STAGE 2 COMPLETE - Drawing Validation and Correction Applied:\n\n${issuesSummary}\n\nFinal validated drawing is ready. You can view it below or open the Professional CAD interface for detailed editing.\n\nTo regenerate with modifications, simply request changes and the two-stage process will run again.` }
+        { role: 'model', text: `STAGE 2 COMPLETE - Professional Quality Validation Applied:\n\nThe drawing has been thoroughly analyzed and corrected for:\n• Object placement and completeness\n• Overlapping elements\n• Text and annotation quality\n• Line weights and styles\n• Dimensioning standards\n• Layout and professional appearance\n• Technical accuracy\n\nFinal validated drawing is ready. You can view it below or open the Professional CAD interface for detailed editing.\n\nTo regenerate with modifications, simply request changes and the two-stage process will run again.` }
       ]);
 
       loadDrawings();
