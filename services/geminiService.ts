@@ -2,10 +2,11 @@ import { GoogleGenAI, Type, Content } from "@google/genai";
 import { HsrItem, ChatMessage, KeywordsByItem } from '../types';
 
 const getAiClient = () => {
-  if (!process.env.API_KEY) {
-    throw new Error("API key is not configured. Please set the API_KEY environment variable.");
+  const apiKey = localStorage.getItem('gemini-api-key');
+  if (!apiKey) {
+    throw new Error("API key is not configured. Please set it in the application.");
   }
-  return new GoogleGenAI({ apiKey: process.env.API_KEY });
+  return new GoogleGenAI({ apiKey });
 };
 
 const model = "gemini-2.5-flash";
@@ -67,11 +68,24 @@ Example of a final item entry:
     }
 };
 
-export const generateKeywordsForItems = async (scope: string, referenceText?: string): Promise<KeywordsByItem> => {
+export const generateKeywordsForItems = async (scope: string, feedback?: string, referenceText?: string): Promise<KeywordsByItem> => {
     const ai = getAiClient();
+
+    const feedbackInstruction = feedback ? `
+**PRIORITY INSTRUCTION: USER FEEDBACK**
+A previous attempt to generate keywords was not satisfactory. You MUST use the following user feedback to guide your new keyword generation. This feedback is your most important instruction and must be followed precisely, even if it contradicts your general tendencies.
+USER FEEDBACK:
+---
+${feedback}
+---
+` : '';
+
     const basePrompt = `You are a highly specialized civil engineering estimator. Your task is to analyze the provided project scope, identify each distinct construction 'Item', and generate a precise list of search keywords for it.
 
-CRITICAL INSTRUCTIONS:
+${feedbackInstruction}
+
+## CRITICAL INSTRUCTIONS
+
 1.  **Analyze the Scope:** Read through the entire project scope provided below.
 2.  **Identify Items:** For every individual construction 'Item' described in the scope (e.g., "Earthwork in excavation for foundation", "Providing and laying cement concrete"), you must perform the next step.
 3.  **Generate Exactly 5 Keywords:** For EACH identified item, you are required to generate an array of keywords. This array MUST contain EXACTLY FIVE (5) keywords. The number of keywords must be 5, not 4 or 6. Five is the required number. These keywords must be distinct, single-word, and highly relevant.
@@ -129,76 +143,6 @@ ${scope}
     } catch (error) {
         console.error("Error generating keywords from Gemini:", error);
         throw new Error("Failed to generate keywords from the AI. The model might be overloaded or the request is invalid.");
-    }
-};
-
-export const regenerateKeywords = async (scope: string, feedback: string, referenceText?: string): Promise<KeywordsByItem> => {
-    const ai = getAiClient();
-    const basePrompt = `You are a highly specialized civil engineering estimator. Your task is to REVISE a list of search keywords for construction 'Items' based on user feedback.
-
-CRITICAL INSTRUCTIONS:
-1.  **Analyze the Original Scope and User Feedback:** Read through the entire project scope and the user's feedback provided below. The feedback is the most important instruction.
-2.  **Identify Items:** For every individual construction 'Item' described in the scope, you must perform the next step.
-3.  **Generate Exactly 5 Keywords based on Feedback:** For EACH identified item, generate a NEW array of keywords. This array MUST contain EXACTLY FIVE (5) keywords that directly incorporate the user's feedback. The number of keywords must be 5, not 4 or 6. Five is the required number. These keywords must be distinct and single-word.
-4.  **JSON Output:** Your entire output MUST be a single, well-formed JSON array. Each object in the array must contain two keys: \`itemDescription\` and \`keywords\`. The value for the \`keywords\` key MUST be an array of 5 strings.
-
-**CRITICAL REMINDER:** The \`keywords\` array for each item must have a length of exactly 5. This is a strict requirement.
-
-Original Project Scope:
----
-${scope}
----
-
-User Feedback for Regeneration:
----
-${feedback}
----
-`;
-    const fullPrompt = createPromptWithReference(basePrompt, referenceText);
-
-    try {
-        const response = await ai.models.generateContent({
-            model,
-            contents: fullPrompt,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            itemDescription: {
-                                type: Type.STRING,
-                                description: "The description of the construction item from the scope."
-                            },
-                            keywords: {
-                                type: Type.ARRAY,
-                                description: "A list of exactly 5 keywords for this item.",
-                                items: {
-                                    type: Type.STRING
-                                }
-                            }
-                        },
-                        required: ["itemDescription", "keywords"]
-                    }
-                }
-            }
-        });
-
-        const jsonText = response.text.trim();
-        const parsedResponse: { itemDescription: string; keywords: string[] }[] = JSON.parse(jsonText);
-
-        const keywordsByItem: KeywordsByItem = {};
-        parsedResponse.forEach(item => {
-            if (item.itemDescription && item.keywords) {
-                keywordsByItem[item.itemDescription] = item.keywords;
-            }
-        });
-        return keywordsByItem;
-
-    } catch (error) {
-        console.error("Error regenerating keywords from Gemini:", error);
-        throw new Error("Failed to regenerate keywords from the AI. The model might be overloaded or the request is invalid.");
     }
 };
 
