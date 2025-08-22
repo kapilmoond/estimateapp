@@ -42,15 +42,17 @@ export const CADDrawingManager: React.FC<CADDrawingManagerProps> = ({
   }, [isOpen, initialTitle, initialDescription]);
 
   const handleGenerateCADDrawing = async () => {
-    console.log('handleGenerateCADDrawing called with:', { initialTitle, initialDescription });
+    console.log('🔧 handleGenerateCADDrawing called with:', { initialTitle, initialDescription });
 
     if (!initialDescription) {
-      console.log('No initial description provided');
+      console.log('❌ No initial description provided');
       alert('No drawing specification provided. Please ensure the two-stage drawing process completed successfully.');
       return;
     }
 
     setIsGenerating(true);
+    console.log('🚀 Starting AI CAD drawing generation...');
+
     try {
       const cadPrompt = `You are a professional CAD drawing generator. Convert the following validated drawing specification into a precise, professional SVG drawing suitable for construction use.
 
@@ -86,13 +88,18 @@ Generate a complete, professional SVG drawing with the following requirements:
 
 Generate ONLY the complete SVG code, no explanations:`;
 
+      console.log('📤 Sending prompt to LLM:', cadPrompt.substring(0, 200) + '...');
       const svgContent = await LLMService.generateContent(cadPrompt);
+      console.log('📥 Received LLM response:', svgContent.substring(0, 200) + '...');
 
       // Extract SVG from response
+      console.log('🔍 Extracting SVG from response...');
       const svgMatch = svgContent.match(/<svg[\s\S]*?<\/svg>/i);
       const finalSVG = svgMatch ? svgMatch[0] : svgContent;
+      console.log('✅ SVG extracted:', finalSVG.substring(0, 100) + '...');
 
       setGeneratedSVG(finalSVG);
+      console.log('💾 SVG set in state');
 
       // Create CAD drawing data
       const drawing = CADDrawingService.createNewDrawing(initialTitle, initialDescription);
@@ -105,11 +112,14 @@ Generate ONLY the complete SVG code, no explanations:`;
       loadAllDrawings();
       onDrawingUpdate();
 
+      console.log('🎉 CAD drawing generation completed successfully!');
+
     } catch (error) {
-      console.error('Failed to generate CAD drawing:', error);
-      alert('Failed to generate CAD drawing. Please try again.');
+      console.error('❌ Failed to generate CAD drawing:', error);
+      alert(`Failed to generate CAD drawing: ${error.message}. Please try again.`);
     } finally {
       setIsGenerating(false);
+      console.log('🏁 Generation process finished');
     }
   };
 
@@ -169,6 +179,23 @@ Generate ONLY the complete SVG code, no explanations:`;
     if (confirm('Regenerate the CAD drawing? This will create a new version.')) {
       await handleGenerateCADDrawing();
     }
+  };
+
+  const handleTestDrawing = () => {
+    console.log('🧪 Testing with sample SVG...');
+    const testSVG = `<svg viewBox="0 0 800 600" xmlns="http://www.w3.org/2000/svg">
+      <rect x="50" y="50" width="700" height="500" fill="none" stroke="black" stroke-width="2"/>
+      <rect x="200" y="150" width="400" height="200" fill="none" stroke="black" stroke-width="3"/>
+      <text x="400" y="250" text-anchor="middle" font-size="16" fill="black">TEST DRAWING</text>
+      <text x="400" y="270" text-anchor="middle" font-size="14" fill="black">${initialTitle}</text>
+      <rect x="50" y="520" width="700" height="60" fill="none" stroke="black" stroke-width="1"/>
+      <text x="70" y="540" font-size="12" fill="black">Title: ${initialTitle}</text>
+      <text x="70" y="555" font-size="12" fill="black">Date: ${new Date().toLocaleDateString()}</text>
+      <text x="70" y="570" font-size="12" fill="black">Scale: 1:100</text>
+    </svg>`;
+
+    setGeneratedSVG(testSVG);
+    console.log('✅ Test SVG set');
   };
 
   const loadAllDrawings = () => {
@@ -576,8 +603,15 @@ Generate ONLY the complete SVG code, no explanations:`;
                       <button
                         onClick={handleGenerateCADDrawing}
                         className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 mr-2"
+                        disabled={isGenerating}
                       >
-                        🤖 Generate CAD Drawing with AI
+                        {isGenerating ? '⏳ Generating...' : '🤖 Generate CAD Drawing with AI'}
+                      </button>
+                      <button
+                        onClick={handleTestDrawing}
+                        className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 text-sm"
+                      >
+                        🧪 Test Drawing
                       </button>
                     </div>
                   ) : (
