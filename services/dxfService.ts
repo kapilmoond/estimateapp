@@ -16,22 +16,27 @@ export class DXFService {
     description: string,
     aiGeneratedContent: string
   ): Promise<TechnicalDrawing> {
+    // Always try fallback first to avoid network errors
+    console.log('🏗️ Generating DXF drawing...');
+
     try {
-      // Check if Python backend is available
-      const backendAvailable = await this.checkBackendHealth();
+      // Quick backend check with very short timeout
+      const backendAvailable = await this.quickBackendCheck();
 
       if (backendAvailable) {
-        // Use Python backend for real DXF generation
-        return await this.generateDXFWithBackend(title, description, aiGeneratedContent);
+        console.log('✅ Python backend available - generating professional DXF');
+        try {
+          return await this.generateDXFWithBackend(title, description, aiGeneratedContent);
+        } catch (backendError) {
+          console.warn('❌ Backend generation failed, falling back to demo mode:', backendError);
+          return this.generateMockDXF(title, description, aiGeneratedContent);
+        }
       } else {
-        // Fallback to mock DXF for demo purposes
-        console.warn('Python backend not available. Using mock DXF generation.');
+        console.log('⚠️ Python backend not available - using demo DXF generation');
         return this.generateMockDXF(title, description, aiGeneratedContent);
       }
     } catch (error) {
-      console.error('DXF generation error:', error);
-      // Fallback to mock DXF if backend fails
-      console.warn('Falling back to mock DXF generation due to error:', error);
+      console.warn('🔄 Error during generation, using demo mode:', error);
       return this.generateMockDXF(title, description, aiGeneratedContent);
     }
   }
@@ -44,44 +49,55 @@ export class DXFService {
     description: string,
     aiGeneratedContent: string
   ): Promise<TechnicalDrawing> {
-    const response = await fetch(`${this.PYTHON_BACKEND_URL}/parse-ai-drawing`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout for generation
+
+    try {
+      const response = await fetch(`${this.PYTHON_BACKEND_URL}/parse-ai-drawing`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title,
+          description: aiGeneratedContent
+        }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`DXF generation failed: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || 'DXF generation failed');
+      }
+
+      // Create TechnicalDrawing object
+      const drawing: TechnicalDrawing = {
+        id: this.generateId(),
         title,
-        description: aiGeneratedContent
-      })
-    });
+        description,
+        dxfContent: result.dxf_content, // Base64 encoded DXF
+        dxfFilename: result.filename,
+        dimensions: { width: 800, height: 600 },
+        scale: '1:100',
+        componentName: this.extractComponentName(title),
+        createdAt: new Date(),
+        includeInContext: true,
+        dxfData: this.createDXFData(title, description, aiGeneratedContent),
+        drawingType: 'dxf'
+      };
 
-    if (!response.ok) {
-      throw new Error(`DXF generation failed: ${response.statusText}`);
+      return drawing;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      throw error;
     }
-
-    const result = await response.json();
-
-    if (!result.success) {
-      throw new Error(result.error || 'DXF generation failed');
-    }
-
-    // Create TechnicalDrawing object
-    const drawing: TechnicalDrawing = {
-      id: this.generateId(),
-      title,
-      description,
-      dxfContent: result.dxf_content, // Base64 encoded DXF
-      dxfFilename: result.filename,
-      dimensions: { width: 800, height: 600 },
-      scale: '1:100',
-      componentName: this.extractComponentName(title),
-      createdAt: new Date(),
-      includeInContext: true,
-      dxfData: this.createDXFData(title, description, aiGeneratedContent),
-      drawingType: 'dxf'
-    };
-
-    return drawing;
   }
 
   /**
@@ -92,13 +108,15 @@ export class DXFService {
     description: string,
     aiGeneratedContent: string
   ): TechnicalDrawing {
+    console.log('📋 Generating demo DXF file...');
+
     // Create a mock base64 DXF content (minimal DXF structure)
     const mockDXFContent = this.createMockDXFContent(title, description);
 
     const drawing: TechnicalDrawing = {
       id: this.generateId(),
-      title,
-      description: `${description}\n\n⚠️ DEMO MODE: This is a mock DXF file. To generate real professional DXF files, please start the Python backend server.\n\nSee python-backend/README.md for setup instructions.`,
+      title: `${title} (DEMO)`,
+      description: `🎯 DEMO MODE DRAWING\n\n📋 Original Request: ${description}\n\n⚠️ This is a basic demo DXF file for testing purposes.\n\n🏗️ FOR PROFESSIONAL CAD FILES:\n• Start the Python backend server (python-backend/setup.py)\n• Get real ezdxf-generated professional drawings\n• Compatible with AutoCAD, Revit, and all CAD software\n• Construction industry standards and quality\n\n📁 This demo file is still a valid DXF that you can open in CAD software to test the workflow.`,
       dxfContent: mockDXFContent,
       dxfFilename: `${title.replace(/\s+/g, '_')}_DEMO.dxf`,
       dimensions: { width: 800, height: 600 },
@@ -110,6 +128,7 @@ export class DXFService {
       drawingType: 'dxf'
     };
 
+    console.log('✅ Demo DXF generated successfully');
     return drawing;
   }
 
@@ -120,17 +139,31 @@ export class DXFService {
     originalDrawing: TechnicalDrawing,
     userInstructions: string
   ): Promise<TechnicalDrawing> {
+    console.log('🔄 Regenerating drawing with user instructions...');
+
     try {
       const enhancedDescription = `${originalDrawing.description}\n\nUSER MODIFICATIONS:\n${userInstructions}`;
-      
-      return await this.generateDXFFromDescription(
-        originalDrawing.title,
+      const newTitle = originalDrawing.title.replace(' (DEMO)', '') + ' (Modified)';
+
+      const regeneratedDrawing = await this.generateDXFFromDescription(
+        newTitle,
         enhancedDescription,
         enhancedDescription
       );
+
+      console.log('✅ Drawing regenerated successfully');
+      return regeneratedDrawing;
     } catch (error) {
-      console.error('DXF regeneration error:', error);
-      throw new Error(`Failed to regenerate DXF drawing: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('❌ DXF regeneration error:', error);
+      // Still return a demo version with the modifications noted
+      console.log('🔄 Falling back to demo regeneration...');
+
+      const enhancedDescription = `${originalDrawing.description}\n\nUSER MODIFICATIONS:\n${userInstructions}`;
+      return this.generateMockDXF(
+        originalDrawing.title.replace(' (DEMO)', '') + ' (Modified)',
+        enhancedDescription,
+        enhancedDescription
+      );
     }
   }
 
@@ -214,7 +247,28 @@ export class DXFService {
   }
 
   /**
-   * Check if Python backend is available
+   * Quick backend check with very short timeout for generation
+   */
+  private static async quickBackendCheck(): Promise<boolean> {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1000); // 1 second timeout
+
+      const response = await fetch(`${this.PYTHON_BACKEND_URL}/health`, {
+        method: 'GET',
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+      return response.ok;
+    } catch (error) {
+      // Don't log error here to avoid console spam
+      return false;
+    }
+  }
+
+  /**
+   * Check if Python backend is available (for UI status)
    */
   static async checkBackendHealth(): Promise<boolean> {
     try {
