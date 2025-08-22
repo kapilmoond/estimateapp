@@ -104,14 +104,15 @@ Provide a detailed JSON specification that can be used to generate a professiona
 
       const drawingInstructions = response.text;
 
-      // Generate professional CAD drawing using native SVG
-      const svgContent = await this.generateProfessionalDrawing(title, drawingInstructions, componentName);
+      // Generate professional CAD drawing using DXF (like ezdxf)
+      const { svgContent, dxfContent } = await this.generateProfessionalCADDrawing(title, drawingInstructions, componentName);
 
       const drawing: TechnicalDrawing = {
         id: this.generateId(),
         title,
         description: drawingInstructions,
         svgContent,
+        dxfContent,
         dimensions: { width: 800, height: 600 },
         scale: '1:100',
         componentName,
@@ -130,7 +131,7 @@ Provide a detailed JSON specification that can be used to generate a professiona
     }
   }
 
-  static async generateProfessionalDrawing(title: string, instructions: string, componentName: string): Promise<string> {
+  static async generateProfessionalCADDrawing(title: string, instructions: string, componentName: string): Promise<{ svgContent: string; dxfContent: string }> {
     // Parse instructions to get drawing specifications
     let drawingSpec;
     try {
@@ -140,52 +141,197 @@ Provide a detailed JSON specification that can be used to generate a professiona
       drawingSpec = null;
     }
 
-    // Generate professional SVG drawing
-    const svgElements: string[] = [];
-
-    // SVG header
-    svgElements.push(`<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg" style="background: white;">`);
-
-    // Add professional styling
-    svgElements.push(`
-      <defs>
-        <style>
-          .title-text { font-family: Arial, sans-serif; font-size: 16px; font-weight: bold; fill: black; }
-          .info-text { font-family: Arial, sans-serif; font-size: 12px; fill: black; }
-          .small-text { font-family: Arial, sans-serif; font-size: 10px; fill: black; }
-          .dimension-text { font-family: Arial, sans-serif; font-size: 10px; fill: blue; }
-          .construction-line { stroke: black; stroke-width: 2; fill: none; }
-          .dimension-line { stroke: blue; stroke-width: 1; fill: none; }
-          .center-line { stroke: gray; stroke-width: 1; stroke-dasharray: 5,5; fill: none; }
-          .border-line { stroke: black; stroke-width: 1; fill: none; }
-        </style>
-      </defs>
-    `);
-
-    // Title block
-    svgElements.push(`<rect x="10" y="10" width="780" height="80" class="border-line" stroke-width="2"/>`);
-    svgElements.push(`<text x="20" y="35" class="title-text">${title}</text>`);
-    svgElements.push(`<text x="20" y="55" class="info-text">Component: ${componentName}</text>`);
-    svgElements.push(`<text x="20" y="75" class="small-text">Scale: 1:100 | Date: ${new Date().toLocaleDateString()}</text>`);
-
-    // Main drawing area
-    svgElements.push(`<rect x="10" y="100" width="780" height="450" class="border-line"/>`);
+    // Create professional DXF-like drawing structure (ezdxf equivalent)
+    const dxfData = this.createProfessionalCADStructure(title, componentName);
 
     // Add drawing elements based on specifications
     if (drawingSpec && drawingSpec.elements) {
-      this.addSVGElements(svgElements, drawingSpec.elements);
+      this.addCADElements(dxfData, drawingSpec.elements);
     } else {
-      this.addDefaultSVGElements(svgElements);
+      this.addDefaultCADElements(dxfData);
     }
 
+    // Generate DXF content (professional CAD format)
+    const dxfContent = this.generateDXFContent(dxfData);
+
+    // Also generate SVG for preview (converted from CAD data)
+    const svgContent = this.convertCADToSVG(dxfData, title, componentName);
+
+    return { svgContent, dxfContent };
+  }
+
+  private static createProfessionalCADStructure(title: string, componentName: string): any {
+    // Professional CAD structure (like ezdxf document structure)
+    return {
+      header: {
+        title,
+        componentName,
+        scale: '1:100',
+        date: new Date().toLocaleDateString(),
+        units: 'Millimeters',
+        author: 'HSR Construction Estimator'
+      },
+      layers: {
+        TITLEBLOCK: { color: 7, lineType: 'CONTINUOUS' },
+        CONSTRUCTION: { color: 1, lineType: 'CONTINUOUS' },
+        DIMENSIONS: { color: 5, lineType: 'CONTINUOUS' },
+        CENTERLINES: { color: 3, lineType: 'CENTER' },
+        TEXT: { color: 7, lineType: 'CONTINUOUS' }
+      },
+      entities: []
+    };
+  }
+
+  private static addDefaultCADElements(cadData: any): void {
+    // Professional CAD drawing elements (like ezdxf entities)
+    const mainX = 250;
+    const mainY = 250;
+    const mainWidth = 300;
+    const mainHeight = 150;
+
+    // Title block entities
+    cadData.entities.push(
+      { type: 'LINE', layer: 'TITLEBLOCK', start: { x: 10, y: 10 }, end: { x: 790, y: 10 } },
+      { type: 'LINE', layer: 'TITLEBLOCK', start: { x: 790, y: 10 }, end: { x: 790, y: 90 } },
+      { type: 'LINE', layer: 'TITLEBLOCK', start: { x: 790, y: 90 }, end: { x: 10, y: 90 } },
+      { type: 'LINE', layer: 'TITLEBLOCK', start: { x: 10, y: 90 }, end: { x: 10, y: 10 } },
+      { type: 'TEXT', layer: 'TEXT', position: { x: 20, y: 70 }, text: cadData.header.title, height: 16 },
+      { type: 'TEXT', layer: 'TEXT', position: { x: 20, y: 50 }, text: `Component: ${cadData.header.componentName}`, height: 12 },
+      { type: 'TEXT', layer: 'TEXT', position: { x: 20, y: 30 }, text: `Scale: ${cadData.header.scale} | Date: ${cadData.header.date}`, height: 10 }
+    );
+
+    // Main drawing area border
+    cadData.entities.push(
+      { type: 'LINE', layer: 'TITLEBLOCK', start: { x: 10, y: 100 }, end: { x: 790, y: 100 } },
+      { type: 'LINE', layer: 'TITLEBLOCK', start: { x: 790, y: 100 }, end: { x: 790, y: 550 } },
+      { type: 'LINE', layer: 'TITLEBLOCK', start: { x: 790, y: 550 }, end: { x: 10, y: 550 } },
+      { type: 'LINE', layer: 'TITLEBLOCK', start: { x: 10, y: 550 }, end: { x: 10, y: 100 } }
+    );
+
+    // Main component rectangle (professional CAD practice)
+    cadData.entities.push(
+      { type: 'LINE', layer: 'CONSTRUCTION', start: { x: mainX, y: mainY }, end: { x: mainX + mainWidth, y: mainY } },
+      { type: 'LINE', layer: 'CONSTRUCTION', start: { x: mainX + mainWidth, y: mainY }, end: { x: mainX + mainWidth, y: mainY + mainHeight } },
+      { type: 'LINE', layer: 'CONSTRUCTION', start: { x: mainX + mainWidth, y: mainY + mainHeight }, end: { x: mainX, y: mainY + mainHeight } },
+      { type: 'LINE', layer: 'CONSTRUCTION', start: { x: mainX, y: mainY + mainHeight }, end: { x: mainX, y: mainY } }
+    );
+
+    // Dimension lines (professional dimensioning)
+    const dimOffset = 30;
+    cadData.entities.push(
+      // Horizontal dimension
+      { type: 'LINE', layer: 'DIMENSIONS', start: { x: mainX, y: mainY - dimOffset }, end: { x: mainX + mainWidth, y: mainY - dimOffset } },
+      { type: 'LINE', layer: 'DIMENSIONS', start: { x: mainX, y: mainY - dimOffset - 5 }, end: { x: mainX, y: mainY - dimOffset + 5 } },
+      { type: 'LINE', layer: 'DIMENSIONS', start: { x: mainX + mainWidth, y: mainY - dimOffset - 5 }, end: { x: mainX + mainWidth, y: mainY - dimOffset + 5 } },
+      { type: 'TEXT', layer: 'DIMENSIONS', position: { x: mainX + mainWidth / 2, y: mainY - dimOffset - 15 }, text: '300mm', height: 10 },
+
+      // Vertical dimension
+      { type: 'LINE', layer: 'DIMENSIONS', start: { x: mainX - dimOffset, y: mainY }, end: { x: mainX - dimOffset, y: mainY + mainHeight } },
+      { type: 'LINE', layer: 'DIMENSIONS', start: { x: mainX - dimOffset - 5, y: mainY }, end: { x: mainX - dimOffset + 5, y: mainY } },
+      { type: 'LINE', layer: 'DIMENSIONS', start: { x: mainX - dimOffset - 5, y: mainY + mainHeight }, end: { x: mainX - dimOffset + 5, y: mainY + mainHeight } },
+      { type: 'TEXT', layer: 'DIMENSIONS', position: { x: mainX - dimOffset - 25, y: mainY + mainHeight / 2 }, text: '150mm', height: 10, rotation: 90 }
+    );
+
+    // Center lines (professional CAD practice)
+    cadData.entities.push(
+      { type: 'LINE', layer: 'CENTERLINES', start: { x: mainX, y: mainY + mainHeight / 2 }, end: { x: mainX + mainWidth, y: mainY + mainHeight / 2 } },
+      { type: 'LINE', layer: 'CENTERLINES', start: { x: mainX + mainWidth / 2, y: mainY }, end: { x: mainX + mainWidth / 2, y: mainY + mainHeight } }
+    );
+
+    // Construction points (holes/fasteners)
+    const pointRadius = 5;
+    cadData.entities.push(
+      { type: 'CIRCLE', layer: 'CONSTRUCTION', center: { x: mainX + 25, y: mainY + 25 }, radius: pointRadius },
+      { type: 'CIRCLE', layer: 'CONSTRUCTION', center: { x: mainX + mainWidth - 25, y: mainY + 25 }, radius: pointRadius },
+      { type: 'CIRCLE', layer: 'CONSTRUCTION', center: { x: mainX + 25, y: mainY + mainHeight - 25 }, radius: pointRadius },
+      { type: 'CIRCLE', layer: 'CONSTRUCTION', center: { x: mainX + mainWidth - 25, y: mainY + mainHeight - 25 }, radius: pointRadius }
+    );
+
+    // Material specification text
+    cadData.entities.push(
+      { type: 'TEXT', layer: 'TEXT', position: { x: mainX + mainWidth / 2, y: mainY + mainHeight / 2 }, text: 'CONCRETE', height: 12 },
+      { type: 'TEXT', layer: 'TEXT', position: { x: mainX + mainWidth / 2, y: mainY + mainHeight / 2 - 15 }, text: 'M25 GRADE', height: 10 }
+    );
+
     // Notes area
-    svgElements.push(`<rect x="10" y="560" width="780" height="30" class="border-line"/>`);
-    svgElements.push(`<text x="20" y="575" class="small-text">NOTES: Professional CAD drawing generated by HSR Construction Estimator</text>`);
+    cadData.entities.push(
+      { type: 'LINE', layer: 'TITLEBLOCK', start: { x: 10, y: 560 }, end: { x: 790, y: 560 } },
+      { type: 'LINE', layer: 'TITLEBLOCK', start: { x: 790, y: 560 }, end: { x: 790, y: 590 } },
+      { type: 'LINE', layer: 'TITLEBLOCK', start: { x: 790, y: 590 }, end: { x: 10, y: 590 } },
+      { type: 'LINE', layer: 'TITLEBLOCK', start: { x: 10, y: 590 }, end: { x: 10, y: 560 } },
+      { type: 'TEXT', layer: 'TEXT', position: { x: 20, y: 575 }, text: 'NOTES: Professional DXF CAD drawing generated by HSR Construction Estimator (ezdxf equivalent)', height: 8 }
+    );
+  }
 
-    // Close SVG
-    svgElements.push(`</svg>`);
+  private static generateDXFContent(cadData: any): string {
+    // Generate professional DXF content (like ezdxf output)
+    const dxfLines: string[] = [];
 
-    return svgElements.join('\n');
+    // DXF Header
+    dxfLines.push('0', 'SECTION', '2', 'HEADER');
+    dxfLines.push('9', '$ACADVER', '1', 'AC1015');
+    dxfLines.push('9', '$INSUNITS', '70', '4'); // Millimeters
+    dxfLines.push('0', 'ENDSEC');
+
+    // Tables section (layers)
+    dxfLines.push('0', 'SECTION', '2', 'TABLES');
+    dxfLines.push('0', 'TABLE', '2', 'LAYER', '70', Object.keys(cadData.layers).length.toString());
+
+    Object.entries(cadData.layers).forEach(([layerName, layerData]: [string, any]) => {
+      dxfLines.push('0', 'LAYER', '2', layerName, '70', '0', '62', layerData.color.toString(), '6', layerData.lineType);
+    });
+
+    dxfLines.push('0', 'ENDTAB', '0', 'ENDSEC');
+
+    // Entities section
+    dxfLines.push('0', 'SECTION', '2', 'ENTITIES');
+
+    cadData.entities.forEach((entity: any) => {
+      switch (entity.type) {
+        case 'LINE':
+          dxfLines.push(
+            '0', 'LINE',
+            '8', entity.layer,
+            '10', entity.start.x.toString(),
+            '20', entity.start.y.toString(),
+            '30', '0.0',
+            '11', entity.end.x.toString(),
+            '21', entity.end.y.toString(),
+            '31', '0.0'
+          );
+          break;
+
+        case 'CIRCLE':
+          dxfLines.push(
+            '0', 'CIRCLE',
+            '8', entity.layer,
+            '10', entity.center.x.toString(),
+            '20', entity.center.y.toString(),
+            '30', '0.0',
+            '40', entity.radius.toString()
+          );
+          break;
+
+        case 'TEXT':
+          dxfLines.push(
+            '0', 'TEXT',
+            '8', entity.layer,
+            '10', entity.position.x.toString(),
+            '20', entity.position.y.toString(),
+            '30', '0.0',
+            '40', entity.height.toString(),
+            '1', entity.text
+          );
+          if (entity.rotation) {
+            dxfLines.push('50', entity.rotation.toString());
+          }
+          break;
+      }
+    });
+
+    dxfLines.push('0', 'ENDSEC', '0', 'EOF');
+
+    return dxfLines.join('\n');
   }
 
   private static parseDrawingInstructions(instructions: string): any {
@@ -199,6 +345,136 @@ Provide a detailed JSON specification that can be used to generate a professiona
       console.warn('Could not parse JSON from instructions');
     }
     return null;
+  }
+
+  private static addCADElements(cadData: any, elements: any[]): void {
+    for (const element of elements) {
+      const x = (element.coordinates?.x || 0) + 50;
+      const y = (element.coordinates?.y || 0) + 150;
+
+      switch (element.type) {
+        case 'rectangle':
+          const width = element.coordinates?.width || 100;
+          const height = element.coordinates?.height || 100;
+
+          // Add rectangle as lines (professional CAD practice)
+          cadData.entities.push(
+            { type: 'LINE', layer: 'CONSTRUCTION', start: { x, y }, end: { x: x + width, y } },
+            { type: 'LINE', layer: 'CONSTRUCTION', start: { x: x + width, y }, end: { x: x + width, y: y + height } },
+            { type: 'LINE', layer: 'CONSTRUCTION', start: { x: x + width, y: y + height }, end: { x, y: y + height } },
+            { type: 'LINE', layer: 'CONSTRUCTION', start: { x, y: y + height }, end: { x, y } }
+          );
+          break;
+
+        case 'line':
+          const x2 = (element.coordinates?.x2 || element.coordinates?.x + 100) + 50;
+          const y2 = (element.coordinates?.y2 || element.coordinates?.y + 100) + 150;
+          cadData.entities.push({ type: 'LINE', layer: 'CONSTRUCTION', start: { x, y }, end: { x: x2, y: y2 } });
+          break;
+
+        case 'circle':
+          const radius = element.coordinates?.radius || 50;
+          cadData.entities.push({ type: 'CIRCLE', layer: 'CONSTRUCTION', center: { x: x + radius, y: y + radius }, radius });
+          break;
+
+        case 'text':
+          if (element.text) {
+            const fontSize = element.properties?.fontSize || 12;
+            cadData.entities.push({ type: 'TEXT', layer: 'TEXT', position: { x, y }, text: element.text, height: fontSize });
+          }
+          break;
+
+        case 'dimension':
+          const dimX2 = (element.coordinates?.x2 || element.coordinates?.x + 100) + 50;
+          const dimY2 = (element.coordinates?.y2 || element.coordinates?.y) + 150;
+          cadData.entities.push({ type: 'LINE', layer: 'DIMENSIONS', start: { x, y }, end: { x: dimX2, y: dimY2 } });
+
+          if (element.dimensions) {
+            const midX = (x + dimX2) / 2;
+            const midY = (y + dimY2) / 2 - 10;
+            cadData.entities.push({ type: 'TEXT', layer: 'DIMENSIONS', position: { x: midX, y: midY }, text: element.dimensions, height: 10 });
+          }
+          break;
+      }
+    }
+  }
+
+  private static convertCADToSVG(cadData: any, title: string, componentName: string): string {
+    // Convert DXF drawing to SVG for preview
+    const svgElements: string[] = [];
+
+    // SVG header
+    svgElements.push(`<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg" style="background: white;">`);
+
+    // Add professional styling
+    svgElements.push(`
+      <defs>
+        <style>
+          .title-text { font-family: Arial, sans-serif; font-size: 16px; font-weight: bold; fill: black; }
+          .info-text { font-family: Arial, sans-serif; font-size: 12px; fill: black; }
+          .small-text { font-family: Arial, sans-serif; font-size: 10px; fill: black; }
+          .dimension-text { font-family: Arial, sans-serif; font-size: 10px; fill: blue; }
+          .construction-line { stroke: red; stroke-width: 2; fill: none; }
+          .dimension-line { stroke: blue; stroke-width: 1; fill: none; }
+          .center-line { stroke: green; stroke-width: 1; stroke-dasharray: 10,5; fill: none; }
+          .border-line { stroke: black; stroke-width: 1; fill: none; }
+          .text-element { font-family: Arial, sans-serif; font-size: 12px; fill: black; }
+        </style>
+      </defs>
+    `);
+
+    // Title block (converted from DXF)
+    svgElements.push(`<rect x="10" y="10" width="780" height="80" class="border-line" stroke-width="2"/>`);
+    svgElements.push(`<text x="20" y="35" class="title-text">${title}</text>`);
+    svgElements.push(`<text x="20" y="55" class="info-text">Component: ${componentName}</text>`);
+    svgElements.push(`<text x="20" y="75" class="small-text">Scale: 1:100 | Date: ${new Date().toLocaleDateString()} | DXF CAD Drawing</text>`);
+
+    // Main drawing area
+    svgElements.push(`<rect x="10" y="100" width="780" height="450" class="border-line"/>`);
+
+    // Add converted CAD elements as SVG (for preview)
+    this.addConvertedCADElementsToSVG(svgElements, cadData);
+
+    // Notes area
+    svgElements.push(`<rect x="10" y="560" width="780" height="30" class="border-line"/>`);
+    svgElements.push(`<text x="20" y="575" class="small-text">NOTES: Professional DXF CAD drawing generated by HSR Construction Estimator (ezdxf equivalent)</text>`);
+
+    // Close SVG
+    svgElements.push(`</svg>`);
+
+    return svgElements.join('\n');
+  }
+
+  private static addConvertedCADElementsToSVG(svgElements: string[], cadData: any): void {
+    // Convert CAD entities to SVG for preview
+    cadData.entities.forEach((entity: any) => {
+      const layerClass = this.getLayerSVGClass(entity.layer);
+
+      switch (entity.type) {
+        case 'LINE':
+          svgElements.push(`<line x1="${entity.start.x}" y1="${entity.start.y}" x2="${entity.end.x}" y2="${entity.end.y}" class="${layerClass}"/>`);
+          break;
+
+        case 'CIRCLE':
+          svgElements.push(`<circle cx="${entity.center.x}" cy="${entity.center.y}" r="${entity.radius}" fill="none" class="${layerClass}"/>`);
+          break;
+
+        case 'TEXT':
+          const rotation = entity.rotation ? ` transform="rotate(${entity.rotation}, ${entity.position.x}, ${entity.position.y})"` : '';
+          svgElements.push(`<text x="${entity.position.x}" y="${entity.position.y}" font-size="${entity.height}" class="text-element" text-anchor="middle"${rotation}>${entity.text}</text>`);
+          break;
+      }
+    });
+  }
+
+  private static getLayerSVGClass(layer: string): string {
+    switch (layer) {
+      case 'CONSTRUCTION': return 'construction-line';
+      case 'DIMENSIONS': return 'dimension-line';
+      case 'CENTERLINES': return 'center-line';
+      case 'TITLEBLOCK': return 'border-line';
+      default: return 'border-line';
+    }
   }
 
   private static addSVGElements(svgElements: string[], elements: any[]): void {
@@ -323,6 +599,23 @@ Provide a detailed JSON specification that can be used to generate a professiona
     const a = document.createElement('a');
     a.href = url;
     a.download = `${drawing.title.replace(/\s+/g, '_')}_Drawing.svg`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  static downloadDrawingAsDXF(drawing: TechnicalDrawing): void {
+    if (!drawing.dxfContent) {
+      alert('DXF content not available. Please regenerate the drawing.');
+      return;
+    }
+
+    const blob = new Blob([drawing.dxfContent], { type: 'application/dxf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${drawing.title.replace(/\s+/g, '_')}_Drawing.dxf`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
