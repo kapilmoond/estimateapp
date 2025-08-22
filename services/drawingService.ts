@@ -99,77 +99,87 @@ ${designContext ? `**DESIGN CONTEXT:**\n${designContext}\n` : ''}
 
 **PROFESSIONAL CAD DRAWING REQUIREMENTS (ISO 128 / ANSI Y14.5 Standards):**
 
-1. **COORDINATE SYSTEM & GEOMETRY:**
-   - Use CAD coordinate system: Origin (0,0) at bottom-left
+1. **SVG COORDINATE SYSTEM (CORRECTED FOR PROFESSIONAL OUTPUT):**
+   - Use SVG coordinate system: Origin (0,0) at top-left
    - X-axis: Left to Right (positive right)
-   - Y-axis: Bottom to Top (positive up)
-   - All coordinates must follow this standard
+   - Y-axis: Top to Bottom (positive down) - SVG STANDARD
+   - Place main component in center area (300-500 range)
    - Use realistic construction dimensions in millimeters
-   - Component should be properly positioned and scaled
+   - Title block at BOTTOM of drawing (professional standard)
 
 2. **LINE STANDARDS (ISO 128):**
-   - Object lines (main structure): stroke-width="0.7" stroke="black" (solid)
-   - Dimension lines: stroke-width="0.35" stroke="blue" (solid)
-   - Extension lines: stroke-width="0.35" stroke="blue" (solid)
-   - Center lines: stroke-width="0.35" stroke="gray" stroke-dasharray="5,2"
-   - Hidden lines: stroke-width="0.35" stroke="gray" stroke-dasharray="3,1"
+   - Object lines (main structure): stroke-width="2" stroke="black" (solid)
+   - Dimension lines: stroke-width="1" stroke="blue" (solid)
+   - Extension lines: stroke-width="1" stroke="blue" (solid)
+   - Center lines: stroke-width="1" stroke="gray" stroke-dasharray="10,5"
+   - Hidden lines: stroke-width="1" stroke="gray" stroke-dasharray="5,3"
 
 3. **DIMENSIONING STANDARDS (ISO 128):**
-   - Extension lines: Start 1mm from object, extend 2mm beyond dimension line
-   - Dimension text: font-size="3" font-family="Arial", placed above dimension line
-   - Arrows: Use proper SVG markers, 2mm triangular arrows
+   - Extension lines: Start 5mm from object, extend 10mm beyond dimension line
+   - Dimension text: font-size="14" font-family="Arial", placed above dimension line
+   - Arrows: Use proper SVG markers, 8mm triangular arrows
    - Text orientation: Keep horizontal for readability
-   - Dimension format: "XXX mm" or just "XXX" if units are specified
-   - Dimension lines should be 25-30mm from object
+   - Dimension format: "XXX mm" with units clearly shown
+   - Dimension lines should be 40-50mm from object for clarity
 
 4. **PROFESSIONAL SVG STRUCTURE REQUIREMENTS:**
-   Generate a complete SVG drawing with proper CAD standards following this structure:
+   Generate a complete SVG drawing with proper CAD standards:
 
-   - Use viewBox="0 0 800 600" for consistent sizing
-   - Include proper defs section with arrow markers
-   - Organize elements in groups: object-lines, dimensions, title-block
-   - Use correct line weights: object lines (0.7), dimension lines (0.35)
-   - Include extension lines, dimension lines with arrows, and dimension text
-   - Add professional title block with component name and scale
-   - Follow CAD coordinate system (Y-axis up)
-   - Use proper colors: black for objects, blue for dimensions
+   REQUIRED STRUCTURE ELEMENTS:
+   - SVG element with viewBox="0 0 800 600" and proper xmlns
+   - Defs section with arrow markers for dimensioning
+   - Object-lines group for main structural elements
+   - Dimensions group with extension lines, dimension lines, arrows, and text
+   - Title-block group positioned at BOTTOM of drawing (Y: 520-580)
+
+   SPECIFIC REQUIREMENTS:
+   - Main component centered in drawing area (X: 250-550, Y: 150-350)
+   - Arrow markers: markerWidth="12" markerHeight="12" with blue triangular polygons
+   - Object lines: stroke-width="2" stroke="black"
+   - Dimension lines: stroke-width="1" stroke="blue" with marker-start and marker-end
+   - Extension lines: stroke-width="1" stroke="blue"
+   - Text: font-family="Arial" font-size="14" text-anchor="middle" fill="blue"
+   - Title block: Rectangle border with component name, scale, and date
+   - Professional layout with clear spacing and readability
 
 5. **CRITICAL REQUIREMENTS:**
-   - Generate complete, valid SVG code following the structure above
-   - Use proper CAD coordinate system (Y-axis up)
-   - Include professional dimensioning with arrows and text
-   - Add extension lines, dimension lines, and proper text placement
-   - Use correct line weights and colors as specified
-   - Include title block with component name and scale
-   - Keep drawing within 800x600 viewBox
-   - Use realistic construction measurements in millimeters
+   - Generate complete, valid SVG code following the EXACT structure above
+   - Use SVG coordinate system (Y-axis DOWN from top) - NOT CAD coordinates
+   - Main component centered in drawing area (X: 250-550, Y: 150-350)
+   - Title block at BOTTOM of drawing (Y: 520-580)
+   - Professional dimensioning with arrows and readable text
+   - Clear extension lines and dimension lines
+   - Use specified line weights and colors
+   - Include realistic construction measurements in millimeters
+   - All text must be horizontal and readable
 
 **OUTPUT REQUIREMENTS:**
-Generate a complete, professional SVG drawing following the structure and standards above.
+Generate a complete, professional SVG drawing following the structure above.
 The SVG must be:
-- Valid, well-formed SVG code
-- Following CAD coordinate system (Y-axis up)
-- Including proper dimensioning with arrows and text
-- Using correct line weights and colors
-- Professional quality suitable for construction use
+- Valid, well-formed SVG code using SVG coordinate system (Y-axis down)
+- Main component properly centered in drawing area
+- Title block positioned at BOTTOM of drawing (professional standard)
+- Professional dimensioning with clear arrows and text
+- Correct line weights: objects (2px), dimensions (1px)
+- Construction-ready quality with realistic measurements
 
-Provide ONLY the complete SVG code. No additional text, explanations, or JSON.`;
+Provide ONLY the complete SVG code. No markdown, explanations, or additional text.`;
 
     const fullPrompt = this.createPromptWithReference(basePrompt, referenceText);
 
     try {
       const svgResponse = await LLMService.generateContent(fullPrompt);
 
-      // Extract SVG content from response
+      // Extract and enhance SVG content from response
       const svgContent = this.extractAndValidateSVG(svgResponse);
 
-      // Generate professional DXF content
-      const dxfContent = this.generateDXFFromSVG(svgContent, componentName);
+      // Generate basic DXF content (simplified for now)
+      const dxfContent = this.generateBasicDXF(componentName);
 
       const drawing: TechnicalDrawing = {
         id: this.generateId(),
         title,
-        description: `Professional technical drawing for ${componentName}`,
+        description: `Professional technical drawing for ${componentName} - SVG format optimized for construction use`,
         svgContent,
         dxfContent,
         dimensions: { width: 800, height: 600 },
@@ -226,15 +236,35 @@ Provide ONLY the complete SVG code. No additional text, explanations, or JSON.`;
       svgContent = svgContent.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
     }
 
-    // Add arrow markers if not present
+    // Add professional arrow markers if not present
     if (!svgContent.includes('<defs>') && svgContent.includes('marker-')) {
       const defsSection = `
         <defs>
-          <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
-            <polygon points="0 0, 10 3, 0 6" fill="blue"/>
+          <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+            <polygon points="0 0, 12 6, 0 12" fill="blue"/>
           </marker>
         </defs>`;
       svgContent = svgContent.replace('>', '>' + defsSection);
+    }
+
+    // Enhance line weights for professional appearance
+    svgContent = svgContent.replace(/stroke-width="0\.7"/g, 'stroke-width="2"');
+    svgContent = svgContent.replace(/stroke-width="0\.35"/g, 'stroke-width="1"');
+
+    // Enhance text sizes for readability
+    svgContent = svgContent.replace(/font-size="3"/g, 'font-size="14"');
+    svgContent = svgContent.replace(/font-size="12"/g, 'font-size="14"');
+
+    // Ensure title block is at bottom
+    if (svgContent.includes('title-block')) {
+      // Move title block to bottom if it's positioned too high
+      svgContent = svgContent.replace(/y="[0-4][0-9][0-9]"/g, (match) => {
+        const y = parseInt(match.match(/\d+/)[0]);
+        if (y < 500) {
+          return match.replace(/\d+/, '520');
+        }
+        return match;
+      });
     }
 
     return svgContent;
@@ -244,43 +274,154 @@ Provide ONLY the complete SVG code. No additional text, explanations, or JSON.`;
     const currentDate = new Date().toLocaleDateString();
     return `<svg viewBox="0 0 800 600" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
-          <polygon points="0 0, 10 3, 0 6" fill="blue"/>
+        <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+          <polygon points="0 0, 12 6, 0 12" fill="blue"/>
         </marker>
       </defs>
 
-      <!-- Object lines (main structure) -->
+      <!-- Main structural component (centered) -->
       <g id="object-lines">
-        <rect x="200" y="200" width="400" height="200"
-              fill="none" stroke="black" stroke-width="0.7"/>
+        <rect x="300" y="200" width="200" height="100"
+              fill="none" stroke="black" stroke-width="2"/>
+        <!-- Additional structural details -->
+        <line x1="320" y1="200" x2="320" y2="300" stroke="black" stroke-width="1"/>
+        <line x1="480" y1="200" x2="480" y2="300" stroke="black" stroke-width="1"/>
+        <circle cx="350" cy="250" r="4" fill="none" stroke="black" stroke-width="1"/>
+        <circle cx="450" cy="250" r="4" fill="none" stroke="black" stroke-width="1"/>
       </g>
 
-      <!-- Dimension lines and text -->
+      <!-- Professional dimensioning -->
       <g id="dimensions">
-        <!-- Horizontal dimension -->
-        <line x1="200" y1="180" x2="200" y2="170" stroke="blue" stroke-width="0.35"/>
-        <line x1="600" y1="180" x2="600" y2="170" stroke="blue" stroke-width="0.35"/>
-        <line x1="200" y1="175" x2="600" y2="175" stroke="blue" stroke-width="0.35"
+        <!-- Horizontal dimension (width) -->
+        <line x1="300" y1="180" x2="300" y2="170" stroke="blue" stroke-width="1"/>
+        <line x1="500" y1="180" x2="500" y2="170" stroke="blue" stroke-width="1"/>
+        <line x1="300" y1="175" x2="500" y2="175" stroke="blue" stroke-width="1"
               marker-start="url(#arrow)" marker-end="url(#arrow)"/>
-        <text x="400" y="165" font-family="Arial" font-size="12" text-anchor="middle" fill="blue">400 mm</text>
+        <text x="400" y="165" font-family="Arial" font-size="14" text-anchor="middle" fill="blue" font-weight="bold">200 mm</text>
 
-        <!-- Vertical dimension -->
-        <line x1="180" y1="200" x2="170" y2="200" stroke="blue" stroke-width="0.35"/>
-        <line x1="180" y1="400" x2="170" y2="400" stroke="blue" stroke-width="0.35"/>
-        <line x1="175" y1="200" x2="175" y2="400" stroke="blue" stroke-width="0.35"
+        <!-- Vertical dimension (height) -->
+        <line x1="280" y1="200" x2="270" y2="200" stroke="blue" stroke-width="1"/>
+        <line x1="280" y1="300" x2="270" y2="300" stroke="blue" stroke-width="1"/>
+        <line x1="275" y1="200" x2="275" y2="300" stroke="blue" stroke-width="1"
               marker-start="url(#arrow)" marker-end="url(#arrow)"/>
-        <text x="165" y="300" font-family="Arial" font-size="12" text-anchor="middle" fill="blue"
-              transform="rotate(-90, 165, 300)">200 mm</text>
+        <text x="265" y="250" font-family="Arial" font-size="14" text-anchor="middle" fill="blue" font-weight="bold"
+              transform="rotate(-90, 265, 250)">100 mm</text>
+
+        <!-- Detail dimensions -->
+        <line x1="320" y1="320" x2="320" y2="330" stroke="blue" stroke-width="1"/>
+        <line x1="480" y1="320" x2="480" y2="330" stroke="blue" stroke-width="1"/>
+        <line x1="320" y1="325" x2="480" y2="325" stroke="blue" stroke-width="1"
+              marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+        <text x="400" y="340" font-family="Arial" font-size="12" text-anchor="middle" fill="blue">160 mm</text>
       </g>
 
-      <!-- Title block -->
+      <!-- Professional title block at bottom -->
       <g id="title-block">
-        <rect x="50" y="520" width="200" height="60" fill="none" stroke="black" stroke-width="0.5"/>
-        <text x="60" y="540" font-family="Arial" font-size="14" font-weight="bold">Construction Component</text>
-        <text x="60" y="555" font-family="Arial" font-size="10">Scale: 1:50</text>
-        <text x="60" y="570" font-family="Arial" font-size="10">Date: ${currentDate}</text>
+        <rect x="50" y="520" width="300" height="60" fill="none" stroke="black" stroke-width="1"/>
+        <line x1="50" y1="545" x2="350" y2="545" stroke="black" stroke-width="0.5"/>
+        <line x1="250" y1="520" x2="250" y2="580" stroke="black" stroke-width="0.5"/>
+
+        <text x="60" y="540" font-family="Arial" font-size="16" font-weight="bold">CONSTRUCTION COMPONENT</text>
+        <text x="60" y="560" font-family="Arial" font-size="12">Material: Concrete M25</text>
+        <text x="60" y="575" font-family="Arial" font-size="12">Scale: 1:50</text>
+
+        <text x="260" y="540" font-family="Arial" font-size="12" font-weight="bold">Drawing No: CC-001</text>
+        <text x="260" y="560" font-family="Arial" font-size="12">Date: ${currentDate}</text>
+        <text x="260" y="575" font-family="Arial" font-size="12">Rev: A</text>
+      </g>
+
+      <!-- Grid lines for professional appearance -->
+      <g id="grid" opacity="0.1">
+        <defs>
+          <pattern id="grid" width="50" height="50" patternUnits="userSpaceOnUse">
+            <path d="M 50 0 L 0 0 0 50" fill="none" stroke="gray" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#grid)" />
       </g>
     </svg>`;
+  }
+
+  static generateBasicDXF(componentName: string): string {
+    // Generate a basic DXF file for now (simplified)
+    return `0
+SECTION
+2
+HEADER
+9
+$ACADVER
+1
+AC1015
+0
+ENDSEC
+0
+SECTION
+2
+ENTITIES
+0
+LINE
+8
+0
+10
+100.0
+20
+100.0
+11
+300.0
+21
+100.0
+0
+LINE
+8
+0
+10
+300.0
+20
+100.0
+11
+300.0
+21
+200.0
+0
+LINE
+8
+0
+10
+300.0
+20
+200.0
+11
+100.0
+21
+200.0
+0
+LINE
+8
+0
+10
+100.0
+20
+200.0
+11
+100.0
+21
+100.0
+0
+TEXT
+8
+0
+10
+200.0
+20
+250.0
+40
+5.0
+1
+${componentName}
+0
+ENDSEC
+0
+EOF`;
   }
 
   static generateDXFFromSVG(svgContent: string, componentName: string): string {
