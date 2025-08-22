@@ -1,0 +1,57 @@
+HSR Construction Knowledge Base Test Document
+
+FOUNDATION SPECIFICATIONS:
+- Concrete Grade: M25 for residential buildings
+- Steel reinforcement: Fe500 grade
+- Foundation depth: Minimum 1.5m below ground level
+- Plinth beam height: 450mm x 230mm
+- Waterproofing: DPC at plinth level using 40mm thick cement concrete 1:2:4
+
+WALL CONSTRUCTION:
+- Brick masonry: First class burnt clay bricks
+- Mortar ratio: 1:6 cement sand mortar for superstructure
+- Wall thickness: 230mm for load bearing walls, 115mm for partition walls
+- Lintel beam: RCC lintel 150mm x 100mm over openings
+
+ROOFING SPECIFICATIONS:
+- RCC slab thickness: 125mm for spans up to 3.5m
+- Concrete grade: M20 for roof slab
+- Steel reinforcement: 8mm dia bars @ 150mm c/c both ways
+- Waterproofing: Brick bat coba with lime terracing
+
+ELECTRICAL SPECIFICATIONS:
+- Main supply: 3 phase 4 wire system
+- Distribution board: MCB type with ELCB
+- Wiring: Copper conductor PVC insulated cables
+- Switches and sockets: Modular type
+
+PLUMBING SPECIFICATIONS:
+- Water supply: CPVC pipes for hot and cold water
+- Drainage: PVC pipes with proper slope
+- Sanitary fixtures: White vitreous china
+- Water tank: Sintex or equivalent overhead tank
+
+FINISHING SPECIFICATIONS:
+- Internal plastering: 12mm thick cement sand plaster 1:4
+- External plastering: 15mm thick cement sand plaster 1:4
+- Painting: Primer + 2 coats of emulsion paint for internal walls
+- Flooring: Vitrified tiles 600x600mm for living areas
+
+COST ESTIMATES (Per Sq Ft):
+- Foundation work: Rs. 180-220 per sq ft
+- Superstructure: Rs. 450-550 per sq ft
+- Finishing work: Rs. 350-450 per sq ft
+- Electrical work: Rs. 80-120 per sq ft
+- Plumbing work: Rs. 60-100 per sq ft
+
+QUALITY STANDARDS:
+- All materials should conform to IS standards
+- Workmanship as per CPWD specifications
+- Regular quality checks at each stage
+- Proper curing of concrete for 28 days
+
+SAFETY MEASURES:
+- Use of safety helmets and harnesses
+- Proper scaffolding for height work
+- Fire safety equipment on site
+- First aid facilities available

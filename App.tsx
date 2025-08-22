@@ -8,6 +8,7 @@ import { GuidelinesService } from './services/guidelinesService';
 import { ThreadService } from './services/threadService';
 import { DesignService } from './services/designService';
 import { DrawingService } from './services/drawingService';
+import { ContextService } from './services/contextService';
 import { Spinner } from './components/Spinner';
 import { ResultDisplay } from './components/ResultDisplay';
 import { KeywordsDisplay } from './components/KeywordsDisplay';
@@ -18,8 +19,12 @@ import { GuidelinesManager } from './components/GuidelinesManager';
 import { OutputModeSelector } from './components/OutputModeSelector';
 import { DesignDisplay } from './components/DesignDisplay';
 import { DrawingDisplay } from './components/DrawingDisplay';
+import { ContextManager } from './components/ContextManager';
 import { LLMProviderSelector } from './components/LLMProviderSelector';
+import { KnowledgeBaseManager } from './components/KnowledgeBaseManager';
+import { KnowledgeBaseDisplay } from './components/KnowledgeBaseDisplay';
 import { LLMService } from './services/llmService';
+import { RAGService } from './services/ragService';
 
 type Step = 'scoping' | 'generatingKeywords' | 'approvingKeywords' | 'approvingHsrItems' | 'approvingRefinedHsrItems' | 'generatingEstimate' | 'reviewingEstimate' | 'done';
 type ReferenceDoc = { file: File; text: string };
@@ -61,9 +66,12 @@ const App: React.FC = () => {
   const [drawings, setDrawings] = useState<TechnicalDrawing[]>([]);
   const [isGuidelinesOpen, setIsGuidelinesOpen] = useState<boolean>(false);
   const [isLLMSettingsOpen, setIsLLMSettingsOpen] = useState<boolean>(false);
+  const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState<boolean>(false);
+  const [includeKnowledgeBase, setIncludeKnowledgeBase] = useState<boolean>(false);
   const [currentProvider, setCurrentProvider] = useState<string>(LLMService.getCurrentProvider());
   const [currentModel, setCurrentModel] = useState<string>(LLMService.getCurrentModel());
   const [showProjectData, setShowProjectData] = useState<boolean>(false);
+  const [contextKey, setContextKey] = useState<number>(0); // Force re-render of context
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
@@ -87,6 +95,13 @@ const App: React.FC = () => {
     loadGuidelines();
     loadDesigns();
     loadDrawings();
+
+    // Initialize context if not exists
+    const existingContext = ContextService.getCurrentContext();
+    if (!existingContext && conversationHistory.length > 1) {
+      const projectDescription = conversationHistory.slice(1).map(msg => msg.text).join(' ').substring(0, 200);
+      ContextService.initializeContext(projectDescription);
+    }
   }, []);
 
   const loadGuidelines = () => {
@@ -102,6 +117,15 @@ const App: React.FC = () => {
   const loadDrawings = () => {
     const loadedDrawings = DrawingService.loadDrawings();
     setDrawings(loadedDrawings);
+  };
+
+  const handleContextUpdate = () => {
+    setContextKey(prev => prev + 1); // Force re-render of context components
+  };
+
+  const handleKnowledgeBaseUpdate = () => {
+    // Force re-render when knowledge base is updated
+    setContextKey(prev => prev + 1);
   };
 
   useEffect(() => {
@@ -182,8 +206,29 @@ const App: React.FC = () => {
       setError(null);
 
       try {
-        const modelResponse = await continueConversation(newHistory, referenceText, outputMode);
+        // Add context from previous steps
+        const contextPrompt = ContextService.generateContextPrompt();
+        let enhancedReferenceText = referenceText + contextPrompt;
+
+        // Add knowledge base context if enabled
+        if (includeKnowledgeBase) {
+          const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+            currentMessage,
+            includeKnowledgeBase
+          );
+          // Use the enhanced prompt for the conversation
+          newHistory[newHistory.length - 1].text = enhancedPrompt;
+        }
+
+        const modelResponse = await continueConversation(newHistory, enhancedReferenceText, outputMode);
         setConversationHistory(prev => [...prev, { role: 'model', text: modelResponse }]);
+
+        // Extract and save LLM summary
+        const llmSummary = ContextService.extractLLMSummary(modelResponse);
+        ContextService.addStepSummary('discussion', newMessage.text, llmSummary);
+
+        // Add discussion to context
+        ContextService.addDiscussionToContext(newMessage.text, true);
 
         // Save to thread
         if (currentThread) {
@@ -227,10 +272,20 @@ const App: React.FC = () => {
 
       const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
 
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
       const design = await DesignService.generateComponentDesign(
         componentName,
         scopeContext,
-        userInput,
+        enhancedUserInput,
         guidelinesText,
         referenceText
       );
@@ -273,11 +328,21 @@ const App: React.FC = () => {
       const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
       const designContext = ThreadService.getAllContextForMode('design');
 
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
       const drawing = await DrawingService.generateTechnicalDrawing(
         title,
-        userInput,
+        enhancedUserInput,
         componentName,
-        userInput,
+        enhancedUserInput,
         guidelinesText,
         designContext,
         referenceText
@@ -508,8 +573,28 @@ const App: React.FC = () => {
     setError(null);
     try {
       const recentHistory = conversationHistory.slice(-4); // Last 4 messages for context
-      const estimateText = await generatePlainTextEstimate(finalizedScope, items, recentHistory, undefined, feedback, referenceText);
+
+      // Add context from previous steps
+      const contextPrompt = ContextService.generateContextPrompt();
+      let enhancedReferenceText = referenceText + contextPrompt;
+
+      // Add knowledge base context if enabled
+      if (includeKnowledgeBase) {
+        const estimateQuery = `Generate construction estimate for: ${finalizedScope}`;
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          estimateQuery,
+          includeKnowledgeBase
+        );
+        enhancedReferenceText += '\n\n' + enhancedPrompt;
+      }
+
+      const estimateText = await generatePlainTextEstimate(finalizedScope, items, recentHistory, undefined, feedback, enhancedReferenceText);
       setFinalEstimateText(estimateText);
+
+      // Extract and save LLM summary
+      const llmSummary = ContextService.extractLLMSummary(estimateText);
+      ContextService.addStepSummary('estimate_generation', 'Generated final estimate', llmSummary);
+
       setStep('reviewingEstimate');
     } catch (err: any) {
       console.error("Error in handleGenerateEstimate:", err);
@@ -530,8 +615,18 @@ const App: React.FC = () => {
     setError(null);
     try {
         const recentHistory = conversationHistory.slice(-4); // Last 4 messages for context
-        const estimateText = await generatePlainTextEstimate(finalizedScope, hsrItems, recentHistory, finalEstimateText, editInstruction, referenceText);
+
+        // Add context from previous steps
+        const contextPrompt = ContextService.generateContextPrompt();
+        const enhancedReferenceText = referenceText + contextPrompt;
+
+        const estimateText = await generatePlainTextEstimate(finalizedScope, hsrItems, recentHistory, finalEstimateText, editInstruction, enhancedReferenceText);
         setFinalEstimateText(estimateText);
+
+        // Extract and save LLM summary
+        const llmSummary = ContextService.extractLLMSummary(estimateText);
+        ContextService.addStepSummary('estimate_edit', `Edited estimate: ${editInstruction}`, llmSummary);
+
         setEditInstruction('');
     } catch (err: any) {
         console.error(err);
@@ -573,6 +668,13 @@ const App: React.FC = () => {
               currentMode={outputMode}
               onModeChange={handleOutputModeChange}
               disabled={isAiThinking}
+            />
+
+            {/* Context Display */}
+            <ContextManager
+              key={contextKey}
+              onContextUpdate={handleContextUpdate}
+              showCompactView={true}
             />
 
             {/* Chat Interface */}
@@ -634,10 +736,25 @@ const App: React.FC = () => {
               {showProjectData && (
                 <div className="mt-4 space-y-6">
                   {/* Design Display */}
-                  <DesignDisplay designs={designs} onDesignUpdate={loadDesigns} />
+                  <DesignDisplay
+                    designs={designs}
+                    onDesignUpdate={loadDesigns}
+                    onContextUpdate={handleContextUpdate}
+                  />
 
                   {/* Drawing Display */}
-                  <DrawingDisplay drawings={drawings} onDrawingUpdate={loadDrawings} />
+                  <DrawingDisplay
+                    drawings={drawings}
+                    onDrawingUpdate={loadDrawings}
+                    onContextUpdate={handleContextUpdate}
+                  />
+
+                  {/* Context Manager */}
+                  <ContextManager
+                    key={contextKey}
+                    onContextUpdate={handleContextUpdate}
+                    showCompactView={false}
+                  />
                 </div>
               )}
             </div>
@@ -845,6 +962,16 @@ const App: React.FC = () => {
                         </button>
 
                         <button
+                            onClick={() => setIsKnowledgeBaseOpen(true)}
+                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
+                            title="Knowledge Base"
+                        >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                            </svg>
+                        </button>
+
+                        <button
                             onClick={() => setIsGuidelinesOpen(true)}
                             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
                             title="Manage Guidelines"
@@ -933,12 +1060,18 @@ const App: React.FC = () => {
                 </div>
             )}
             
-            <FileUpload 
+            <FileUpload
               onFileUpload={handleFileUpload}
               onFileRemove={handleFileRemove}
               uploadedFiles={referenceDocs}
               isFileProcessing={isFileProcessing}
               setIsFileProcessing={setIsFileProcessing}
+            />
+
+            <KnowledgeBaseDisplay
+              includeInPrompts={includeKnowledgeBase}
+              onToggleInclude={setIncludeKnowledgeBase}
+              onOpenManager={() => setIsKnowledgeBaseOpen(true)}
             />
             
             {renderMainContent()}
@@ -953,6 +1086,13 @@ const App: React.FC = () => {
             setCurrentProvider(LLMService.getCurrentProvider());
             setCurrentModel(LLMService.getCurrentModel());
           }}
+        />
+
+        {/* Knowledge Base Manager Modal */}
+        <KnowledgeBaseManager
+          isOpen={isKnowledgeBaseOpen}
+          onClose={() => setIsKnowledgeBaseOpen(false)}
+          onKnowledgeBaseUpdate={handleKnowledgeBaseUpdate}
         />
 
         {/* Guidelines Manager Modal */}

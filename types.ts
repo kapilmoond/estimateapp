@@ -48,6 +48,7 @@ export interface ComponentDesign {
     calculations: string;
   };
   createdAt: Date;
+  includeInContext?: boolean;
 }
 
 export interface TechnicalDrawing {
@@ -59,6 +60,38 @@ export interface TechnicalDrawing {
   scale: string;
   componentName: string;
   createdAt: Date;
+  includeInContext?: boolean;
+}
+
+export interface ProcessSummary {
+  id: string;
+  projectDescription: string;
+  stepSummaries: StepSummary[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface StepSummary {
+  step: string;
+  timestamp: Date;
+  summary: string;
+  llmSummary?: string;
+  contextItems: ContextItem[];
+}
+
+export interface ContextItem {
+  id: string;
+  type: 'design' | 'drawing' | 'discussion' | 'estimate' | 'guideline';
+  title: string;
+  content: string;
+  includeInContext: boolean;
+  createdAt: Date;
+}
+
+export interface ContextState {
+  summary: ProcessSummary;
+  activeContextItems: ContextItem[];
+  compactSummary: string;
 }
 
 export interface LLMProvider {
@@ -86,4 +119,70 @@ export interface ProjectData {
   keywordsByItem: KeywordsByItem;
   hsrItems: HsrItem[];
   guidelines: UserGuideline[];
+}
+
+// Knowledge Base Types
+export interface KnowledgeBaseDocument {
+  id: string;
+  fileName: string;
+  fileType: 'pdf' | 'docx' | 'txt' | 'xlsx' | 'xls';
+  content: string;
+  chunks: DocumentChunk[];
+  metadata: DocumentMetadata;
+  createdAt: Date;
+  updatedAt: Date;
+  isActive: boolean;
+}
+
+export interface DocumentChunk {
+  id: string;
+  documentId: string;
+  content: string;
+  chunkIndex: number;
+  startPosition: number;
+  endPosition: number;
+  embedding?: number[];
+  metadata: ChunkMetadata;
+}
+
+export interface DocumentMetadata {
+  fileSize: number;
+  pageCount?: number;
+  author?: string;
+  title?: string;
+  subject?: string;
+  keywords?: string[];
+  language?: string;
+}
+
+export interface ChunkMetadata {
+  pageNumber?: number;
+  sectionTitle?: string;
+  wordCount: number;
+  characterCount: number;
+}
+
+export interface KnowledgeBaseConfig {
+  chunkSize: number;
+  chunkOverlap: number;
+  maxChunks: number;
+  enableEmbeddings: boolean;
+  embeddingModel: string;
+  similarityThreshold: number;
+}
+
+export interface RAGContext {
+  query: string;
+  relevantChunks: DocumentChunk[];
+  totalDocuments: number;
+  searchScore: number;
+  contextLength: number;
+}
+
+export interface KnowledgeBaseStats {
+  totalDocuments: number;
+  totalChunks: number;
+  totalSize: number;
+  lastUpdated: Date;
+  activeDocuments: number;
 }
