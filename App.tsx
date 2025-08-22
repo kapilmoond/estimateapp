@@ -18,6 +18,8 @@ import { GuidelinesManager } from './components/GuidelinesManager';
 import { OutputModeSelector } from './components/OutputModeSelector';
 import { DesignDisplay } from './components/DesignDisplay';
 import { DrawingDisplay } from './components/DrawingDisplay';
+import { LLMProviderSelector } from './components/LLMProviderSelector';
+import { LLMService } from './services/llmService';
 
 type Step = 'scoping' | 'generatingKeywords' | 'approvingKeywords' | 'approvingHsrItems' | 'approvingRefinedHsrItems' | 'generatingEstimate' | 'reviewingEstimate' | 'done';
 type ReferenceDoc = { file: File; text: string };
@@ -58,6 +60,9 @@ const App: React.FC = () => {
   const [designs, setDesigns] = useState<ComponentDesign[]>([]);
   const [drawings, setDrawings] = useState<TechnicalDrawing[]>([]);
   const [isGuidelinesOpen, setIsGuidelinesOpen] = useState<boolean>(false);
+  const [isLLMSettingsOpen, setIsLLMSettingsOpen] = useState<boolean>(false);
+  const [currentProvider, setCurrentProvider] = useState<string>(LLMService.getCurrentProvider());
+  const [currentModel, setCurrentModel] = useState<string>(LLMService.getCurrentModel());
   const [showProjectData, setShowProjectData] = useState<boolean>(false);
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -822,8 +827,23 @@ const App: React.FC = () => {
                     <div>
                         <h1 className="text-4xl font-extrabold text-gray-900">HSR Construction Estimator</h1>
                         <p className="mt-2 text-md text-gray-600">AI-Powered Costing with Haryana Schedule of Rates</p>
+                        <div className="mt-2 text-sm text-gray-500">
+                            Current AI: <span className="font-medium text-purple-600">{LLMService.getProvider(currentProvider)?.name}</span> -
+                            <span className="font-medium text-purple-600">{LLMService.getModel(currentProvider, currentModel)?.name}</span>
+                        </div>
                     </div>
                     <div className="flex gap-2">
+                        <button
+                            onClick={() => setIsLLMSettingsOpen(true)}
+                            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm"
+                            title="LLM Provider Settings"
+                        >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                        </button>
+
                         <button
                             onClick={() => setIsGuidelinesOpen(true)}
                             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
@@ -924,6 +944,16 @@ const App: React.FC = () => {
             {renderMainContent()}
 
         </main>
+
+        {/* LLM Provider Settings Modal */}
+        <LLMProviderSelector
+          isOpen={isLLMSettingsOpen}
+          onClose={() => {
+            setIsLLMSettingsOpen(false);
+            setCurrentProvider(LLMService.getCurrentProvider());
+            setCurrentModel(LLMService.getCurrentModel());
+          }}
+        />
 
         {/* Guidelines Manager Modal */}
         <GuidelinesManager

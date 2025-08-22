@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type, Content } from "@google/genai";
 import { HsrItem, ChatMessage, KeywordsByItem } from '../types';
 import { GuidelinesService } from './guidelinesService';
+import { LLMService } from './llmService';
 
 export const getAiClient = () => {
   const apiKey = localStorage.getItem('gemini-api-key');
@@ -8,6 +9,11 @@ export const getAiClient = () => {
     throw new Error("API key is not configured. Please set it in the application.");
   }
   return new GoogleGenAI({ apiKey });
+};
+
+// Simple text generation using the new LLM service
+export const generateSimpleResponse = async (prompt: string): Promise<string> => {
+  return await LLMService.generateContent(prompt);
 };
 
 const model = "gemini-2.5-pro";

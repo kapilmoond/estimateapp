@@ -1,13 +1,5 @@
 import { ComponentDesign, ChatMessage } from '../types';
-import { GoogleGenAI } from "@google/genai";
-
-const getAiClient = () => {
-  const apiKey = localStorage.getItem('gemini-api-key');
-  if (!apiKey) {
-    throw new Error("API key is not configured. Please set it in the application.");
-  }
-  return new GoogleGenAI({ apiKey });
-};
+import { LLMService } from './llmService';
 
 export class DesignService {
   private static readonly STORAGE_KEY = 'hsr-component-designs';
@@ -81,12 +73,7 @@ Provide a detailed, professional design document in plain text format that can b
     const fullPrompt = this.createPromptWithReference(basePrompt, referenceText);
 
     try {
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-pro",
-        contents: fullPrompt,
-      });
-
-      const designContent = response.text;
+      const designContent = await LLMService.generateContent(fullPrompt);
       
       // Extract specifications from the design content
       const specifications = this.extractSpecifications(designContent);
@@ -112,7 +99,6 @@ Provide a detailed, professional design document in plain text format that can b
   }
 
   static async generateHTMLDesign(design: ComponentDesign): Promise<string> {
-    const ai = getAiClient();
 
     const prompt = `Convert the following plain text design document into a well-formatted HTML document suitable for printing and professional presentation.
 
@@ -132,12 +118,7 @@ ${design.designContent}
 Provide only the complete HTML document content, starting with <!DOCTYPE html> and ending with </html>. Do not wrap the output in any markdown code blocks. The document should be ready for download and printing.`;
 
     try {
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-pro",
-        contents: prompt,
-      });
-
-      let htmlContent = response.text;
+      let htmlContent = await LLMService.generateContent(prompt);
 
       // Clean up any markdown code blocks that might be included
       htmlContent = htmlContent.replace(/```html\s*/g, '');

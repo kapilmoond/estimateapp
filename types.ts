@@ -62,6 +62,22 @@ export interface TechnicalDrawing {
   createdAt: Date;
 }
 
+export interface LLMProvider {
+  id: string;
+  name: string;
+  models: LLMModel[];
+  apiKeyLabel: string;
+  description: string;
+}
+
+export interface LLMModel {
+  id: string;
+  name: string;
+  description: string;
+  maxTokens: number;
+  costPer1kTokens: number;
+}
+
 export interface ProjectData {
   discussions: ConversationThread[];
   designs: ComponentDesign[];

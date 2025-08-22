@@ -1,14 +1,6 @@
 import { TechnicalDrawing } from '../types';
-import { GoogleGenAI } from "@google/genai";
+import { LLMService } from './llmService';
 import jsPDF from 'jspdf';
-
-const getAiClient = () => {
-  const apiKey = localStorage.getItem('gemini-api-key');
-  if (!apiKey) {
-    throw new Error("API key is not configured. Please set it in the application.");
-  }
-  return new GoogleGenAI({ apiKey });
-};
 
 export class DrawingService {
   private static readonly STORAGE_KEY = 'hsr-technical-drawings';
@@ -126,12 +118,7 @@ Provide ONLY the JSON specification above. No additional text or explanations.`;
     const fullPrompt = this.createPromptWithReference(basePrompt, referenceText);
 
     try {
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-pro",
-        contents: fullPrompt,
-      });
-
-      const drawingInstructions = response.text;
+      const drawingInstructions = await LLMService.generateContent(fullPrompt);
 
       // Generate professional CAD drawing using DXF (like ezdxf)
       const { svgContent, dxfContent } = await this.generateProfessionalCADDrawing(title, drawingInstructions, componentName);
