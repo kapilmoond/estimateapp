@@ -19,6 +19,7 @@ import { GuidelinesManager } from './components/GuidelinesManager';
 import { OutputModeSelector } from './components/OutputModeSelector';
 import { DesignDisplay } from './components/DesignDisplay';
 import { DrawingDisplay } from './components/DrawingDisplay';
+import { DXFSetupGuide } from './components/DXFSetupGuide';
 import { ContextManager } from './components/ContextManager';
 import { LLMProviderSelector } from './components/LLMProviderSelector';
 import { KnowledgeBaseManager } from './components/KnowledgeBaseManager';
@@ -907,6 +908,9 @@ Generate ONLY the complete SVG code, no explanations:`;
                     onDesignUpdate={loadDesigns}
                     onContextUpdate={handleContextUpdate}
                   />
+
+                  {/* DXF Setup Guide */}
+                  <DXFSetupGuide />
 
                   {/* Drawing Display */}
                   <DrawingDisplay

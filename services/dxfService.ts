@@ -17,49 +17,100 @@ export class DXFService {
     aiGeneratedContent: string
   ): Promise<TechnicalDrawing> {
     try {
-      // Call Python backend to generate DXF
-      const response = await fetch(`${this.PYTHON_BACKEND_URL}/parse-ai-drawing`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          title,
-          description: aiGeneratedContent
-        })
-      });
+      // Check if Python backend is available
+      const backendAvailable = await this.checkBackendHealth();
 
-      if (!response.ok) {
-        throw new Error(`DXF generation failed: ${response.statusText}`);
+      if (backendAvailable) {
+        // Use Python backend for real DXF generation
+        return await this.generateDXFWithBackend(title, description, aiGeneratedContent);
+      } else {
+        // Fallback to mock DXF for demo purposes
+        console.warn('Python backend not available. Using mock DXF generation.');
+        return this.generateMockDXF(title, description, aiGeneratedContent);
       }
-
-      const result = await response.json();
-
-      if (!result.success) {
-        throw new Error(result.error || 'DXF generation failed');
-      }
-
-      // Create TechnicalDrawing object
-      const drawing: TechnicalDrawing = {
-        id: this.generateId(),
-        title,
-        description,
-        dxfContent: result.dxf_content, // Base64 encoded DXF
-        dxfFilename: result.filename,
-        dimensions: { width: 800, height: 600 }, // Standard drawing size
-        scale: '1:100',
-        componentName: this.extractComponentName(title),
-        createdAt: new Date(),
-        includeInContext: true,
-        dxfData: this.createDXFData(title, description, aiGeneratedContent),
-        drawingType: 'dxf'
-      };
-
-      return drawing;
     } catch (error) {
       console.error('DXF generation error:', error);
-      throw new Error(`Failed to generate DXF drawing: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Fallback to mock DXF if backend fails
+      console.warn('Falling back to mock DXF generation due to error:', error);
+      return this.generateMockDXF(title, description, aiGeneratedContent);
     }
+  }
+
+  /**
+   * Generate DXF using Python backend
+   */
+  private static async generateDXFWithBackend(
+    title: string,
+    description: string,
+    aiGeneratedContent: string
+  ): Promise<TechnicalDrawing> {
+    const response = await fetch(`${this.PYTHON_BACKEND_URL}/parse-ai-drawing`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        title,
+        description: aiGeneratedContent
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`DXF generation failed: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+
+    if (!result.success) {
+      throw new Error(result.error || 'DXF generation failed');
+    }
+
+    // Create TechnicalDrawing object
+    const drawing: TechnicalDrawing = {
+      id: this.generateId(),
+      title,
+      description,
+      dxfContent: result.dxf_content, // Base64 encoded DXF
+      dxfFilename: result.filename,
+      dimensions: { width: 800, height: 600 },
+      scale: '1:100',
+      componentName: this.extractComponentName(title),
+      createdAt: new Date(),
+      includeInContext: true,
+      dxfData: this.createDXFData(title, description, aiGeneratedContent),
+      drawingType: 'dxf'
+    };
+
+    return drawing;
+  }
+
+  /**
+   * Generate mock DXF for demo when backend is not available
+   */
+  private static generateMockDXF(
+    title: string,
+    description: string,
+    aiGeneratedContent: string
+  ): TechnicalDrawing {
+    // Create a mock base64 DXF content (minimal DXF structure)
+    const mockDXFContent = this.createMockDXFContent(title, description);
+
+    const drawing: TechnicalDrawing = {
+      id: this.generateId(),
+      title,
+      description: `${description}\n\n⚠️ DEMO MODE: This is a mock DXF file. To generate real professional DXF files, please start the Python backend server.\n\nSee python-backend/README.md for setup instructions.`,
+      dxfContent: mockDXFContent,
+      dxfFilename: `${title.replace(/\s+/g, '_')}_DEMO.dxf`,
+      dimensions: { width: 800, height: 600 },
+      scale: '1:100',
+      componentName: this.extractComponentName(title),
+      createdAt: new Date(),
+      includeInContext: true,
+      dxfData: this.createDXFData(title, description, aiGeneratedContent),
+      drawingType: 'dxf'
+    };
+
+    return drawing;
   }
 
   /**
@@ -167,15 +218,220 @@ export class DXFService {
    */
   static async checkBackendHealth(): Promise<boolean> {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+
       const response = await fetch(`${this.PYTHON_BACKEND_URL}/health`, {
         method: 'GET',
-        timeout: 5000
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
       return response.ok;
     } catch (error) {
       console.warn('Python backend not available:', error);
       return false;
     }
+  }
+
+  /**
+   * Create mock DXF content for demo purposes
+   */
+  private static createMockDXFContent(title: string, description: string): string {
+    // Create a minimal but valid DXF file structure
+    const dxfContent = `0
+SECTION
+2
+HEADER
+9
+$ACADVER
+1
+AC1021
+9
+$DWGCODEPAGE
+3
+ANSI_1252
+0
+ENDSEC
+0
+SECTION
+2
+TABLES
+0
+TABLE
+2
+LTYPE
+70
+1
+0
+LTYPE
+2
+CONTINUOUS
+70
+64
+3
+Solid line
+72
+65
+73
+0
+40
+0.0
+0
+ENDTAB
+0
+TABLE
+2
+LAYER
+70
+1
+0
+LAYER
+2
+0
+70
+64
+62
+7
+6
+CONTINUOUS
+0
+LAYER
+2
+STRUCTURAL
+70
+64
+62
+1
+6
+CONTINUOUS
+0
+LAYER
+2
+DIMENSIONS
+70
+64
+62
+2
+6
+CONTINUOUS
+0
+LAYER
+2
+TEXT
+70
+64
+62
+3
+6
+CONTINUOUS
+0
+ENDTAB
+0
+ENDSEC
+0
+SECTION
+2
+ENTITIES
+0
+TEXT
+8
+TEXT
+10
+50.0
+20
+50.0
+30
+0.0
+40
+5.0
+1
+${title}
+0
+TEXT
+8
+TEXT
+10
+50.0
+20
+40.0
+30
+0.0
+40
+3.0
+1
+DEMO MODE - Start Python backend for real DXF
+0
+LINE
+8
+STRUCTURAL
+10
+100.0
+20
+100.0
+30
+0.0
+11
+200.0
+21
+100.0
+31
+0.0
+0
+LINE
+8
+STRUCTURAL
+10
+200.0
+20
+100.0
+30
+0.0
+11
+200.0
+21
+150.0
+31
+0.0
+0
+LINE
+8
+STRUCTURAL
+10
+200.0
+20
+150.0
+30
+0.0
+11
+100.0
+21
+150.0
+31
+0.0
+0
+LINE
+8
+STRUCTURAL
+10
+100.0
+20
+150.0
+30
+0.0
+11
+100.0
+21
+100.0
+31
+0.0
+0
+ENDSEC
+0
+EOF`;
+
+    // Convert to base64
+    return btoa(dxfContent);
   }
 
   // Private helper methods
@@ -258,19 +514,34 @@ export class DXFService {
   private static createPlaceholderSVG(title: string): string {
     return `
       <svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">
-        <rect width="800" height="600" fill="#f8f9fa" stroke="#dee2e6" stroke-width="2"/>
-        <text x="400" y="280" text-anchor="middle" font-family="Arial" font-size="24" fill="#6c757d">
-          Professional DXF Drawing
+        <rect width="800" height="600" fill="#fff3cd" stroke="#ffeaa7" stroke-width="2"/>
+        <text x="400" y="200" text-anchor="middle" font-family="Arial" font-size="24" fill="#856404">
+          🏗️ Professional DXF Drawing
         </text>
-        <text x="400" y="320" text-anchor="middle" font-family="Arial" font-size="18" fill="#6c757d">
+        <text x="400" y="240" text-anchor="middle" font-family="Arial" font-size="18" fill="#856404">
           ${title}
         </text>
-        <text x="400" y="360" text-anchor="middle" font-family="Arial" font-size="14" fill="#6c757d">
-          Download DXF file to view in CAD software
+        <text x="400" y="280" text-anchor="middle" font-family="Arial" font-size="14" fill="#856404">
+          ⚠️ DEMO MODE - Python Backend Not Running
         </text>
-        <rect x="350" y="380" width="100" height="40" fill="#007bff" rx="5"/>
-        <text x="400" y="405" text-anchor="middle" font-family="Arial" font-size="14" fill="white">
-          Download DXF
+        <text x="400" y="320" text-anchor="middle" font-family="Arial" font-size="12" fill="#856404">
+          To generate real professional DXF files:
+        </text>
+        <text x="400" y="340" text-anchor="middle" font-family="Arial" font-size="12" fill="#856404">
+          1. Navigate to python-backend folder
+        </text>
+        <text x="400" y="360" text-anchor="middle" font-family="Arial" font-size="12" fill="#856404">
+          2. Run: python setup.py
+        </text>
+        <text x="400" y="380" text-anchor="middle" font-family="Arial" font-size="12" fill="#856404">
+          3. Keep server running on localhost:5000
+        </text>
+        <rect x="300" y="420" width="200" height="40" fill="#ffc107" rx="5"/>
+        <text x="400" y="445" text-anchor="middle" font-family="Arial" font-size="14" fill="#212529">
+          Download Demo DXF
+        </text>
+        <text x="400" y="480" text-anchor="middle" font-family="Arial" font-size="10" fill="#856404">
+          See python-backend/README.md for setup instructions
         </text>
       </svg>
     `;
