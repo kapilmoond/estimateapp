@@ -5,13 +5,16 @@ import { DrawingService } from '../services/drawingService';
 interface DrawingDisplayProps {
   drawings: TechnicalDrawing[];
   onDrawingUpdate: () => void;
+  onRegenerateDrawing?: (drawingId: string, instructions: string) => void;
 }
 
-export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDrawingUpdate }) => {
+export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDrawingUpdate, onRegenerateDrawing }) => {
   const [selectedDrawing, setSelectedDrawing] = useState<TechnicalDrawing | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editedSVG, setEditedSVG] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [regenerationInstructions, setRegenerationInstructions] = useState('');
 
   const handleDeleteDrawing = (drawingId: string) => {
     if (window.confirm('Are you sure you want to delete this drawing?')) {
