@@ -55,7 +55,6 @@ export interface TechnicalDrawing {
   title: string;
   description: string;
   svgContent: string;
-  dxfContent?: string;
   dimensions: { width: number; height: number };
   scale: string;
   componentName: string;
