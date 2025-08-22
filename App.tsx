@@ -23,7 +23,6 @@ import { ContextManager } from './components/ContextManager';
 import { LLMProviderSelector } from './components/LLMProviderSelector';
 import { KnowledgeBaseManager } from './components/KnowledgeBaseManager';
 import { KnowledgeBaseDisplay } from './components/KnowledgeBaseDisplay';
-import { CADDrawingManager } from './components/CADDrawingManager';
 import { LLMService } from './services/llmService';
 import { RAGService } from './services/ragService';
 
@@ -68,10 +67,7 @@ const App: React.FC = () => {
   const [isGuidelinesOpen, setIsGuidelinesOpen] = useState<boolean>(false);
   const [isLLMSettingsOpen, setIsLLMSettingsOpen] = useState<boolean>(false);
   const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState<boolean>(false);
-  const [isCADDrawingOpen, setIsCADDrawingOpen] = useState<boolean>(false);
   const [includeKnowledgeBase, setIncludeKnowledgeBase] = useState<boolean>(false);
-  const [cadDrawingTitle, setCADDrawingTitle] = useState<string>('');
-  const [cadDrawingDescription, setCADDrawingDescription] = useState<string>('');
   const [currentProvider, setCurrentProvider] = useState<string>(LLMService.getCurrentProvider());
   const [currentModel, setCurrentModel] = useState<string>(LLMService.getCurrentModel());
   const [showProjectData, setShowProjectData] = useState<boolean>(false);
@@ -334,9 +330,7 @@ const App: React.FC = () => {
       const title = titleMatch ? titleMatch[1].trim() : 'Technical Drawing';
       const componentName = title;
 
-      // Store drawing info for later use
-      setCADDrawingTitle(title);
-      setCADDrawingDescription(`Technical drawing for ${componentName}: ${userInput}`);
+      // Drawing info will be handled directly in the generation process
 
       const activeGuidelines = GuidelinesService.getActiveGuidelines();
       const drawingGuidelines = GuidelinesService.getActiveGuidelines('drawing');
@@ -442,16 +436,56 @@ CORRECTED DRAWING SPECIFICATION:`;
       // Make the second LLM call for validation
       const correctedDrawingSpec = await LLMService.generateContent(validationPrompt);
 
-      // Create final corrected drawing
+      // Generate Professional CAD Drawing directly
+      setLoadingMessage('Generating Professional CAD Drawing...');
+
+      const cadPrompt = `You are a professional CAD drawing generator. Convert the following validated drawing specification into a precise, professional SVG drawing suitable for construction use.
+
+VALIDATED DRAWING SPECIFICATION:
+${correctedDrawingSpec}
+
+DRAWING TITLE: ${title}
+
+Generate a complete, professional SVG drawing with the following requirements:
+
+1. **SVG Structure**:
+   - Use viewBox="0 0 800 600" for standard drawing size
+   - Include proper xmlns="http://www.w3.org/2000/svg"
+   - Use professional coordinate system
+
+2. **Drawing Elements**:
+   - Main structural elements with thick lines (stroke-width="3")
+   - Dimension lines with thinner lines (stroke-width="1")
+   - Clear, readable text (font-size="14" minimum)
+   - Proper spacing and layout
+
+3. **Professional Standards**:
+   - Title block at bottom with drawing info
+   - Proper dimensioning with arrows and values
+   - Clear object lines vs dimension lines
+   - Professional appearance suitable for construction
+
+4. **Technical Accuracy**:
+   - All elements from the specification included
+   - Proper proportions and scaling
+   - Realistic measurements and dimensions
+   - Construction-ready details
+
+Generate ONLY the complete SVG code, no explanations:`;
+
+      const cadSVGContent = await LLMService.generateContent(cadPrompt);
+
+      // Extract SVG from response
+      const svgMatch = cadSVGContent.match(/<svg[\s\S]*?<\/svg>/i);
+      const finalCADSVG = svgMatch ? svgMatch[0] : cadSVGContent;
+
+      // Create final CAD drawing
       const finalDrawing = {
         ...drawing,
-        description: `Professional validated drawing for ${componentName}`,
-        svgContent: correctedDrawingSpec,
-        drawingType: 'svg' as const
+        description: `Professional CAD drawing for ${componentName}`,
+        svgContent: finalCADSVG,
+        drawingType: 'cad' as const
       };
-
-      // Update CAD drawing description with the validated specification
-      setCADDrawingDescription(correctedDrawingSpec);
 
       setDrawings(prev => [finalDrawing, ...prev]);
 
@@ -1076,15 +1110,7 @@ CORRECTED DRAWING SPECIFICATION:`;
                             </svg>
                         </button>
 
-                        <button
-                            onClick={() => setIsCADDrawingOpen(true)}
-                            className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 text-sm"
-                            title="Professional CAD Drawing"
-                        >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zM21 5a2 2 0 00-2-2h-4a2 2 0 00-2 2v12a4 4 0 004 4h4a2 2 0 002-2V5z" />
-                            </svg>
-                        </button>
+
 
                         <button
                             onClick={() => setIsGuidelinesOpen(true)}
@@ -1210,14 +1236,7 @@ CORRECTED DRAWING SPECIFICATION:`;
           onKnowledgeBaseUpdate={handleKnowledgeBaseUpdate}
         />
 
-        {/* CAD Drawing Manager Modal */}
-        <CADDrawingManager
-          isOpen={isCADDrawingOpen}
-          onClose={() => setIsCADDrawingOpen(false)}
-          onDrawingUpdate={handleKnowledgeBaseUpdate}
-          initialTitle={cadDrawingTitle}
-          initialDescription={cadDrawingDescription}
-        />
+
 
 
 

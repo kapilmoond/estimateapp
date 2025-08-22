@@ -11,6 +11,7 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
   const [selectedDrawing, setSelectedDrawing] = useState<TechnicalDrawing | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editedSVG, setEditedSVG] = useState('');
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const handleDeleteDrawing = (drawingId: string) => {
     if (window.confirm('Are you sure you want to delete this drawing?')) {
@@ -170,17 +171,25 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
             </div>
           </div>
 
-          {/* Professional Drawing Viewer */}
+          {/* Professional CAD Drawing Viewer */}
           <div className="bg-white p-4 rounded-lg border border-gray-200 mb-6">
             <div className="flex items-center justify-between mb-4">
-              <h5 className="font-semibold text-gray-700">Professional CAD Drawing</h5>
+              <h5 className="font-semibold text-gray-700">
+                {selectedDrawing.drawingType === 'cad' ? '🏗️ Professional CAD Drawing' : '📐 Technical Drawing'}
+              </h5>
               <div className="flex gap-2">
+                <button
+                  onClick={() => setIsFullscreen(!isFullscreen)}
+                  className="px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 text-sm"
+                >
+                  {isFullscreen ? '📱 Normal View' : '🖥️ Fullscreen'}
+                </button>
                 {!isEditing ? (
                   <button
                     onClick={() => handleEditSVG(selectedDrawing)}
                     className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
                   >
-                    Edit Drawing
+                    ✏️ Edit
                   </button>
                 ) : (
                   <>
@@ -188,13 +197,13 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
                       onClick={handleSaveEdit}
                       className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
                     >
-                      Save Changes
+                      ✅ Save
                     </button>
                     <button
                       onClick={handleCancelEdit}
                       className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
                     >
-                      Cancel
+                      ❌ Cancel
                     </button>
                   </>
                 )}
@@ -212,22 +221,45 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
                 <div className="bg-gray-100 p-4 rounded">
                   <p className="text-sm font-medium text-gray-700 mb-2">Live Preview:</p>
                   <div
-                    className="w-full bg-white border rounded p-4 min-h-[300px] flex items-center justify-center"
+                    className="w-full bg-white border rounded p-4 min-h-[300px] flex items-center justify-center overflow-auto"
                     dangerouslySetInnerHTML={{ __html: editedSVG }}
                   />
                 </div>
               </div>
             ) : (
-              <div className="bg-gray-100 p-4 rounded">
+              <div className={`${isFullscreen ? 'fixed inset-0 z-50 bg-white p-8' : 'bg-gray-50 p-4 rounded'}`}>
+                {isFullscreen && (
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-xl font-bold text-gray-800">{selectedDrawing.title}</h3>
+                    <button
+                      onClick={() => setIsFullscreen(false)}
+                      className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                    >
+                      ✕ Close Fullscreen
+                    </button>
+                  </div>
+                )}
                 <div
-                  className="w-full bg-white border rounded p-4 min-h-[400px] flex items-center justify-center overflow-auto"
-                  style={{ maxHeight: '600px' }}
+                  className={`w-full bg-white border rounded p-4 flex items-center justify-center overflow-auto ${
+                    isFullscreen ? 'h-full' : 'min-h-[500px] max-h-[700px]'
+                  }`}
                 >
                   <div
-                    className="max-w-full max-h-full"
+                    className="w-full h-full flex items-center justify-center"
+                    style={{
+                      minWidth: '800px',
+                      minHeight: '600px'
+                    }}
                     dangerouslySetInnerHTML={{ __html: selectedDrawing.svgContent }}
                   />
                 </div>
+                {!isFullscreen && (
+                  <div className="mt-2 text-center">
+                    <p className="text-sm text-gray-600">
+                      💡 Click "🖥️ Fullscreen" for better viewing experience
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </div>
