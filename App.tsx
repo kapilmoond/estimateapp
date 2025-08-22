@@ -18,10 +18,6 @@ import { GuidelinesManager } from './components/GuidelinesManager';
 import { OutputModeSelector } from './components/OutputModeSelector';
 import { DesignDisplay } from './components/DesignDisplay';
 import { DrawingDisplay } from './components/DrawingDisplay';
-import { GuidelinesManager } from './components/GuidelinesManager';
-import { OutputModeSelector } from './components/OutputModeSelector';
-import { DesignDisplay } from './components/DesignDisplay';
-import { DrawingDisplay } from './components/DrawingDisplay';
 
 type Step = 'scoping' | 'generatingKeywords' | 'approvingKeywords' | 'approvingHsrItems' | 'approvingRefinedHsrItems' | 'generatingEstimate' | 'reviewingEstimate' | 'done';
 type ReferenceDoc = { file: File; text: string };

@@ -1,7 +1,7 @@
 import { ComponentDesign, ChatMessage } from '../types';
+import { GoogleGenAI } from "@google/genai";
 
 const getAiClient = () => {
-  const { GoogleGenAI } = require("@google/genai");
   const apiKey = localStorage.getItem('gemini-api-key');
   if (!apiKey) {
     throw new Error("API key is not configured. Please set it in the application.");
