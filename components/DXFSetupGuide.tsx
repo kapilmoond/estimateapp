@@ -55,23 +55,47 @@ export const DXFSetupGuide: React.FC = () => {
         </p>
         
         <div className="bg-yellow-100 p-3 rounded border">
-          <h4 className="font-semibold mb-2">🚀 Quick Setup (2 minutes):</h4>
-          <ol className="list-decimal list-inside space-y-1 text-xs">
-            <li>Open terminal/command prompt</li>
-            <li>Navigate to the <code className="bg-yellow-200 px-1 rounded">python-backend</code> folder</li>
-            <li>Run: <code className="bg-yellow-200 px-1 rounded">python setup.py</code></li>
-            <li>Keep the server running while using the app</li>
-            <li>Refresh this page to activate professional DXF generation</li>
-          </ol>
+          <h4 className="font-semibold mb-2">🚀 Setup Options:</h4>
+
+          <div className="mb-3">
+            <h5 className="font-medium text-xs mb-1">Option 1: Google Cloud Functions (Recommended)</h5>
+            <ol className="list-decimal list-inside space-y-1 text-xs ml-2">
+              <li>Navigate to <code className="bg-yellow-200 px-1 rounded">python-backend</code> folder</li>
+              <li>Run: <code className="bg-yellow-200 px-1 rounded">python deploy.py</code></li>
+              <li>Copy the function URL and configure it in Backend Configuration above</li>
+              <li>Enjoy serverless, scalable DXF generation with 2M free requests/month!</li>
+            </ol>
+          </div>
+
+          <div>
+            <h5 className="font-medium text-xs mb-1">Option 2: Local Development</h5>
+            <ol className="list-decimal list-inside space-y-1 text-xs ml-2">
+              <li>Run: <code className="bg-yellow-200 px-1 rounded">python setup.py</code></li>
+              <li>Keep the server running while using the app</li>
+              <li>Refresh this page to activate professional DXF generation</li>
+            </ol>
+          </div>
         </div>
 
         <div className="bg-yellow-100 p-3 rounded border">
           <h4 className="font-semibold mb-2">📋 Requirements:</h4>
-          <ul className="list-disc list-inside space-y-1 text-xs">
-            <li>Python 3.8 or higher</li>
-            <li>pip (Python package installer)</li>
-            <li>Internet connection (for installing ezdxf library)</li>
-          </ul>
+          <div className="mb-2">
+            <h5 className="font-medium text-xs mb-1">For Google Cloud Functions:</h5>
+            <ul className="list-disc list-inside space-y-1 text-xs ml-2">
+              <li>Google Cloud account (free tier available)</li>
+              <li>Google Cloud CLI installed</li>
+              <li>Python 3.11+ and pip</li>
+              <li>Gemini API key (optional, for AI features)</li>
+            </ul>
+          </div>
+          <div>
+            <h5 className="font-medium text-xs mb-1">For Local Development:</h5>
+            <ul className="list-disc list-inside space-y-1 text-xs ml-2">
+              <li>Python 3.8 or higher</li>
+              <li>pip (Python package installer)</li>
+              <li>Internet connection (for installing ezdxf library)</li>
+            </ul>
+          </div>
         </div>
 
         <div className="bg-yellow-100 p-3 rounded border">
@@ -80,6 +104,9 @@ export const DXFSetupGuide: React.FC = () => {
             <li><strong>Professional DXF files</strong> using ezdxf library</li>
             <li><strong>CAD software compatibility</strong> (AutoCAD, Revit, etc.)</li>
             <li><strong>Construction industry standards</strong> (layers, dimensions, title blocks)</li>
+            <li><strong>AI-powered geometry generation</strong> with Gemini 2.0 Flash</li>
+            <li><strong>Comprehensive debugging</strong> with 3-checkpoint logging</li>
+            <li><strong>Serverless scalability</strong> with Google Cloud Functions</li>
             <li><strong>Professional quality</strong> suitable for real construction projects</li>
           </ul>
         </div>
@@ -91,20 +118,25 @@ export const DXFSetupGuide: React.FC = () => {
           >
             🔄 Check Again
           </button>
-          <a
-            href="https://github.com/kapilmoond/estimateapp/tree/main/python-backend"
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            onClick={() => window.open('/GOOGLE_CLOUD_FUNCTIONS_SETUP.md', '_blank')}
             className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
           >
-            📖 View Setup Guide
-          </a>
+            📖 Cloud Functions Guide
+          </button>
+          <button
+            onClick={() => window.open('/python-backend/CLOUD_FUNCTIONS_DEPLOYMENT.md', '_blank')}
+            className="px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 text-sm"
+          >
+            🚀 Deployment Guide
+          </button>
         </div>
 
         <div className="mt-3 p-2 bg-yellow-100 rounded border-l-4 border-yellow-400">
           <p className="text-xs">
-            <strong>Note:</strong> Demo mode generates basic DXF files for testing. 
-            For professional construction drawings, the Python backend with ezdxf library is required.
+            <strong>Note:</strong> Demo mode generates basic DXF files for testing.
+            For professional construction drawings with AI-powered geometry generation,
+            deploy the Python backend to Google Cloud Functions (recommended) or run locally.
           </p>
         </div>
       </div>

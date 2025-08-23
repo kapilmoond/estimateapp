@@ -274,21 +274,19 @@ class ProfessionalDXFGenerator:
         """Get DXF content as base64 string for web transfer"""
         if not self.doc:
             raise ValueError("No DXF document created")
-        
-        # Save to temporary file
-        temp_file = tempfile.NamedTemporaryFile(suffix='.dxf', delete=False)
-        try:
-            self.doc.saveas(temp_file.name)
-            
-            # Read file and encode as base64
-            with open(temp_file.name, 'rb') as f:
-                dxf_content = f.read()
-                base64_content = base64.b64encode(dxf_content).decode('utf-8')
-            
-            return base64_content
-        finally:
-            # Clean up temporary file
-            os.unlink(temp_file.name)
+
+        # Use StringIO for ezdxf output
+        import io
+        string_buffer = io.StringIO()
+        self.doc.write(string_buffer)
+        string_buffer.seek(0)
+
+        # Get content and encode as base64
+        dxf_content = string_buffer.getvalue()
+        dxf_bytes = dxf_content.encode('utf-8')
+        base64_content = base64.b64encode(dxf_bytes).decode('utf-8')
+
+        return base64_content
 
 def generate_construction_drawing(drawing_request: Dict[str, Any]) -> Dict[str, Any]:
     """Main function to generate construction drawing from AI specifications"""

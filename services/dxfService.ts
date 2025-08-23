@@ -1,12 +1,14 @@
 /**
  * Professional DXF Drawing Service
  * Replaces SVG system with ezdxf-based professional CAD drawings
+ * Supports both local development and Google Cloud Functions deployment
  */
 
 import { TechnicalDrawing, DXFDrawingData, DXFElement } from '../types';
+import { CloudConfig } from './cloudConfig';
 
 export class DXFService {
-  private static readonly PYTHON_BACKEND_URL = 'http://localhost:5000';
+  private static backendConfig = CloudConfig.getBackendConfig();
   
   /**
    * Generate professional DXF drawing from AI description
@@ -50,11 +52,13 @@ export class DXFService {
     aiGeneratedContent: string
   ): Promise<TechnicalDrawing> {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout for AI generation
+    const timeout = CloudConfig.getTimeout();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
 
     try {
       // First try the new AI-powered endpoint
-      const response = await fetch(`${this.PYTHON_BACKEND_URL}/generate-dxf-endpoint`, {
+      const endpointUrl = CloudConfig.getEndpointUrl('/generate-dxf-endpoint');
+      const response = await fetch(endpointUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -112,10 +116,12 @@ export class DXFService {
     aiGeneratedContent: string
   ): Promise<TechnicalDrawing> {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const timeout = CloudConfig.getTimeout();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
 
     try {
-      const response = await fetch(`${this.PYTHON_BACKEND_URL}/parse-ai-drawing`, {
+      const endpointUrl = CloudConfig.getEndpointUrl('/parse-ai-drawing');
+      const response = await fetch(endpointUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -316,7 +322,8 @@ export class DXFService {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 1000); // 1 second timeout
 
-      const response = await fetch(`${this.PYTHON_BACKEND_URL}/health`, {
+      const endpointUrl = CloudConfig.getEndpointUrl('/health');
+      const response = await fetch(endpointUrl, {
         method: 'GET',
         signal: controller.signal
       });
@@ -334,20 +341,25 @@ export class DXFService {
    */
   static async checkBackendHealth(): Promise<boolean> {
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
-
-      const response = await fetch(`${this.PYTHON_BACKEND_URL}/health`, {
-        method: 'GET',
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
-      return response.ok;
+      const connectivity = await CloudConfig.testConnectivity();
+      return connectivity.available;
     } catch (error) {
-      console.warn('Python backend not available:', error);
+      console.warn('Backend connectivity test failed:', error);
       return false;
     }
+  }
+
+  /**
+   * Get backend status information
+   */
+  static async getBackendStatus(): Promise<{
+    available: boolean;
+    type: string;
+    url: string;
+    responseTime: number;
+    error?: string;
+  }> {
+    return await CloudConfig.testConnectivity();
   }
 
   /**
@@ -357,7 +369,8 @@ export class DXFService {
     console.log('🧪 Testing hardcoded DXF generation...');
 
     try {
-      const response = await fetch(`${this.PYTHON_BACKEND_URL}/test-hardcoded-dxf`, {
+      const endpointUrl = CloudConfig.getEndpointUrl('/test-hardcoded-dxf');
+      const response = await fetch(endpointUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

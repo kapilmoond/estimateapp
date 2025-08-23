@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { TechnicalDrawing } from '../types';
-import { DXFService } from '../services/dxfService';
+import { DXFService, DXFStorageService } from '../services/dxfService';
 import { DrawingService } from '../services/drawingService';
 
 interface DrawingDisplayProps {
@@ -68,7 +68,7 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
 
   const handleDeleteDrawing = (drawingId: string) => {
     if (window.confirm('Are you sure you want to delete this drawing?')) {
-      DrawingService.deleteDrawing(drawingId);
+      DXFStorageService.deleteDrawing(drawingId);
       onDrawingUpdate();
       if (selectedDrawing?.id === drawingId) {
         setSelectedDrawing(null);

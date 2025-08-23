@@ -24,6 +24,7 @@ import { ContextManager } from './components/ContextManager';
 import { LLMProviderSelector } from './components/LLMProviderSelector';
 import { KnowledgeBaseManager } from './components/KnowledgeBaseManager';
 import { KnowledgeBaseDisplay } from './components/KnowledgeBaseDisplay';
+import { BackendConfig } from './components/BackendConfig';
 import { LLMService } from './services/llmService';
 import { RAGService } from './services/ragService';
 
@@ -902,6 +903,9 @@ Generate ONLY the complete SVG code, no explanations:`;
 
               {showProjectData && (
                 <div className="mt-4 space-y-6">
+                  {/* Backend Configuration */}
+                  <BackendConfig />
+
                   {/* Design Display */}
                   <DesignDisplay
                     designs={designs}
