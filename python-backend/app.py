@@ -12,7 +12,8 @@ import tempfile
 import base64
 import io
 import google.generativeai as genai
-from ezdxf import new, units
+import ezdxf
+from ezdxf import units
 from dxf_generator import generate_construction_drawing, ProfessionalDXFGenerator
 
 app = Flask(__name__)
@@ -161,6 +162,7 @@ EZDXF PROFESSIONAL STANDARDS:
 - "2-DIMENSIONS-LINEAR": {{"color": 256, "lineweight": 18}}
 - "3-TEXT-ANNOTATIONS": {{"color": 256, "lineweight": 18}}
 - "4-GRID-LINES": {{"color": 8, "lineweight": 13}}
+- "6-HATCH-CONCRETE": {{"color": 8, "lineweight": 9}}
 
 📐 STRUCTURAL ELEMENT STANDARDS:
 - Columns: Use LWPOLYLINE with "0-STRUCTURAL-COLUMNS" layer
@@ -170,6 +172,15 @@ EZDXF PROFESSIONAL STANDARDS:
 - Dimensions: Use proper dimension entities with "2-DIMENSIONS-LINEAR" layer
 - Text: Use TEXT entities with "3-TEXT-ANNOTATIONS" layer
 - Grid: Use CENTER linetype with "4-GRID-LINES" layer
+- Hatching: Use HATCH entities with "6-HATCH-CONCRETE" layer for concrete areas
+
+⚠️ MANDATORY REQUIREMENTS (MUST INCLUDE):
+- ALL major structural elements MUST have dimensions
+- ALL concrete areas MUST have hatching patterns
+- ALL elements MUST have text labels/annotations
+- Minimum 3-5 dimensions per drawing
+- Minimum 1-2 hatch patterns for concrete elements
+- All dimensions must have proper offset (minimum 5000mm from elements)
 
 🎯 CONSTRUCTION STANDARDS:
 - All dimensions in millimeters (mm)
@@ -177,6 +188,8 @@ EZDXF PROFESSIONAL STANDARDS:
 - Rebar spacing: 100-200mm typical
 - Grid spacing: 3000-9000mm typical
 - Text heights: Title=5mm, Standard=2.5mm, Notes=1.8mm
+- Dimension offset: 5000mm minimum from elements
+- Hatch scale: 10-20 for concrete patterns
 
 Return ONLY a JSON object with this exact structure:
 {{
@@ -185,7 +198,8 @@ Return ONLY a JSON object with this exact structure:
       {{"name": "0-STRUCTURAL-COLUMNS", "color": 2, "lineweight": 35}},
       {{"name": "1-REINFORCEMENT-MAIN", "color": 1, "lineweight": 25}},
       {{"name": "2-DIMENSIONS-LINEAR", "color": 256, "lineweight": 18}},
-      {{"name": "3-TEXT-ANNOTATIONS", "color": 256, "lineweight": 18}}
+      {{"name": "3-TEXT-ANNOTATIONS", "color": 256, "lineweight": 18}},
+      {{"name": "6-HATCH-CONCRETE", "color": 8, "lineweight": 9}}
     ],
     "text_styles": [
       {{"name": "TITLE", "height": 5.0}},
@@ -214,7 +228,7 @@ Return ONLY a JSON object with this exact structure:
     }},
     {{
       "type": "TEXT",
-      "content": "text here",
+      "content": "BEAM B1 - 300x600",
       "position": [x, y],
       "height": 2.5,
       "layer": "3-TEXT-ANNOTATIONS",
@@ -223,22 +237,30 @@ Return ONLY a JSON object with this exact structure:
     {{
       "type": "DIMENSION",
       "dim_type": "LINEAR",
-      "base": [x, y],
+      "base": [x, y_offset_5000],
       "p1": [x1, y1],
       "p2": [x2, y2],
       "layer": "2-DIMENSIONS-LINEAR"
+    }},
+    {{
+      "type": "HATCH",
+      "pattern": "ANSI31",
+      "scale": 15.0,
+      "angle": 45.0,
+      "boundary_points": [[x1, y1], [x2, y2], [x3, y3], [x1, y1]],
+      "layer": "6-HATCH-CONCRETE"
     }}
   ]
 }}
 
-REQUIREMENTS:
-- Include proper layer setup with construction-standard naming
-- Use LWPOLYLINE for structural outlines (better than individual lines)
+CRITICAL REQUIREMENTS:
+- MUST include at least 3 DIMENSION entities for major elements
+- MUST include HATCH entities for all concrete structural elements
+- MUST include TEXT labels for all major structural elements
+- Use proper layer assignment for all entities
 - All coordinates in millimeters
-- All entities MUST have proper layer assignment
-- Include dimensions for all major elements
-- Add text annotations for identification
-- Create complete, professional construction drawing
+- Dimensions must be offset at least 5000mm from structural elements
+- Hatching must use appropriate construction patterns (ANSI31 for concrete)
 - Return valid JSON only, no explanations
 """
 
@@ -265,7 +287,7 @@ REQUIREMENTS:
         print("----------------------------")
 
         # 6. Generate the DXF file with professional setup and enhanced entity handling
-        doc = new("R2010", setup=True)
+        doc = ezdxf.new("R2010", setup=True)
         doc.units = units.MM
         msp = doc.modelspace()
 
@@ -279,8 +301,12 @@ REQUIREMENTS:
             if layer_name and layer_name not in doc.layers:
                 layer = doc.layers.add(layer_name)
                 layer.color = layer_info.get('color', 256)
-                if 'lineweight' in layer_info:
-                    layer.lineweight = layer_info['lineweight']
+                # Note: lineweight may not be supported in all ezdxf versions
+                try:
+                    if 'lineweight' in layer_info:
+                        layer.lineweight = layer_info['lineweight']
+                except AttributeError:
+                    print(f"⚠️ WARNING: Lineweight not supported for layer {layer_name}")
 
         # Setup text styles if provided
         text_styles = setup_info.get('text_styles', [])
@@ -377,6 +403,34 @@ REQUIREMENTS:
                     else:
                         print(f"🟡 WARNING: Unsupported dimension type '{dim_type}'. Skipping.")
 
+                elif entity_type == 'HATCH':
+                    pattern = entity.get('pattern', 'ANSI31')
+                    scale = entity.get('scale', 15.0)
+                    angle = entity.get('angle', 45.0)
+                    boundary_points = entity.get('boundary_points')
+                    
+                    if boundary_points and len(boundary_points) >= 3:
+                        try:
+                            # Create hatch entity
+                            hatch = msp.add_hatch(dxfattribs={'layer': layer})
+                            
+                            # Set pattern properties (simplified for compatibility)
+                            hatch.set_pattern_definition(pattern)
+                            
+                            # Add boundary path
+                            edge_path = hatch.paths.add_edge_path()
+                            # Add points to edge path as lines
+                            for i in range(len(boundary_points)):
+                                start_pt = boundary_points[i]
+                                end_pt = boundary_points[(i + 1) % len(boundary_points)]  # Wrap to first point
+                                edge_path.add_line(start_pt, end_pt)
+                            
+                            print(f"✅ Successfully created HATCH with pattern {pattern}")
+                        except Exception as hatch_error:
+                            print(f"🔴 ERROR creating HATCH: {hatch_error}. Skipping.")
+                    else:
+                        print(f"🔴 WARNING: Skipping malformed HATCH (insufficient boundary points): {entity}")
+
                 else:
                     print(f"🟡 WARNING: Unhandled entity type '{entity_type}'. Skipping.")
 
@@ -460,7 +514,7 @@ def test_hardcoded_dxf():
           ]
         }
 
-        doc = new()
+        doc = ezdxf.new()
         msp = doc.modelspace()
 
         for entity in hardcoded_geometry['entities']:

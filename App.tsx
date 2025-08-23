@@ -544,26 +544,42 @@ for i in range(y_count):
 • All dimensions in millimeters (mm)
 • Text heights: Title=5mm, Standard=2.5mm, Notes=1.8mm
 • All entities MUST be assigned to proper layers (not layer "0")
-• Include complete dimension chains
+• MANDATORY: Include complete dimension chains for ALL major elements
+• MANDATORY: Include hatching patterns for ALL concrete structural elements
+• MANDATORY: Include text annotations for ALL structural elements
 • Add grid system for structural drawings
 • Include reinforcement details for concrete elements
 • Professional layer naming (0-STRUCTURAL-*, 1-REINFORCEMENT-*, etc.)
 • Always end with: doc.saveas("drawing.dxf")
 
+🎯 **HATCHING & MATERIAL REPRESENTATION:**
+# Concrete hatching example
+hatch = msp.add_hatch(dxfattribs={"layer": "6-HATCH-CONCRETE"})
+hatch.set_pattern_definition("ANSI31", scale=15.0, angle=45.0)
+edge_path = hatch.paths.add_edge_path()
+edge_path.add_lwpolyline(concrete_boundary_points)
+
 **INSTRUCTIONS:**
 1. **PRIORITIZE the user's specific instruction above all else**
 2. Use existing designs and context ONLY if they support the user's main instruction
 3. Be flexible - the user may want plans, elevations, sections, details, or any other type of drawing
-4. Generate a comprehensive technical drawing specification that includes:
+4. **MANDATORY: Generate a comprehensive technical drawing specification that MUST include:**
    - Drawing type and views needed
    - Complete Python ezdxf code following professional standards above
-   - All dimensions and measurements
-   - Material specifications
+   - ALL dimensions and measurements (minimum 3-5 dimension entities)
+   - Material specifications with hatching patterns
    - Construction details and annotations
    - Professional drawing standards and symbols
+   - Text labels for all major elements
    - Any special requirements from the user's instruction
 
 5. **Output a detailed technical drawing specification** with complete, professional Python ezdxf code that can be executed directly.
+
+⚠️ **CRITICAL: The drawing specification MUST explicitly mention:**
+   - "Include linear dimensions for [specify elements]"
+   - "Add hatching patterns for concrete areas"
+   - "Label all structural elements with text annotations"
+   - Specific dimension requirements and hatch pattern instructions
 
 Focus on creating exactly what the user requested, using available context to enhance accuracy but never override the user's specific requirements.`;
 

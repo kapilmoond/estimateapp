@@ -286,7 +286,7 @@ ${userInstructions}
 **EZDXF PROFESSIONAL STANDARDS (CRITICAL FOR CODE GENERATION):**
 
 🏗️ **MANDATORY SETUP (Always Include):**
-\`\`\`python
+
 import ezdxf
 from ezdxf import units
 
@@ -319,17 +319,16 @@ doc.styles.add("NOTES").dxf.height = 1.8
 # Dimension style
 dimstyle = doc.dimstyles.add("STRUCTURAL")
 dimstyle.dxf.dimtxt = 2.5; dimstyle.dxf.dimasz = 2.5
-\`\`\`
 
 📐 **STRUCTURAL ELEMENTS (Professional Standards):**
-\`\`\`python
-# Column
+
+# Column function
 def column(center, width, height):
     x, y = center; hw, hh = width/2, height/2
     points = [(x-hw,y-hh), (x+hw,y-hh), (x+hw,y+hh), (x-hw,y+hh), (x-hw,y-hh)]
     return msp.add_lwpolyline(points, dxfattribs={"layer": "0-STRUCTURAL-COLUMNS", "closed": True})
 
-# Beam
+# Beam function
 def beam(start, end, width):
     import math
     dx, dy = end[0]-start[0], end[1]-start[1]
@@ -337,32 +336,31 @@ def beam(start, end, width):
     px, py = -math.sin(angle)*width/2, math.cos(angle)*width/2
     points = [(start[0]+px,start[1]+py), (end[0]+px,end[1]+py), (end[0]-px,end[1]-py), (start[0]-px,start[1]-py)]
     return msp.add_lwpolyline(points, dxfattribs={"layer": "0-STRUCTURAL-BEAMS", "closed": True})
-\`\`\`
 
 🔧 **REINFORCEMENT (Professional Details):**
-\`\`\`python
+
 # Main reinforcement bars
 for i in range(num_bars):
     offset = (i - num_bars/2) * 50  # 50mm spacing
     msp.add_line((start[0], start[1]+offset), (end[0], end[1]+offset), 
                 dxfattribs={"layer": "1-REINFORCEMENT-MAIN"})
-\`\`\`
 
 📏 **DIMENSIONS & TEXT (Professional Standards):**
-\`\`\`python
+
 # Linear dimension
 dim = msp.add_linear_dim(
     base=(start[0], start[1] + 5000),  # 5000mm offset above
     p1=start, p2=end, dimstyle="STRUCTURAL",
     dxfattribs={"layer": "2-DIMENSIONS-LINEAR"})
 dim.render()
-\`\`\`
 
 ⚙️ **CRITICAL REQUIREMENTS:**
 • All dimensions in millimeters (mm)
 • Text heights: Title=5mm, Standard=2.5mm, Notes=1.8mm
 • All entities MUST be assigned to proper layers (not layer "0")
-• Include complete dimension chains
+• MANDATORY: Include complete dimension chains for ALL major elements
+• MANDATORY: Include hatching patterns for ALL concrete structural elements
+• MANDATORY: Include text annotations for ALL structural elements
 • Professional layer naming (0-STRUCTURAL-*, 1-REINFORCEMENT-*, etc.)
 • Always end with: doc.saveas("drawing.dxf")
 
@@ -370,8 +368,18 @@ dim.render()
 1. **PRIORITIZE the user's modification instructions above all else**
 2. Maintain the overall structure and professional standards of the original drawing
 3. Apply the requested modifications while keeping the drawing complete and professional
-4. Generate a comprehensive modified technical drawing specification with complete Python ezdxf code
-5. **Output a detailed technical drawing specification** with complete, professional Python ezdxf code that incorporates the user's requested changes.
+4. **MANDATORY: Ensure the modified drawing includes:**
+   - ALL dimensions for major elements (minimum 3-5 dimension entities)
+   - Hatching patterns for concrete areas using ANSI31 or similar
+   - Text labels for all major structural elements
+   - Proper layer organization and professional standards
+5. Generate a comprehensive modified technical drawing specification with complete Python ezdxf code
+6. **Output a detailed technical drawing specification** with complete, professional Python ezdxf code that incorporates the user's requested changes.
+
+⚠️ **CRITICAL: The modified drawing specification MUST explicitly mention:**
+   - "Maintain/add linear dimensions for [specify elements]"
+   - "Include/update hatching patterns for concrete areas"
+   - "Update text annotations for modified elements"
 
 Focus on implementing exactly what the user requested for modifications while maintaining professional CAD standards.`;
 
