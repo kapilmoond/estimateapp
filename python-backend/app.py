@@ -152,7 +152,105 @@ You are a professional CAD engineer with expertise in Python ezdxf library. Conv
 
 DESCRIPTION: {combined_description}
 
-EZDXF PROFESSIONAL STANDARDS:
+EZDXF DIMENSION MASTERY FOR PROFESSIONAL CONSTRUCTION DRAWINGS:
+
+🏗️ CRITICAL DIMENSION SETUP (FIXES EXTENSION LINE ISSUES):
+
+# MANDATORY: R2010+ with setup=True for proper dimension rendering
+doc = ezdxf.new("R2010", setup=True)  # setup=True creates default dimension styles
+doc.units = units.MM  # MANDATORY for construction
+msp = doc.modelspace()
+
+# COMPLETE DIMENSION STYLE CONFIGURATION (ENSURES EXTENSION LINES)
+def setup_dimension_style_with_extension_lines(doc):
+    if 'STRUCTURAL' in doc.dimstyles:
+        del doc.dimstyles['STRUCTURAL']
+    
+    dimstyle = doc.dimstyles.add('STRUCTURAL')
+    
+    # EXTENSION LINE CONFIGURATION (CRITICAL FOR EXTENSION LINE VISIBILITY)
+    dimstyle.dxf.dimexo = 0.625      # Extension line offset from origin points
+    dimstyle.dxf.dimexe = 1.25       # Extension beyond dimension line
+    dimstyle.dxf.dimse1 = 0          # Show first extension line (0=show, 1=hide)
+    dimstyle.dxf.dimse2 = 0          # Show second extension line (0=show, 1=hide)
+    dimstyle.dxf.dimdle = 0          # Dimension line extension beyond ext lines
+    
+    # TEXT POSITIONING (AFFECTS EXTENSION LINE VISIBILITY)
+    dimstyle.dxf.dimtxt = 2.5        # Text height
+    dimstyle.dxf.dimgap = 0.625      # Gap between text and dimension line
+    dimstyle.dxf.dimtad = 1          # Text above line (CRITICAL for space)
+    dimstyle.dxf.dimjust = 0         # Center text horizontally
+    
+    # ARROW CONFIGURATION
+    dimstyle.dxf.dimasz = 2.5        # Arrow size
+    dimstyle.dxf.dimblk = "ARCHTICK" # Professional arrow type
+    
+    # SCALE AND MEASUREMENT
+    dimstyle.dxf.dimscale = 1.0      # Overall scale factor
+    dimstyle.dxf.dimlfac = 1.0       # Linear factor (actual measurement)
+    dimstyle.dxf.dimdec = 0          # No decimal places for whole numbers
+    dimstyle.dxf.dimzin = 8          # Suppress trailing zeros
+    dimstyle.dxf.dimlunit = 2        # Decimal units
+    
+    return dimstyle
+
+# PROPER LINEAR DIMENSION CREATION WITH EXTENSION LINES
+def create_dimension_with_extension_lines(msp, p1, p2, offset_distance=5000):
+    # Calculate proper base point for dimension line
+    base_y = max(p1[1], p2[1]) + offset_distance
+    base_x = (p1[0] + p2[0]) / 2
+    base_point = [base_x, base_y]
+    
+    # Create dimension entity
+    dim = msp.add_linear_dim(
+        base=base_point,           # Dimension line location
+        p1=p1,                    # First extension line starts here
+        p2=p2,                    # Second extension line starts here
+        dimstyle="STRUCTURAL",     # Use configured style
+        dxfattribs={{'layer': '2-DIMENSIONS-LINEAR'}}
+    )
+    
+    # CRITICAL: render() creates the actual geometric representation with extension lines
+    dim.render()
+    
+    return dim
+
+🎯 MANDATORY DIMENSION REQUIREMENTS FOR ALL DRAWINGS:
+- MINIMUM 3-5 dimension entities per drawing
+- Each dimension MUST have offset_distance >= 3000mm from elements
+- ALL dimensions MUST call .render() after creation
+- Extension lines MUST be visible (dimse1=0, dimse2=0)
+- Use "2-DIMENSIONS-LINEAR" layer for all linear dimensions
+- Text MUST be above dimension line (dimtad=1)
+
+📐 STRUCTURAL ELEMENTS WITH PROPER DIMENSIONS:
+
+# Column with dimensions
+def column_with_dimensions(center, width, height):
+    x, y = center
+    hw, hh = width/2, height/2
+    points = [(x-hw,y-hh), (x+hw,y-hh), (x+hw,y+hh), (x-hw,y+hh), (x-hw,y-hh)]
+    column = msp.add_lwpolyline(points, dxfattribs={{"layer": "0-STRUCTURAL-COLUMNS", "closed": True}})
+    
+    # MANDATORY: Add width dimension with extension lines
+    create_dimension_with_extension_lines(msp, [x-hw, y-hh-1000], [x+hw, y-hh-1000], 2000)
+    # MANDATORY: Add height dimension with extension lines  
+    create_dimension_with_extension_lines(msp, [x+hw+1000, y-hh], [x+hw+1000, y+hh], 2000)
+    
+    return column
+
+# Beam with dimensions
+def beam_with_dimensions(start, end, width):
+    dx, dy = end[0]-start[0], end[1]-start[1]
+    angle = math.atan2(dy, dx)
+    px, py = -math.sin(angle)*width/2, math.cos(angle)*width/2
+    points = [(start[0]+px,start[1]+py), (end[0]+px,end[1]+py), (end[0]-px,end[1]-py), (start[0]-px,start[1]-py)]
+    beam = msp.add_lwpolyline(points, dxfattribs={{"layer": "0-STRUCTURAL-BEAMS", "closed": True}})
+    
+    # MANDATORY: Add length dimension with extension lines
+    create_dimension_with_extension_lines(msp, start, end, 3000)
+    
+    return beam
 
 🏗️ MANDATORY CONSTRUCTION LAYERS:
 - "0-STRUCTURAL-FOUNDATION": {{"color": 1, "lineweight": 50}}
@@ -316,40 +414,58 @@ CRITICAL REQUIREMENTS:
                 style = doc.styles.add(style_name)
                 style.dxf.height = style_info.get('height', 2.5)
 
-        # Setup dimension style
+        # Setup dimension style with proper extension line configuration
         if 'STRUCTURAL' not in doc.dimstyles:
-            print("🗏 Setting up STRUCTURAL dimension style...")
+            print("🗏 Setting up STRUCTURAL dimension style with extension lines...")
             dimstyle = doc.dimstyles.add('STRUCTURAL')
             
-            # Text properties
+            # EXTENSION LINE CONFIGURATION (CRITICAL FOR EXTENSION LINE VISIBILITY)
+            dimstyle.dxf.dimexo = 0.625      # Extension line offset from origin points
+            dimstyle.dxf.dimexe = 1.25       # Extension beyond dimension line (CRITICAL)
+            dimstyle.dxf.dimse1 = 0          # Show first extension line (0=show, 1=hide)
+            dimstyle.dxf.dimse2 = 0          # Show second extension line (0=show, 1=hide) 
+            dimstyle.dxf.dimdle = 0          # Dimension line extension beyond ext lines
+            
+            # TEXT POSITIONING (AFFECTS EXTENSION LINE VISIBILITY)
             dimstyle.dxf.dimtxt = 2.5        # Text height
+            dimstyle.dxf.dimgap = 0.625      # Gap between text and dimension line
+            dimstyle.dxf.dimtad = 1          # Text above line (CRITICAL for space)
+            dimstyle.dxf.dimjust = 0         # Center text horizontally
+            
+            # ARROW CONFIGURATION
             dimstyle.dxf.dimasz = 2.5        # Arrow size
-            dimstyle.dxf.dimexe = 1.25       # Extension line extension
-            dimstyle.dxf.dimexo = 0.625      # Extension line offset
-            dimstyle.dxf.dimgap = 0.625      # Text gap
-            dimstyle.dxf.dimtad = 1          # Text above line
+            dimstyle.dxf.dimblk = "ARCHTICK" # Professional arrow type (or "" for solid arrow)
             
-            # Additional dimension properties for better rendering
-            dimstyle.dxf.dimdec = 0          # No decimals for whole numbers
-            dimstyle.dxf.dimunit = 2         # Decimal units
-            dimstyle.dxf.dimdsep = '.'       # Decimal separator
-            dimstyle.dxf.dimtxsty = 'STANDARD'  # Text style
-            dimstyle.dxf.dimlunit = 2        # Linear units format
-            
-            # Extension line properties
-            dimstyle.dxf.dimse1 = 0          # First extension line on
-            dimstyle.dxf.dimse2 = 0          # Second extension line on
-            dimstyle.dxf.dimdle = 0          # Dimension line extension
-            
-            # Scale factor
+            # SCALE AND MEASUREMENT
             dimstyle.dxf.dimscale = 1.0      # Overall scale factor
+            dimstyle.dxf.dimlfac = 1.0       # Linear factor (actual measurement)
+            dimstyle.dxf.dimdec = 0          # No decimal places for whole numbers
+            dimstyle.dxf.dimzin = 8          # Suppress trailing zeros
+            dimstyle.dxf.dimlunit = 2        # Decimal units
+            dimstyle.dxf.dimunit = 2         # Unit format (2 = decimal)
             
-            print("✅ STRUCTURAL dimension style configured successfully")
+            # TOLERANCE AND LIMITS
+            dimstyle.dxf.dimtol = 0          # No tolerance
+            dimstyle.dxf.dimlim = 0          # No limits
+            
+            # COLOR CONFIGURATION
+            dimstyle.dxf.dimclrd = 256       # Dimension line color (bylayer)
+            dimstyle.dxf.dimclre = 256       # Extension line color (bylayer)
+            dimstyle.dxf.dimclrt = 256       # Text color (bylayer)
+            
+            print("✅ STRUCTURAL dimension style configured for extension lines")
+            print(f"  Extension line offset (dimexo): {dimstyle.dxf.dimexo}mm")
+            print(f"  Extension line beyond (dimexe): {dimstyle.dxf.dimexe}mm")
+            print(f"  Extension line 1 visible (dimse1=0): {dimstyle.dxf.dimse1 == 0}")
+            print(f"  Extension line 2 visible (dimse2=0): {dimstyle.dxf.dimse2 == 0}")
             print(f"  Text height: {dimstyle.dxf.dimtxt}mm")
             print(f"  Arrow size: {dimstyle.dxf.dimasz}mm")
-            print(f"  Extension offset: {dimstyle.dxf.dimexo}mm")
         else:
             print("🗏 STRUCTURAL dimension style already exists")
+            # Verify existing style has proper extension line settings
+            existing_style = doc.dimstyles.get('STRUCTURAL')
+            print(f"  Existing extension settings: dimexo={existing_style.dxf.dimexo}, dimexe={existing_style.dxf.dimexe}")
+            print(f"  Existing extension visibility: dimse1={existing_style.dxf.dimse1}, dimse2={existing_style.dxf.dimse2}")
 
         entities = geometry_data.get('entities', [])
         if not entities:
@@ -429,56 +545,89 @@ CRITICAL REQUIREMENTS:
                         p1 = entity.get('p1')
                         p2 = entity.get('p2')
                         
-                        print(f"🗏 Processing LINEAR DIMENSION:")
-                        print(f"  Base: {base}")
-                        print(f"  P1: {p1}")
-                        print(f"  P2: {p2}")
+                        print(f"🗏 Processing LINEAR DIMENSION with extension lines:")
+                        print(f"  Base point (dimension line): {base}")
+                        print(f"  P1 (first extension line start): {p1}")
+                        print(f"  P2 (second extension line start): {p2}")
                         print(f"  Layer: {layer}")
                         
                         if base and p1 and p2:
+                            # Validate dimension geometry for proper extension lines
+                            distance = math.sqrt((p2[0] - p1[0])**2 + (p2[1] - p1[1])**2)
+                            if distance < 100:  # Less than 100mm - too small for meaningful dimension
+                                print(f"⚠️ WARNING: Dimension distance too small ({distance:.1f}mm) - skipping")
+                                entity_summary['errors'] += 1
+                                continue
+                            
+                            # Calculate proper offset for extension line visibility
+                            offset_distance = abs(base[1] - max(p1[1], p2[1]))
+                            if offset_distance < 1000:  # Less than 1000mm offset
+                                print(f"⚠️ WARNING: Dimension offset too small ({offset_distance:.1f}mm) for clear extension lines")
+                                # Adjust base point for better visibility
+                                adjusted_base = [base[0], max(p1[1], p2[1]) + 3000]
+                                print(f"  Adjusting base to: {adjusted_base} (3000mm offset)")
+                                base = adjusted_base
+                            
                             try:
                                 # Create linear dimension with enhanced error handling
+                                print(f"  Creating dimension: {distance:.0f}mm with {offset_distance:.0f}mm offset")
+                                
                                 dim = msp.add_linear_dim(
                                     base=base, p1=p1, p2=p2,
                                     dimstyle='STRUCTURAL',
                                     dxfattribs={'layer': layer}
                                 )
                                 
-                                # Always call render() to generate the dimension geometry
+                                # CRITICAL: Always call render() to generate extension lines
                                 dim.render()
                                 
-                                # Calculate dimension value for verification
-                                import math
-                                distance = math.sqrt((p2[0] - p1[0])**2 + (p2[1] - p1[1])**2)
-                                
-                                print(f"✅ Successfully created LINEAR DIMENSION:")
-                                print(f"  Distance: {distance:.0f}mm")
-                                print(f"  Base offset: {base[1] - max(p1[1], p2[1]):.0f}mm")
-                                print(f"  Dimension style: STRUCTURAL")
+                                # Verify dimension was created with geometry
+                                geom_block = dim.get_geometry_block()
+                                if geom_block:
+                                    block_entities = list(geom_block)
+                                    print(f"✅ Dimension rendered successfully:")
+                                    print(f"  Measurement: {distance:.0f}mm")
+                                    print(f"  Geometry block: {dim.dxf.geometry}")
+                                    print(f"  Block contains {len(block_entities)} entities (lines, text, arrows)")
+                                    
+                                    # Count extension lines in the block
+                                    lines = [e for e in block_entities if e.dxftype() == 'LINE']
+                                    print(f"  Lines in block (including extension lines): {len(lines)}")
+                                    
+                                    entity_summary['dimensions_created'] += 1
+                                else:
+                                    print(f"⚠️ WARNING: Dimension created but no geometry block found")
+                                    print(f"  This means extension lines may not be visible")
+                                    entity_summary['errors'] += 1
                                 
                             except Exception as dim_error:
                                 print(f"🔴 ERROR creating LINEAR DIMENSION: {dim_error}")
                                 print(f"  This may be due to invalid coordinates or dimstyle issues")
                                 print(f"  Attempting fallback dimension creation...")
                                 
-                                # Fallback: try with simpler parameters
+                                # Fallback: try with default dimstyle
                                 try:
                                     dim = msp.add_linear_dim(
                                         base=base, p1=p1, p2=p2,
-                                        dxfattribs={'layer': layer}  # Without dimstyle
+                                        dxfattribs={'layer': layer}  # No dimstyle
                                     )
                                     dim.render()
-                                    print(f"✅ Fallback dimension created successfully")
+                                    
+                                    if dim.get_geometry_block():
+                                        print(f"✅ Fallback dimension created successfully")
+                                        entity_summary['dimensions_created'] += 1
+                                    else:
+                                        print(f"⚠️ Fallback dimension has no geometry")
+                                        entity_summary['errors'] += 1
+                                        
                                 except Exception as fallback_error:
                                     print(f"🔴 Fallback dimension also failed: {fallback_error}")
                                     entity_summary['errors'] += 1
-                                else:
-                                    entity_summary['dimensions_created'] += 1
-                            else:
-                                entity_summary['dimensions_created'] += 1
                         else:
                             print(f"🔴 WARNING: Skipping malformed LINEAR DIMENSION:")
                             print(f"  Missing required parameters: base={bool(base)}, p1={bool(p1)}, p2={bool(p2)}")
+                            if base and p1 and p2:
+                                print(f"  Base: {base}, P1: {p1}, P2: {p2}")
                             print(f"  Entity data: {entity}")
                             entity_summary['errors'] += 1
                     else:
