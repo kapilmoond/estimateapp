@@ -415,8 +415,8 @@ const App: React.FC = () => {
         enhancedUserInput = enhancedPrompt;
       }
 
-      // Create flexible, context-aware prompt for the LLM
-      const flexibleDrawingPrompt = `You are a professional construction engineer and technical draftsman. You need to create a technical drawing based on the user's specific requirements.
+      // Create flexible, context-aware prompt for the LLM with comprehensive ezdxf knowledge
+      const flexibleDrawingPrompt = `You are a professional construction engineer and technical draftsman with expertise in Python ezdxf library for creating professional DXF files. You need to create a technical drawing based on the user's specific requirements.
 
 **PRIMARY INSTRUCTION (MUST FOLLOW):**
 ${enhancedUserInput}
@@ -436,19 +436,134 @@ ${guidelinesText}
 **REFERENCE DOCUMENTS:**
 ${referenceText}
 
+**EZDXF PROFESSIONAL STANDARDS (CRITICAL FOR CODE GENERATION):**
+
+🏗️ **MANDATORY SETUP (Always Include):**
+
+import ezdxf
+from ezdxf import units
+
+# Professional document setup
+doc = ezdxf.new("R2010", setup=True)
+doc.units = units.MM
+msp = doc.modelspace()
+
+# Create standard construction layers
+layers = {
+    "0-STRUCTURAL-FOUNDATION": {"color": 1, "lineweight": 50},
+    "0-STRUCTURAL-COLUMNS": {"color": 2, "lineweight": 35},
+    "0-STRUCTURAL-BEAMS": {"color": 3, "lineweight": 35},
+    "1-REINFORCEMENT-MAIN": {"color": 1, "lineweight": 25},
+    "2-DIMENSIONS-LINEAR": {"color": 256, "lineweight": 18},
+    "3-TEXT-ANNOTATIONS": {"color": 256, "lineweight": 18},
+    "4-GRID-LINES": {"color": 8, "lineweight": 13}
+}
+
+for name, props in layers.items():
+    layer = doc.layers.add(name)
+    layer.color = props["color"]
+    layer.lineweight = props["lineweight"]
+
+# Text styles
+doc.styles.add("TITLE").dxf.height = 5.0
+doc.styles.add("STANDARD").dxf.height = 2.5
+doc.styles.add("NOTES").dxf.height = 1.8
+
+# Dimension style
+dimstyle = doc.dimstyles.add("STRUCTURAL")
+dimstyle.dxf.dimtxt = 2.5; dimstyle.dxf.dimasz = 2.5
+
+📐 **STRUCTURAL ELEMENTS (Professional Standards):**
+
+# Column function
+def column(center, width, height):
+    x, y = center; hw, hh = width/2, height/2
+    points = [(x-hw,y-hh), (x+hw,y-hh), (x+hw,y+hh), (x-hw,y+hh), (x-hw,y-hh)]
+    return msp.add_lwpolyline(points, dxfattribs={"layer": "0-STRUCTURAL-COLUMNS", "closed": True})
+
+# Beam function
+def beam(start, end, width):
+    import math
+    dx, dy = end[0]-start[0], end[1]-start[1]
+    angle = math.atan2(dy, dx)
+    px, py = -math.sin(angle)*width/2, math.cos(angle)*width/2
+    points = [(start[0]+px,start[1]+py), (end[0]+px,end[1]+py), (end[0]-px,end[1]-py), (start[0]-px,start[1]-py)]
+    return msp.add_lwpolyline(points, dxfattribs={"layer": "0-STRUCTURAL-BEAMS", "closed": True})
+
+# Foundation function
+def foundation(center, width, length):
+    x, y = center; hw, hl = width/2, length/2
+    points = [(x-hw,y-hl), (x+hw,y-hl), (x+hw,y+hl), (x-hw,y+hl), (x-hw,y-hl)]
+    return msp.add_lwpolyline(points, dxfattribs={"layer": "0-STRUCTURAL-FOUNDATION", "closed": True})
+
+🔧 **REINFORCEMENT (Professional Details):**
+
+# Main reinforcement bars
+for i in range(num_bars):
+    offset = (i - num_bars/2) * 50  # 50mm spacing
+    msp.add_line((start[0], start[1]+offset), (end[0], end[1]+offset), 
+                dxfattribs={"layer": "1-REINFORCEMENT-MAIN"})
+
+# Stirrups every 200mm
+import math
+length = math.sqrt((end[0]-start[0])**2 + (end[1]-start[1])**2)
+for i in range(0, int(length), 200):
+    t = i/length
+    x = start[0] + t*(end[0]-start[0])
+    y = start[1] + t*(end[1]-start[1])
+    stirrup_pts = [(x-width/2, y-50), (x+width/2, y-50), (x+width/2, y+50), (x-width/2, y+50), (x-width/2, y-50)]
+    msp.add_lwpolyline(stirrup_pts, dxfattribs={"layer": "1-REINFORCEMENT-STIRRUPS"})
+
+📏 **DIMENSIONS & TEXT (Professional Standards):**
+
+# Linear dimension
+dim = msp.add_linear_dim(
+    base=(start[0], start[1] + 5000),  # 5000mm offset above
+    p1=start, p2=end, dimstyle="STRUCTURAL",
+    dxfattribs={"layer": "2-DIMENSIONS-LINEAR"})
+dim.render()
+
+# Text annotation
+msp.add_text("TEXT HERE", dxfattribs={"layer": "3-TEXT-ANNOTATIONS", "style": "STANDARD"}).set_placement(position)
+
+🏛️ **GRID SYSTEM (Professional Layout):**
+
+# Vertical lines (A,B,C...)
+for i in range(x_count):
+    x = i * x_spacing
+    msp.add_line((x,0), (x, (y_count-1)*y_spacing), dxfattribs={"layer": "4-GRID-LINES", "linetype": "CENTER"})
+    msp.add_text(chr(65+i), dxfattribs={"layer": "3-TEXT-ANNOTATIONS"}).set_placement((x, -2500))
+
+# Horizontal lines (1,2,3...)
+for i in range(y_count):
+    y = i * y_spacing
+    msp.add_line((0,y), ((x_count-1)*x_spacing, y), dxfattribs={"layer": "4-GRID-LINES", "linetype": "CENTER"})
+    msp.add_text(str(i+1), dxfattribs={"layer": "3-TEXT-ANNOTATIONS"}).set_placement((-2500, y))
+
+⚙️ **CRITICAL REQUIREMENTS:**
+• All dimensions in millimeters (mm)
+• Text heights: Title=5mm, Standard=2.5mm, Notes=1.8mm
+• All entities MUST be assigned to proper layers (not layer "0")
+• Include complete dimension chains
+• Add grid system for structural drawings
+• Include reinforcement details for concrete elements
+• Professional layer naming (0-STRUCTURAL-*, 1-REINFORCEMENT-*, etc.)
+• Always end with: doc.saveas("drawing.dxf")
+
 **INSTRUCTIONS:**
 1. **PRIORITIZE the user's specific instruction above all else**
 2. Use existing designs and context ONLY if they support the user's main instruction
 3. Be flexible - the user may want plans, elevations, sections, details, or any other type of drawing
-4. Generate a comprehensive technical drawing description that includes:
+4. Generate a comprehensive technical drawing specification that includes:
    - Drawing type and views needed
+   - Complete Python ezdxf code following professional standards above
    - All dimensions and measurements
    - Material specifications
    - Construction details and annotations
    - Professional drawing standards and symbols
    - Any special requirements from the user's instruction
 
-5. **Output a detailed technical drawing specification** that can be used to generate a professional DXF file.
+5. **Output a detailed technical drawing specification** with complete, professional Python ezdxf code that can be executed directly.
 
 Focus on creating exactly what the user requested, using available context to enhance accuracy but never override the user's specific requirements.`;
 

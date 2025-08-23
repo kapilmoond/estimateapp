@@ -12,7 +12,7 @@ import tempfile
 import base64
 import io
 import google.generativeai as genai
-from ezdxf import new
+from ezdxf import new, units
 from dxf_generator import generate_construction_drawing, ProfessionalDXFGenerator
 
 app = Flask(__name__)
@@ -144,42 +144,102 @@ def generate_dxf_endpoint():
                 'error': 'Gemini AI model not configured. Please set GEMINI_API_KEY environment variable.'
             }), 500
 
-        # 4. Create AI prompt for geometry generation
+        # 4. Create enhanced AI prompt with comprehensive ezdxf knowledge
         combined_description = f"{description}\n{user_requirements}".strip()
         prompt = f"""
-You are a professional CAD engineer. Convert this construction drawing description into precise DXF geometry data.
+You are a professional CAD engineer with expertise in Python ezdxf library. Convert this construction drawing description into a complete, professional DXF drawing using proper ezdxf standards.
 
 DESCRIPTION: {combined_description}
 
+EZDXF PROFESSIONAL STANDARDS:
+
+🏗️ MANDATORY CONSTRUCTION LAYERS:
+- "0-STRUCTURAL-FOUNDATION": {{"color": 1, "lineweight": 50}}
+- "0-STRUCTURAL-COLUMNS": {{"color": 2, "lineweight": 35}}
+- "0-STRUCTURAL-BEAMS": {{"color": 3, "lineweight": 35}}
+- "1-REINFORCEMENT-MAIN": {{"color": 1, "lineweight": 25}}
+- "2-DIMENSIONS-LINEAR": {{"color": 256, "lineweight": 18}}
+- "3-TEXT-ANNOTATIONS": {{"color": 256, "lineweight": 18}}
+- "4-GRID-LINES": {{"color": 8, "lineweight": 13}}
+
+📐 STRUCTURAL ELEMENT STANDARDS:
+- Columns: Use LWPOLYLINE with "0-STRUCTURAL-COLUMNS" layer
+- Beams: Use LWPOLYLINE with "0-STRUCTURAL-BEAMS" layer
+- Foundations: Use LWPOLYLINE with "0-STRUCTURAL-FOUNDATION" layer
+- Reinforcement: Use LINE entities with "1-REINFORCEMENT-MAIN" layer
+- Dimensions: Use proper dimension entities with "2-DIMENSIONS-LINEAR" layer
+- Text: Use TEXT entities with "3-TEXT-ANNOTATIONS" layer
+- Grid: Use CENTER linetype with "4-GRID-LINES" layer
+
+🎯 CONSTRUCTION STANDARDS:
+- All dimensions in millimeters (mm)
+- Standard concrete cover: 25-50mm
+- Rebar spacing: 100-200mm typical
+- Grid spacing: 3000-9000mm typical
+- Text heights: Title=5mm, Standard=2.5mm, Notes=1.8mm
+
 Return ONLY a JSON object with this exact structure:
 {{
+  "setup": {{
+    "layers": [
+      {{"name": "0-STRUCTURAL-COLUMNS", "color": 2, "lineweight": 35}},
+      {{"name": "1-REINFORCEMENT-MAIN", "color": 1, "lineweight": 25}},
+      {{"name": "2-DIMENSIONS-LINEAR", "color": 256, "lineweight": 18}},
+      {{"name": "3-TEXT-ANNOTATIONS", "color": 256, "lineweight": 18}}
+    ],
+    "text_styles": [
+      {{"name": "TITLE", "height": 5.0}},
+      {{"name": "STANDARD", "height": 2.5}},
+      {{"name": "NOTES", "height": 1.8}}
+    ]
+  }},
   "entities": [
+    {{
+      "type": "LWPOLYLINE",
+      "points": [[x1, y1], [x2, y2], [x3, y3], [x1, y1]],
+      "layer": "0-STRUCTURAL-COLUMNS",
+      "closed": true
+    }},
     {{
       "type": "LINE",
       "start_point": [x1, y1],
-      "end_point": [x2, y2]
+      "end_point": [x2, y2],
+      "layer": "1-REINFORCEMENT-MAIN"
     }},
     {{
       "type": "CIRCLE",
       "center": [x, y],
-      "radius": number
+      "radius": number,
+      "layer": "0-STRUCTURAL-COLUMNS"
     }},
     {{
-      "type": "ARC",
-      "center": [x, y],
-      "radius": number,
-      "start_angle": degrees,
-      "end_angle": degrees
+      "type": "TEXT",
+      "content": "text here",
+      "position": [x, y],
+      "height": 2.5,
+      "layer": "3-TEXT-ANNOTATIONS",
+      "style": "STANDARD"
+    }},
+    {{
+      "type": "DIMENSION",
+      "dim_type": "LINEAR",
+      "base": [x, y],
+      "p1": [x1, y1],
+      "p2": [x2, y2],
+      "layer": "2-DIMENSIONS-LINEAR"
     }}
   ]
 }}
 
 REQUIREMENTS:
-- Use only LINE, CIRCLE, ARC entities
+- Include proper layer setup with construction-standard naming
+- Use LWPOLYLINE for structural outlines (better than individual lines)
 - All coordinates in millimeters
-- All angles in degrees
+- All entities MUST have proper layer assignment
+- Include dimensions for all major elements
+- Add text annotations for identification
+- Create complete, professional construction drawing
 - Return valid JSON only, no explanations
-- Create a professional technical drawing layout
 """
 
         # 5. Call the AI model and parse its response
@@ -204,9 +264,41 @@ REQUIREMENTS:
         print(geometry_data)
         print("----------------------------")
 
-        # 6. Generate the DXF file in memory with robust error handling
-        doc = new()
+        # 6. Generate the DXF file with professional setup and enhanced entity handling
+        doc = new("R2010", setup=True)
+        doc.units = units.MM
         msp = doc.modelspace()
+
+        # Setup professional layers if provided
+        setup_info = geometry_data.get('setup', {})
+        layers_info = setup_info.get('layers', [])
+        
+        # Create layers with professional properties
+        for layer_info in layers_info:
+            layer_name = layer_info.get('name')
+            if layer_name and layer_name not in doc.layers:
+                layer = doc.layers.add(layer_name)
+                layer.color = layer_info.get('color', 256)
+                if 'lineweight' in layer_info:
+                    layer.lineweight = layer_info['lineweight']
+
+        # Setup text styles if provided
+        text_styles = setup_info.get('text_styles', [])
+        for style_info in text_styles:
+            style_name = style_info.get('name')
+            if style_name and style_name not in doc.styles:
+                style = doc.styles.add(style_name)
+                style.dxf.height = style_info.get('height', 2.5)
+
+        # Setup dimension style
+        if 'STRUCTURAL' not in doc.dimstyles:
+            dimstyle = doc.dimstyles.add('STRUCTURAL')
+            dimstyle.dxf.dimtxt = 2.5
+            dimstyle.dxf.dimasz = 2.5
+            dimstyle.dxf.dimexe = 1.25
+            dimstyle.dxf.dimexo = 0.625
+            dimstyle.dxf.dimgap = 0.625
+            dimstyle.dxf.dimtad = 1
 
         entities = geometry_data.get('entities', [])
         if not entities:
@@ -214,23 +306,31 @@ REQUIREMENTS:
 
         for entity in entities:
             entity_type = entity.get('type')
-            print(f"➡️ Processing entity: {entity_type}")
+            layer = entity.get('layer', '0')
+            print(f"➡️ Processing entity: {entity_type} on layer: {layer}")
 
             try:
                 if entity_type == 'LINE':
                     start = entity.get('start_point')
                     end = entity.get('end_point')
                     if start and end:
-                        msp.add_line(start, end)
+                        msp.add_line(start, end, dxfattribs={'layer': layer})
                     else:
                         print(f"🔴 WARNING: Skipping malformed LINE: {entity}")
+
+                elif entity_type == 'LWPOLYLINE':
+                    points = entity.get('points')
+                    closed = entity.get('closed', False)
+                    if points and len(points) >= 2:
+                        msp.add_lwpolyline(points, dxfattribs={'layer': layer, 'closed': closed})
+                    else:
+                        print(f"🔴 WARNING: Skipping malformed LWPOLYLINE: {entity}")
 
                 elif entity_type == 'CIRCLE':
                     center = entity.get('center')
                     radius = entity.get('radius')
                     if center and radius is not None:
-                        # Ensure radius is a number
-                        msp.add_circle(center, radius=float(radius))
+                        msp.add_circle(center, radius=float(radius), dxfattribs={'layer': layer})
                     else:
                         print(f"🔴 WARNING: Skipping malformed CIRCLE: {entity}")
 
@@ -240,9 +340,42 @@ REQUIREMENTS:
                     start_angle = entity.get('start_angle')
                     end_angle = entity.get('end_angle')
                     if center and radius is not None and start_angle is not None and end_angle is not None:
-                        msp.add_arc(center, radius=float(radius), start_angle=float(start_angle), end_angle=float(end_angle))
+                        msp.add_arc(center, radius=float(radius), start_angle=float(start_angle), 
+                                   end_angle=float(end_angle), dxfattribs={'layer': layer})
                     else:
                         print(f"🔴 WARNING: Skipping malformed ARC: {entity}")
+
+                elif entity_type == 'TEXT':
+                    content = entity.get('content')
+                    position = entity.get('position')
+                    height = entity.get('height', 2.5)
+                    style = entity.get('style', 'Standard')
+                    if content and position:
+                        text_entity = msp.add_text(
+                            content, 
+                            dxfattribs={'layer': layer, 'style': style, 'height': height}
+                        )
+                        text_entity.set_placement(position)
+                    else:
+                        print(f"🔴 WARNING: Skipping malformed TEXT: {entity}")
+
+                elif entity_type == 'DIMENSION':
+                    dim_type = entity.get('dim_type', 'LINEAR')
+                    if dim_type == 'LINEAR':
+                        base = entity.get('base')
+                        p1 = entity.get('p1')
+                        p2 = entity.get('p2')
+                        if base and p1 and p2:
+                            dim = msp.add_linear_dim(
+                                base=base, p1=p1, p2=p2,
+                                dimstyle='STRUCTURAL',
+                                dxfattribs={'layer': layer}
+                            )
+                            dim.render()
+                        else:
+                            print(f"🔴 WARNING: Skipping malformed LINEAR DIMENSION: {entity}")
+                    else:
+                        print(f"🟡 WARNING: Unsupported dimension type '{dim_type}'. Skipping.")
 
                 else:
                     print(f"🟡 WARNING: Unhandled entity type '{entity_type}'. Skipping.")

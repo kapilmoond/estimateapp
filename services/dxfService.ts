@@ -273,16 +273,122 @@ export class DXFService {
     console.log('🔄 Regenerating drawing with user instructions...');
 
     try {
-      const enhancedDescription = `${originalDrawing.description}\n\nUSER MODIFICATIONS:\n${userInstructions}`;
+      // Create enhanced regeneration prompt with ezdxf knowledge
+      const regenerationPrompt = `You are a professional construction engineer and technical draftsman with expertise in Python ezdxf library. You need to modify an existing technical drawing based on user instructions.
+
+**ORIGINAL DRAWING:**
+Title: ${originalDrawing.title}
+Description: ${originalDrawing.description}
+
+**USER MODIFICATION INSTRUCTIONS (MUST FOLLOW):**
+${userInstructions}
+
+**EZDXF PROFESSIONAL STANDARDS (CRITICAL FOR CODE GENERATION):**
+
+🏗️ **MANDATORY SETUP (Always Include):**
+\`\`\`python
+import ezdxf
+from ezdxf import units
+
+# Professional document setup
+doc = ezdxf.new("R2010", setup=True)
+doc.units = units.MM
+msp = doc.modelspace()
+
+# Create standard construction layers
+layers = {
+    "0-STRUCTURAL-FOUNDATION": {"color": 1, "lineweight": 50},
+    "0-STRUCTURAL-COLUMNS": {"color": 2, "lineweight": 35},
+    "0-STRUCTURAL-BEAMS": {"color": 3, "lineweight": 35},
+    "1-REINFORCEMENT-MAIN": {"color": 1, "lineweight": 25},
+    "2-DIMENSIONS-LINEAR": {"color": 256, "lineweight": 18},
+    "3-TEXT-ANNOTATIONS": {"color": 256, "lineweight": 18},
+    "4-GRID-LINES": {"color": 8, "lineweight": 13}
+}
+
+for name, props in layers.items():
+    layer = doc.layers.add(name)
+    layer.color = props["color"]
+    layer.lineweight = props["lineweight"]
+
+# Text styles
+doc.styles.add("TITLE").dxf.height = 5.0
+doc.styles.add("STANDARD").dxf.height = 2.5
+doc.styles.add("NOTES").dxf.height = 1.8
+
+# Dimension style
+dimstyle = doc.dimstyles.add("STRUCTURAL")
+dimstyle.dxf.dimtxt = 2.5; dimstyle.dxf.dimasz = 2.5
+\`\`\`
+
+📐 **STRUCTURAL ELEMENTS (Professional Standards):**
+\`\`\`python
+# Column
+def column(center, width, height):
+    x, y = center; hw, hh = width/2, height/2
+    points = [(x-hw,y-hh), (x+hw,y-hh), (x+hw,y+hh), (x-hw,y+hh), (x-hw,y-hh)]
+    return msp.add_lwpolyline(points, dxfattribs={"layer": "0-STRUCTURAL-COLUMNS", "closed": True})
+
+# Beam
+def beam(start, end, width):
+    import math
+    dx, dy = end[0]-start[0], end[1]-start[1]
+    angle = math.atan2(dy, dx)
+    px, py = -math.sin(angle)*width/2, math.cos(angle)*width/2
+    points = [(start[0]+px,start[1]+py), (end[0]+px,end[1]+py), (end[0]-px,end[1]-py), (start[0]-px,start[1]-py)]
+    return msp.add_lwpolyline(points, dxfattribs={"layer": "0-STRUCTURAL-BEAMS", "closed": True})
+\`\`\`
+
+🔧 **REINFORCEMENT (Professional Details):**
+\`\`\`python
+# Main reinforcement bars
+for i in range(num_bars):
+    offset = (i - num_bars/2) * 50  # 50mm spacing
+    msp.add_line((start[0], start[1]+offset), (end[0], end[1]+offset), 
+                dxfattribs={"layer": "1-REINFORCEMENT-MAIN"})
+\`\`\`
+
+📏 **DIMENSIONS & TEXT (Professional Standards):**
+\`\`\`python
+# Linear dimension
+dim = msp.add_linear_dim(
+    base=(start[0], start[1] + 5000),  # 5000mm offset above
+    p1=start, p2=end, dimstyle="STRUCTURAL",
+    dxfattribs={"layer": "2-DIMENSIONS-LINEAR"})
+dim.render()
+\`\`\`
+
+⚙️ **CRITICAL REQUIREMENTS:**
+• All dimensions in millimeters (mm)
+• Text heights: Title=5mm, Standard=2.5mm, Notes=1.8mm
+• All entities MUST be assigned to proper layers (not layer "0")
+• Include complete dimension chains
+• Professional layer naming (0-STRUCTURAL-*, 1-REINFORCEMENT-*, etc.)
+• Always end with: doc.saveas("drawing.dxf")
+
+**INSTRUCTIONS:**
+1. **PRIORITIZE the user's modification instructions above all else**
+2. Maintain the overall structure and professional standards of the original drawing
+3. Apply the requested modifications while keeping the drawing complete and professional
+4. Generate a comprehensive modified technical drawing specification with complete Python ezdxf code
+5. **Output a detailed technical drawing specification** with complete, professional Python ezdxf code that incorporates the user's requested changes.
+
+Focus on implementing exactly what the user requested for modifications while maintaining professional CAD standards.`;
+
+      // Generate modified drawing description using LLM with enhanced prompt
+      const LLMService = (await import('../services/llmService')).LLMService;
+      const modifiedDescription = await LLMService.generateContent(regenerationPrompt);
+
       const newTitle = originalDrawing.title.replace(' (Modified)', '') + ' (Modified)';
 
+      // Generate the new DXF drawing
       const regeneratedDrawing = await this.generateDXFFromDescription(
         newTitle,
-        enhancedDescription,
-        enhancedDescription
+        modifiedDescription,
+        userInstructions
       );
 
-      console.log('✅ Drawing regenerated successfully');
+      console.log('✅ Drawing regenerated successfully with ezdxf knowledge');
       return regeneratedDrawing;
     } catch (error) {
       console.error('❌ DXF regeneration error:', error);
