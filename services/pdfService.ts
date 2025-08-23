@@ -1,20 +1,54 @@
 /**
  * PDF Conversion Service for DXF Files
- * Converts DXF technical drawings to PDF format for easy viewing and sharing
+ * Properly converts actual DXF technical drawings to PDF format by parsing DXF content
  */
 
 import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+import DxfParser from 'dxf-parser';
 import { TechnicalDrawing } from '../types';
+
+interface DxfEntity {
+  type: string;
+  layer: string;
+  colorNumber?: number;
+  vertices?: Array<{ x: number; y: number; z?: number }>;
+  startPoint?: { x: number; y: number; z?: number };
+  endPoint?: { x: number; y: number; z?: number };
+  center?: { x: number; y: number; z?: number };
+  radius?: number;
+  startAngle?: number;
+  endAngle?: number;
+  text?: string;
+  position?: { x: number; y: number; z?: number };
+  height?: number;
+}
+
+interface DxfBounds {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
 
 export class DXFPDFService {
 
   /**
-   * Convert DXF drawing to PDF
+   * Convert actual DXF drawing content to PDF
    */
   static async convertDXFToPDF(drawing: TechnicalDrawing): Promise<void> {
     try {
-      console.log('🔄 Converting DXF to PDF...');
+      console.log('🔄 Converting actual DXF content to PDF...');
+
+      if (!drawing.dxfContent) {
+        throw new Error('No DXF content available for conversion');
+      }
+
+      // Parse the DXF content
+      const dxfText = this.base64ToText(drawing.dxfContent);
+      const parser = new DxfParser();
+      const dxf = parser.parse(dxfText);
+
+      console.log('✅ DXF parsed successfully, entities found:', dxf.entities?.length || 0);
 
       // Create PDF document
       const pdf = new jsPDF({
@@ -26,11 +60,8 @@ export class DXFPDFService {
       // Add title page
       await this.addTitlePage(pdf, drawing);
 
-      // Add drawing preview page
-      await this.addDrawingPreviewPage(pdf, drawing);
-
-      // Add specifications page
-      await this.addSpecificationsPage(pdf, drawing);
+      // Add actual DXF drawing page
+      await this.addDXFDrawingPage(pdf, dxf, drawing);
 
       // Generate filename
       const filename = `${drawing.title.replace(/\s+/g, '_')}_technical_drawing.pdf`;
@@ -38,10 +69,26 @@ export class DXFPDFService {
       // Download PDF
       pdf.save(filename);
 
-      console.log('✅ PDF conversion completed successfully');
+      console.log('✅ DXF to PDF conversion completed successfully');
     } catch (error) {
-      console.error('❌ PDF conversion failed:', error);
+      console.error('❌ DXF to PDF conversion failed:', error);
       throw new Error(`Failed to convert DXF to PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Convert base64 DXF content to text
+   */
+  private static base64ToText(base64Content: string): string {
+    try {
+      // Remove data URL prefix if present
+      const base64Data = base64Content.includes(',')
+        ? base64Content.split(',')[1]
+        : base64Content;
+      
+      return atob(base64Data);
+    } catch (error) {
+      throw new Error('Failed to decode DXF content');
     }
   }
 
@@ -82,201 +129,391 @@ export class DXFPDFService {
     // Professional drawing note
     pdf.setFontSize(10);
     pdf.setFont('helvetica', 'italic');
-    pdf.text('Professional DXF Technical Drawing - Compatible with AutoCAD, Revit, and other CAD software', 
+    pdf.text('Professional DXF Technical Drawing - Rendered from actual CAD geometry', 
              pageWidth / 2, pageHeight - 20, { align: 'center' });
   }
 
   /**
-   * Add drawing preview page
+   * Add actual DXF drawing page - renders the real CAD geometry
    */
-  private static async addDrawingPreviewPage(pdf: jsPDF, drawing: TechnicalDrawing): Promise<void> {
+  private static async addDXFDrawingPage(pdf: jsPDF, dxf: any, drawing: TechnicalDrawing): Promise<void> {
     pdf.addPage();
     
     const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
     
     // Page header
     pdf.setFontSize(16);
     pdf.setFont('helvetica', 'bold');
-    pdf.text('DRAWING PREVIEW', pageWidth / 2, 20, { align: 'center' });
+    pdf.text('CAD DRAWING', pageWidth / 2, 20, { align: 'center' });
 
-    // Create preview content
-    const previewContent = this.generateDrawingPreview(drawing);
+    if (!dxf.entities || dxf.entities.length === 0) {
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'normal');
+      pdf.text('No drawing entities found in DXF file', pageWidth / 2, pageHeight / 2, { align: 'center' });
+      return;
+    }
+
+    // Calculate drawing bounds
+    const bounds = this.calculateDXFBounds(dxf.entities);
     
-    // Add preview text
+    // Set up drawing area (leave margins for title and notes)
+    const drawingArea = {
+      x: 20,
+      y: 40,
+      width: pageWidth - 40,
+      height: pageHeight - 80
+    };
+
+    // Calculate scale to fit drawing in available area
+    const scaleX = drawingArea.width / (bounds.maxX - bounds.minX || 1);
+    const scaleY = drawingArea.height / (bounds.maxY - bounds.minY || 1);
+    const scale = Math.min(scaleX, scaleY) * 0.8; // 80% to leave some padding
+
+    // Center the drawing
+    const drawingWidth = (bounds.maxX - bounds.minX) * scale;
+    const drawingHeight = (bounds.maxY - bounds.minY) * scale;
+    const offsetX = drawingArea.x + (drawingArea.width - drawingWidth) / 2;
+    const offsetY = drawingArea.y + (drawingArea.height - drawingHeight) / 2;
+
+    // Render each entity
+    pdf.setLineWidth(0.2);
+    
+    for (const entity of dxf.entities) {
+      this.renderDXFEntity(pdf, entity, bounds, scale, offsetX, offsetY);
+    }
+
+    // Add scale information
     pdf.setFontSize(10);
     pdf.setFont('helvetica', 'normal');
-    
-    const lines = previewContent.split('\n');
-    let yPos = 40;
-    
-    lines.forEach(line => {
-      if (yPos > 280) { // If approaching page bottom, add new page
-        pdf.addPage();
-        yPos = 20;
+    pdf.text(`Drawing Scale: ${drawing.scale} | Rendered Scale: 1:${Math.round(1/scale)}`, 
+             20, pageHeight - 10);
+  }
+
+  /**
+   * Calculate bounds of all DXF entities
+   */
+  private static calculateDXFBounds(entities: any[]): DxfBounds {
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+
+    for (const entity of entities) {
+      const points = this.getEntityPoints(entity);
+      for (const point of points) {
+        if (point.x < minX) minX = point.x;
+        if (point.x > maxX) maxX = point.x;
+        if (point.y < minY) minY = point.y;
+        if (point.y > maxY) maxY = point.y;
       }
-      
-      pdf.text(line, 20, yPos, { maxWidth: pageWidth - 40 });
-      yPos += 6;
-    });
+    }
 
-    // Add note about full DXF file
-    pdf.setFontSize(12);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('📋 Note: Download the DXF file for full CAD compatibility and editing capabilities', 
-             20, yPos + 20, { maxWidth: pageWidth - 40 });
+    // Ensure we have valid bounds
+    if (minX === Infinity) {
+      return { minX: 0, maxX: 100, minY: 0, maxY: 100 };
+    }
+
+    return { minX, maxX, minY, maxY };
   }
 
   /**
-   * Add specifications page
+   * Extract points from DXF entity for bounds calculation
    */
-  private static async addSpecificationsPage(pdf: jsPDF, drawing: TechnicalDrawing): Promise<void> {
-    pdf.addPage();
-    
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    
-    // Page header
-    pdf.setFontSize(16);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('TECHNICAL SPECIFICATIONS', pageWidth / 2, 20, { align: 'center' });
+  private static getEntityPoints(entity: any): Array<{ x: number; y: number }> {
+    const points: Array<{ x: number; y: number }> = [];
 
-    // Description
-    pdf.setFontSize(12);
-    pdf.setFont('helvetica', 'normal');
-    pdf.text('Description:', 20, 40);
-    
-    const descriptionLines = pdf.splitTextToSize(drawing.description, pageWidth - 40);
-    pdf.text(descriptionLines, 20, 50);
+    switch (entity.type) {
+      case 'LINE':
+        if (entity.startPoint) points.push(entity.startPoint);
+        if (entity.endPoint) points.push(entity.endPoint);
+        break;
+      case 'POLYLINE':
+      case 'LWPOLYLINE':
+        if (entity.vertices) {
+          entity.vertices.forEach((v: any) => points.push({ x: v.x, y: v.y }));
+        }
+        break;
+      case 'CIRCLE':
+      case 'ARC':
+        if (entity.center && entity.radius) {
+          points.push(
+            { x: entity.center.x - entity.radius, y: entity.center.y - entity.radius },
+            { x: entity.center.x + entity.radius, y: entity.center.y + entity.radius }
+          );
+        }
+        break;
+      case 'TEXT':
+      case 'MTEXT':
+        if (entity.position) points.push(entity.position);
+        break;
+      case 'DIMENSION':
+        if (entity.definingPoint) points.push(entity.definingPoint);
+        if (entity.middleOfText) points.push(entity.middleOfText);
+        break;
+    }
 
-    // DXF Data specifications
-    let yPos = 50 + (descriptionLines.length * 6) + 20;
-    
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('DXF File Specifications:', 20, yPos);
-    yPos += 10;
-
-    pdf.setFont('helvetica', 'normal');
-    const specs = [
-      `File Format: DXF (Drawing Exchange Format)`,
-      `CAD Version: ${drawing.dxfData.id ? 'R2010' : 'Professional'}`,
-      `Units: ${drawing.dxfData.units || 'mm'}`,
-      `Layers: ${drawing.dxfData.layers?.length || 'Multiple'} professional layers`,
-      `Elements: ${drawing.dxfData.elements?.length || 'Multiple'} structural elements`,
-      `Paper Size: ${drawing.dxfData.paperSize || 'A3'}`,
-      `Drawing Scale: ${drawing.scale}`
-    ];
-
-    specs.forEach(spec => {
-      pdf.text(spec, 25, yPos);
-      yPos += 8;
-    });
-
-    // Professional note
-    yPos += 20;
-    pdf.setFont('helvetica', 'italic');
-    pdf.setFontSize(10);
-    pdf.text('This PDF is a documentation version. For editing and professional CAD work, use the original DXF file.', 
-             20, yPos, { maxWidth: pageWidth - 40 });
+    return points;
   }
 
   /**
-   * Generate drawing preview content
+   * Render individual DXF entity to PDF
    */
-  private static generateDrawingPreview(drawing: TechnicalDrawing): string {
-    return `🏗️ PROFESSIONAL DXF TECHNICAL DRAWING
+  private static renderDXFEntity(
+    pdf: jsPDF,
+    entity: any,
+    bounds: DxfBounds,
+    scale: number,
+    offsetX: number,
+    offsetY: number
+  ): void {
+    // Transform coordinates from DXF space to PDF space
+    const transformX = (x: number) => offsetX + (x - bounds.minX) * scale;
+    const transformY = (y: number) => offsetY + (bounds.maxY - y) * scale; // Flip Y axis
 
-Title: ${drawing.title}
-Component Type: ${drawing.componentName}
-Drawing Scale: ${drawing.scale}
-File Format: DXF (AutoCAD Compatible)
+    // Set color based on layer or entity color
+    const color = this.getEntityColor(entity);
+    pdf.setDrawColor(color.r, color.g, color.b);
 
-DRAWING DESCRIPTION:
-${drawing.description}
-
-TECHNICAL DETAILS:
-• Drawing Dimensions: ${drawing.dimensions.width} × ${drawing.dimensions.height}
-• Professional layer organization with construction standards
-• Industry-compliant dimensions and annotations
-• Complete structural element representation
-• Professional text styles and hatching patterns
-
-DXF FILE INFORMATION:
-• Filename: ${drawing.dxfFilename}
-• Created: ${drawing.createdAt.toLocaleDateString()}
-• Format: Professional DXF R2010
-• Compatibility: AutoCAD, Revit, SketchUp, and other CAD software
-
-CONSTRUCTION STANDARDS:
-• All dimensions in millimeters (mm)
-• Professional layer naming (0-STRUCTURAL-*, 1-REINFORCEMENT-*, etc.)
-• Construction industry standard symbols and annotations
-• Complete dimension chains for all major elements
-• Material representation with hatching patterns
-
-USAGE INSTRUCTIONS:
-1. Download the DXF file using the "Download DXF" button
-2. Open in your preferred CAD software (AutoCAD, Revit, etc.)
-3. Use for construction documentation, planning, and coordination
-4. Modify as needed for your specific project requirements
-
-PROFESSIONAL FEATURES:
-✓ Industry-standard layer organization
-✓ Complete structural element representation
-✓ Professional dimensions and annotations
-✓ Construction-grade accuracy and detail
-✓ CAD software compatibility
-✓ Ready for construction use
-
-For full editing capabilities and professional CAD work, please use the original DXF file.
-This PDF serves as documentation and preview purposes.`;
-  }
-
-  /**
-   * Convert HTML element to PDF (alternative method)
-   */
-  static async convertHTMLToPDF(elementId: string, filename: string): Promise<void> {
     try {
-      const element = document.getElementById(elementId);
-      if (!element) {
-        throw new Error(`Element with ID '${elementId}' not found`);
+      switch (entity.type) {
+        case 'LINE':
+          this.renderLine(pdf, entity, transformX, transformY);
+          break;
+        case 'POLYLINE':
+        case 'LWPOLYLINE':
+          this.renderPolyline(pdf, entity, transformX, transformY);
+          break;
+        case 'CIRCLE':
+          this.renderCircle(pdf, entity, transformX, transformY);
+          break;
+        case 'ARC':
+          this.renderArc(pdf, entity, transformX, transformY);
+          break;
+        case 'TEXT':
+        case 'MTEXT':
+          this.renderText(pdf, entity, transformX, transformY);
+          break;
+        case 'DIMENSION':
+          this.renderDimension(pdf, entity, transformX, transformY);
+          break;
+        case 'HATCH':
+          this.renderHatch(pdf, entity, transformX, transformY);
+          break;
+        default:
+          console.log(`Unsupported entity type: ${entity.type}`);
       }
-
-      // Capture element as canvas
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: '#ffffff'
-      });
-
-      // Create PDF
-      const pdf = new jsPDF({
-        orientation: canvas.width > canvas.height ? 'landscape' : 'portrait',
-        unit: 'mm',
-        format: 'a4'
-      });
-
-      // Calculate dimensions
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const canvasAspectRatio = canvas.height / canvas.width;
-      
-      let imgWidth = pageWidth - 20; // 10mm margin on each side
-      let imgHeight = imgWidth * canvasAspectRatio;
-
-      // If image is too tall, scale it down
-      if (imgHeight > pageHeight - 20) {
-        imgHeight = pageHeight - 20;
-        imgWidth = imgHeight / canvasAspectRatio;
-      }
-
-      // Add image to PDF
-      const imgData = canvas.toDataURL('image/png');
-      pdf.addImage(imgData, 'PNG', 10, 10, imgWidth, imgHeight);
-
-      // Download PDF
-      pdf.save(filename);
     } catch (error) {
-      console.error('❌ HTML to PDF conversion failed:', error);
-      throw new Error(`Failed to convert HTML to PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.warn(`Failed to render entity ${entity.type}:`, error);
     }
   }
+
+  /**
+   * Render LINE entity
+   */
+  private static renderLine(
+    pdf: jsPDF,
+    entity: any,
+    transformX: (x: number) => number,
+    transformY: (y: number) => number
+  ): void {
+    if (entity.startPoint && entity.endPoint) {
+      pdf.line(
+        transformX(entity.startPoint.x),
+        transformY(entity.startPoint.y),
+        transformX(entity.endPoint.x),
+        transformY(entity.endPoint.y)
+      );
+    }
+  }
+
+  /**
+   * Render POLYLINE/LWPOLYLINE entity
+   */
+  private static renderPolyline(
+    pdf: jsPDF,
+    entity: any,
+    transformX: (x: number) => number,
+    transformY: (y: number) => number
+  ): void {
+    if (entity.vertices && entity.vertices.length > 1) {
+      const vertices = entity.vertices;
+      
+      for (let i = 0; i < vertices.length - 1; i++) {
+        pdf.line(
+          transformX(vertices[i].x),
+          transformY(vertices[i].y),
+          transformX(vertices[i + 1].x),
+          transformY(vertices[i + 1].y)
+        );
+      }
+      
+      // Close polyline if specified
+      if (entity.closed && vertices.length > 2) {
+        pdf.line(
+          transformX(vertices[vertices.length - 1].x),
+          transformY(vertices[vertices.length - 1].y),
+          transformX(vertices[0].x),
+          transformY(vertices[0].y)
+        );
+      }
+    }
+  }
+
+  /**
+   * Render CIRCLE entity
+   */
+  private static renderCircle(
+    pdf: jsPDF,
+    entity: any,
+    transformX: (x: number) => number,
+    transformY: (y: number) => number
+  ): void {
+    if (entity.center && entity.radius) {
+      const centerX = transformX(entity.center.x);
+      const centerY = transformY(entity.center.y);
+      const radius = entity.radius * Math.abs(transformX(1) - transformX(0)); // Scale radius
+      
+      pdf.circle(centerX, centerY, radius, 'S'); // 'S' for stroke only
+    }
+  }
+
+  /**
+   * Render ARC entity
+   */
+  private static renderArc(
+    pdf: jsPDF,
+    entity: any,
+    transformX: (x: number) => number,
+    transformY: (y: number) => number
+  ): void {
+    if (entity.center && entity.radius && entity.startAngle !== undefined && entity.endAngle !== undefined) {
+      const centerX = transformX(entity.center.x);
+      const centerY = transformY(entity.center.y);
+      const radius = entity.radius * Math.abs(transformX(1) - transformX(0));
+      
+      // Convert angles from degrees to radians and adjust for PDF coordinate system
+      const startAngle = (entity.startAngle * Math.PI) / 180;
+      const endAngle = (entity.endAngle * Math.PI) / 180;
+      
+      // Draw arc using multiple line segments
+      const segments = 20;
+      const angleStep = (endAngle - startAngle) / segments;
+      
+      for (let i = 0; i < segments; i++) {
+        const angle1 = startAngle + i * angleStep;
+        const angle2 = startAngle + (i + 1) * angleStep;
+        
+        const x1 = centerX + radius * Math.cos(angle1);
+        const y1 = centerY + radius * Math.sin(angle1);
+        const x2 = centerX + radius * Math.cos(angle2);
+        const y2 = centerY + radius * Math.sin(angle2);
+        
+        pdf.line(x1, y1, x2, y2);
+      }
+    }
+  }
+
+  /**
+   * Render TEXT/MTEXT entity
+   */
+  private static renderText(
+    pdf: jsPDF,
+    entity: any,
+    transformX: (x: number) => number,
+    transformY: (y: number) => number
+  ): void {
+    if (entity.position && entity.text) {
+      const x = transformX(entity.position.x);
+      const y = transformY(entity.position.y);
+      const textHeight = entity.height ? entity.height * 0.1 : 3; // Scale text height
+      
+      pdf.setFontSize(Math.max(textHeight, 8)); // Minimum font size for readability
+      pdf.setTextColor(0, 0, 0); // Black text
+      pdf.text(entity.text, x, y);
+    }
+  }
+
+  /**
+   * Render DIMENSION entity
+   */
+  private static renderDimension(
+    pdf: jsPDF,
+    entity: any,
+    transformX: (x: number) => number,
+    transformY: (y: number) => number
+  ): void {
+    // Render dimension lines and text
+    if (entity.definingPoint && entity.middleOfText) {
+      const x1 = transformX(entity.definingPoint.x);
+      const y1 = transformY(entity.definingPoint.y);
+      const x2 = transformX(entity.middleOfText.x);
+      const y2 = transformY(entity.middleOfText.y);
+      
+      pdf.line(x1, y1, x2, y2);
+      
+      if (entity.text) {
+        pdf.setFontSize(8);
+        pdf.text(entity.text, x2, y2);
+      }
+    }
+  }
+
+  /**
+   * Render HATCH entity (simplified as boundary outline)
+   */
+  private static renderHatch(
+    pdf: jsPDF,
+    entity: any,
+    transformX: (x: number) => number,
+    transformY: (y: number) => number
+  ): void {
+    // For simplicity, render hatch as boundary outline
+    if (entity.edges) {
+      entity.edges.forEach((edge: any) => {
+        if (edge.type === 'line' && edge.startPoint && edge.endPoint) {
+          pdf.line(
+            transformX(edge.startPoint.x),
+            transformY(edge.startPoint.y),
+            transformX(edge.endPoint.x),
+            transformY(edge.endPoint.y)
+          );
+        }
+      });
+    }
+  }
+
+  /**
+   * Get entity color (simplified color mapping)
+   */
+  private static getEntityColor(entity: any): { r: number; g: number; b: number } {
+    // Default to black
+    let color = { r: 0, g: 0, b: 0 };
+    
+    // Map common AutoCAD color numbers to RGB
+    if (entity.colorNumber) {
+      switch (entity.colorNumber) {
+        case 1: color = { r: 255, g: 0, b: 0 }; break;    // Red
+        case 2: color = { r: 255, g: 255, b: 0 }; break;  // Yellow
+        case 3: color = { r: 0, g: 255, b: 0 }; break;    // Green
+        case 4: color = { r: 0, g: 255, b: 255 }; break;  // Cyan
+        case 5: color = { r: 0, g: 0, b: 255 }; break;    // Blue
+        case 6: color = { r: 255, g: 0, b: 255 }; break;  // Magenta
+        case 8: color = { r: 128, g: 128, b: 128 }; break; // Gray
+        default: color = { r: 0, g: 0, b: 0 }; break;     // Black
+      }
+    } else if (entity.layer) {
+      // Color by layer (simplified mapping)
+      const layerName = entity.layer.toLowerCase();
+      if (layerName.includes('structural')) {
+        color = { r: 0, g: 0, b: 0 }; // Black for structural
+      } else if (layerName.includes('dimension')) {
+        color = { r: 128, g: 128, b: 128 }; // Gray for dimensions
+      } else if (layerName.includes('text')) {
+        color = { r: 0, g: 0, b: 0 }; // Black for text
+      } else if (layerName.includes('reinforcement')) {
+        color = { r: 255, g: 0, b: 0 }; // Red for reinforcement
+      }
+    }
+    
+    return color;
+  }
+
 }
