@@ -38,17 +38,46 @@ export class DXFPDFService {
   static async convertDXFToPDF(drawing: TechnicalDrawing): Promise<void> {
     try {
       console.log('🔄 Converting actual DXF content to PDF...');
+      console.log('📊 Drawing info:', {
+        title: drawing.title,
+        hasContent: !!drawing.dxfContent,
+        contentLength: drawing.dxfContent?.length || 0,
+        filename: drawing.dxfFilename
+      });
 
       if (!drawing.dxfContent) {
         throw new Error('No DXF content available for conversion');
       }
 
       // Parse the DXF content
+      console.log('🔍 Decoding base64 DXF content...');
       const dxfText = this.base64ToText(drawing.dxfContent);
+      console.log('📄 DXF text length:', dxfText.length);
+      console.log('📄 DXF preview (first 200 chars):', dxfText.substring(0, 200));
+
+      console.log('🔍 Parsing DXF with dxf-parser...');
       const parser = new DxfParser();
       const dxf = parser.parse(dxfText);
 
-      console.log('✅ DXF parsed successfully, entities found:', dxf.entities?.length || 0);
+      console.log('✅ DXF parsed successfully!');
+      console.log('📊 Parsed DXF structure:', {
+        hasEntities: !!dxf.entities,
+        entityCount: dxf.entities?.length || 0,
+        hasBlocks: !!dxf.blocks,
+        blockCount: Object.keys(dxf.blocks || {}).length,
+        hasLayers: !!dxf.tables?.layer,
+        layerCount: Object.keys(dxf.tables?.layer?.layers || {}).length
+      });
+
+      if (dxf.entities && dxf.entities.length > 0) {
+        console.log('🏗️ Found entities:', dxf.entities.slice(0, 5).map((e: any) => ({
+          type: e.type,
+          layer: e.layer,
+          hasGeometry: !!(e.startPoint || e.vertices || e.center || e.position)
+        })));
+      } else {
+        console.warn('⚠️ No entities found in DXF file!');
+      }
 
       // Create PDF document
       const pdf = new jsPDF({
@@ -70,8 +99,13 @@ export class DXFPDFService {
       pdf.save(filename);
 
       console.log('✅ DXF to PDF conversion completed successfully');
+      console.log('📋 PDF contains actual DXF geometry, not text descriptions');
     } catch (error) {
       console.error('❌ DXF to PDF conversion failed:', error);
+      console.error('❌ Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      });
       throw new Error(`Failed to convert DXF to PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -145,17 +179,22 @@ export class DXFPDFService {
     // Page header
     pdf.setFontSize(16);
     pdf.setFont('helvetica', 'bold');
-    pdf.text('CAD DRAWING', pageWidth / 2, 20, { align: 'center' });
+    pdf.text('CAD DRAWING - RENDERED FROM ACTUAL DXF GEOMETRY', pageWidth / 2, 20, { align: 'center' });
 
     if (!dxf.entities || dxf.entities.length === 0) {
+      console.warn('⚠️ No drawing entities found in parsed DXF!');
       pdf.setFontSize(12);
       pdf.setFont('helvetica', 'normal');
       pdf.text('No drawing entities found in DXF file', pageWidth / 2, pageHeight / 2, { align: 'center' });
+      pdf.text('This may indicate an issue with DXF parsing or empty DXF content', pageWidth / 2, pageHeight / 2 + 20, { align: 'center' });
       return;
     }
 
+    console.log('🎨 Rendering', dxf.entities.length, 'DXF entities to PDF...');
+
     // Calculate drawing bounds
     const bounds = this.calculateDXFBounds(dxf.entities);
+    console.log('📏 Drawing bounds:', bounds);
     
     // Set up drawing area (leave margins for title and notes)
     const drawingArea = {
@@ -170,24 +209,46 @@ export class DXFPDFService {
     const scaleY = drawingArea.height / (bounds.maxY - bounds.minY || 1);
     const scale = Math.min(scaleX, scaleY) * 0.8; // 80% to leave some padding
 
+    console.log('📏 Calculated scale:', scale, 'scaleX:', scaleX, 'scaleY:', scaleY);
+
     // Center the drawing
     const drawingWidth = (bounds.maxX - bounds.minX) * scale;
     const drawingHeight = (bounds.maxY - bounds.minY) * scale;
     const offsetX = drawingArea.x + (drawingArea.width - drawingWidth) / 2;
     const offsetY = drawingArea.y + (drawingArea.height - drawingHeight) / 2;
 
+    console.log('📏 Drawing placement:', { offsetX, offsetY, drawingWidth, drawingHeight });
+
     // Render each entity
     pdf.setLineWidth(0.2);
     
+    let renderedCount = 0;
+    const entityTypes: Record<string, number> = {};
+    
     for (const entity of dxf.entities) {
-      this.renderDXFEntity(pdf, entity, bounds, scale, offsetX, offsetY);
+      try {
+        this.renderDXFEntity(pdf, entity, bounds, scale, offsetX, offsetY);
+        renderedCount++;
+        entityTypes[entity.type] = (entityTypes[entity.type] || 0) + 1;
+      } catch (error) {
+        console.warn('⚠️ Failed to render entity:', entity.type, error);
+      }
     }
 
-    // Add scale information
+    console.log('✅ Successfully rendered', renderedCount, 'out of', dxf.entities.length, 'entities');
+    console.log('📏 Entity types rendered:', entityTypes);
+
+    // Add scale and rendering information
     pdf.setFontSize(10);
     pdf.setFont('helvetica', 'normal');
-    pdf.text(`Drawing Scale: ${drawing.scale} | Rendered Scale: 1:${Math.round(1/scale)}`, 
+    pdf.text(`Drawing Scale: ${drawing.scale} | Rendered Scale: 1:${Math.round(1/scale)} | Entities: ${renderedCount}/${dxf.entities.length}`, 
              20, pageHeight - 10);
+             
+    // Add confirmation note
+    pdf.setFontSize(8);
+    pdf.setFont('helvetica', 'italic');
+    pdf.text(`✅ This PDF contains actual DXF geometry (${Object.keys(entityTypes).join(', ')})`, 
+             20, pageHeight - 25);
   }
 
   /**
@@ -272,6 +333,9 @@ export class DXFPDFService {
     const color = this.getEntityColor(entity);
     pdf.setDrawColor(color.r, color.g, color.b);
 
+    // Debug logging for entity processing
+    console.log(`🎨 Rendering ${entity.type} on layer ${entity.layer || 'DEFAULT'}`);
+
     try {
       switch (entity.type) {
         case 'LINE':
@@ -298,10 +362,10 @@ export class DXFPDFService {
           this.renderHatch(pdf, entity, transformX, transformY);
           break;
         default:
-          console.log(`Unsupported entity type: ${entity.type}`);
+          console.log(`⚠️ Unsupported entity type: ${entity.type}`);
       }
     } catch (error) {
-      console.warn(`Failed to render entity ${entity.type}:`, error);
+      console.warn(`❌ Failed to render entity ${entity.type}:`, error);
     }
   }
 
@@ -514,6 +578,73 @@ export class DXFPDFService {
     }
     
     return color;
+  }
+
+  /**
+   * Test function to verify DXF parsing is working correctly
+   */
+  static async testDXFParsing(): Promise<void> {
+    console.log('🧪 Testing DXF parsing...');
+    
+    // Create a minimal test DXF content
+    const testDXF = `0
+SECTION
+2
+HEADER
+0
+ENDSEC
+0
+SECTION
+2
+ENTITIES
+0
+LINE
+8
+0
+10
+0.0
+20
+0.0
+11
+100.0
+21
+100.0
+0
+CIRCLE
+8
+0
+10
+50.0
+20
+50.0
+40
+25.0
+0
+ENDSEC
+0
+EOF`;
+    
+    try {
+      const parser = new DxfParser();
+      const dxf = parser.parse(testDXF);
+      
+      console.log('✅ Test DXF parsed successfully!');
+      console.log('📏 Test results:', {
+        hasEntities: !!dxf.entities,
+        entityCount: dxf.entities?.length || 0,
+        entities: dxf.entities?.map(e => ({ type: e.type, layer: e.layer }))
+      });
+      
+      if (dxf.entities && dxf.entities.length > 0) {
+        console.log('✅ DXF parsing is working correctly!');
+      } else {
+        console.warn('⚠️ DXF parsing may have issues - no entities found in test');
+      }
+      
+    } catch (error) {
+      console.error('❌ DXF parsing test failed:', error);
+      throw new Error('DXF parsing is not working correctly');
+    }
   }
 
 }

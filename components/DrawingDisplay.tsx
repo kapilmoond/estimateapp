@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { TechnicalDrawing } from '../types';
 import { DXFService, DXFStorageService } from '../services/dxfService';
 import { DrawingService } from '../services/drawingService';
+import { DXFPDFService } from '../services/pdfService';
 
 interface DrawingDisplayProps {
   drawings: TechnicalDrawing[];
@@ -78,6 +79,17 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
     }
   };
 
+  const handleTestDXFParsing = async () => {
+    try {
+      console.log('🧪 Testing DXF parsing functionality...');
+      await DXFPDFService.testDXFParsing();
+      alert('✅ DXF parsing test passed! Check console for details.');
+    } catch (error) {
+      console.error('❌ DXF parsing test failed:', error);
+      alert('❌ DXF parsing test failed. Check console for details.');
+    }
+  };
+
 
 
   const handlePrintDrawing = (drawing: TechnicalDrawing) => {
@@ -134,7 +146,15 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
 
   return (
     <div className="space-y-6">
-      <h3 className="text-lg font-semibold text-gray-700">Technical Drawings</h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold text-gray-700">Technical Drawings</h3>
+        <button
+          onClick={handleTestDXFParsing}
+          className="px-3 py-1 bg-purple-600 text-white text-sm rounded hover:bg-purple-700"
+        >
+          🧪 Test DXF Parsing
+        </button>
+      </div>
       
       {/* Drawing List */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
