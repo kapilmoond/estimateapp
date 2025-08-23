@@ -43,9 +43,35 @@ export const BackendConfig: React.FC = () => {
   };
 
   const saveConfiguration = () => {
+    // Validate URL format
+    if (cloudFunctionsUrl && !isValidUrl(cloudFunctionsUrl)) {
+      setStatus({
+        available: false,
+        type: 'unknown',
+        url: cloudFunctionsUrl,
+        responseTime: 0,
+        error: 'Invalid URL format. Please enter a valid Google Cloud Functions URL.'
+      });
+      return;
+    }
+
     CloudConfig.setCloudFunctionsUrl(cloudFunctionsUrl);
     testBackend();
     setShowConfig(false);
+  };
+
+  const isValidUrl = (url: string): boolean => {
+    try {
+      const urlObj = new URL(url);
+      // Check if it's a valid Google Cloud Functions URL pattern
+      return urlObj.protocol === 'https:' && 
+             (urlObj.hostname.includes('cloudfunctions.net') || 
+              urlObj.hostname.includes('run.app') ||
+              urlObj.hostname === 'localhost' ||
+              urlObj.hostname.includes('ngrok'));
+    } catch {
+      return false;
+    }
   };
 
   const resetToLocal = () => {
@@ -119,7 +145,7 @@ export const BackendConfig: React.FC = () => {
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
             <p className="text-xs text-gray-500 mt-1">
-              Enter your Google Cloud Functions URL after deployment
+              Enter your Google Cloud Functions URL after deployment (should end with /dxf-generator)
             </p>
           </div>
 
@@ -139,13 +165,18 @@ export const BackendConfig: React.FC = () => {
           </div>
 
           <div className="bg-blue-50 p-3 rounded-md">
-            <h4 className="text-sm font-medium text-blue-900 mb-2">Deployment Instructions:</h4>
-            <ol className="text-xs text-blue-800 space-y-1">
-              <li>1. Navigate to <code>python-backend</code> directory</li>
-              <li>2. Run <code>python deploy.py</code></li>
-              <li>3. Copy the function URL and paste it above</li>
-              <li>4. Click "Save & Test" to verify connection</li>
-            </ol>
+            <h4 className="text-sm font-medium text-blue-900 mb-2">Google Cloud Functions URL Format:</h4>
+            <div className="text-xs text-blue-800 space-y-1">
+              <p><strong>Format:</strong> <code>https://region-project.cloudfunctions.net/function-name</code></p>
+              <p><strong>Example:</strong> <code>https://us-central1-myproject.cloudfunctions.net/dxf-generator</code></p>
+              <p className="mt-2"><strong>Deployment steps:</strong></p>
+              <ol className="list-decimal list-inside space-y-1 ml-2">
+                <li>Navigate to <code>python-backend</code> directory</li>
+                <li>Run <code>python deploy.py</code></li>
+                <li>Copy the function URL from deployment output</li>
+                <li>Paste the complete URL above and click "Save & Test"</li>
+              </ol>
+            </div>
           </div>
         </div>
       )}

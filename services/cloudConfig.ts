@@ -12,16 +12,17 @@ export interface BackendConfig {
 
 export class CloudConfig {
   private static readonly LOCAL_URL = 'http://localhost:5000';
-  private static readonly CLOUD_FUNCTIONS_URL = import.meta.env?.VITE_CLOUD_FUNCTIONS_URL || '';
+  private static readonly CLOUD_FUNCTIONS_URL = (import.meta as any).env?.VITE_CLOUD_FUNCTIONS_URL || '';
   
   /**
    * Get the current backend configuration
    */
   static getBackendConfig(): BackendConfig {
-    // Check if Cloud Functions URL is configured
-    if (this.CLOUD_FUNCTIONS_URL) {
+    // Check if Cloud Functions URL is configured (prioritize localStorage over environment)
+    const cloudUrl = this.getCloudFunctionsUrl();
+    if (cloudUrl) {
       return {
-        url: this.CLOUD_FUNCTIONS_URL,
+        url: cloudUrl,
         type: 'cloud-functions',
         timeout: 30000, // 30 seconds for cloud functions
         retries: 2
