@@ -183,10 +183,36 @@ export class DXFPDFService {
 
     if (!dxf.entities || dxf.entities.length === 0) {
       console.warn('⚠️ No drawing entities found in parsed DXF!');
+      console.warn('🔍 DXF structure:', {
+        hasHeader: !!dxf.header,
+        hasTables: !!dxf.tables,
+        hasBlocks: !!dxf.blocks,
+        hasEntities: !!dxf.entities,
+        fullStructure: Object.keys(dxf || {})
+      });
+      
+      // Add a test drawing to show that rendering works
       pdf.setFontSize(12);
       pdf.setFont('helvetica', 'normal');
-      pdf.text('No drawing entities found in DXF file', pageWidth / 2, pageHeight / 2, { align: 'center' });
-      pdf.text('This may indicate an issue with DXF parsing or empty DXF content', pageWidth / 2, pageHeight / 2 + 20, { align: 'center' });
+      pdf.text('No drawing entities found in DXF file', pageWidth / 2, pageHeight / 2 - 40, { align: 'center' });
+      pdf.text('Rendering test geometry to verify PDF generation:', pageWidth / 2, pageHeight / 2 - 20, { align: 'center' });
+      
+      // Draw test geometry to prove rendering works
+      pdf.setDrawColor(0, 0, 0);
+      pdf.setLineWidth(0.5);
+      
+      // Test rectangle
+      pdf.rect(pageWidth / 2 - 50, pageHeight / 2, 100, 60);
+      
+      // Test circle
+      pdf.circle(pageWidth / 2, pageHeight / 2 + 80, 20, 'S');
+      
+      // Test line
+      pdf.line(pageWidth / 2 - 60, pageHeight / 2 + 120, pageWidth / 2 + 60, pageHeight / 2 + 120);
+      
+      pdf.setFontSize(10);
+      pdf.text('Test geometry: Rectangle, Circle, Line (PDF rendering is working)', pageWidth / 2, pageHeight / 2 + 150, { align: 'center' });
+      
       return;
     }
 
@@ -644,6 +670,72 @@ EOF`;
     } catch (error) {
       console.error('❌ DXF parsing test failed:', error);
       throw new Error('DXF parsing is not working correctly');
+    }
+  }
+
+  /**
+   * Inspect actual DXF content from a drawing
+   */
+  static async inspectDXFContent(drawing: TechnicalDrawing): Promise<void> {
+    console.log('🔍 Inspecting DXF content from drawing:', drawing.title);
+    
+    if (!drawing.dxfContent) {
+      console.error('❌ No DXF content found in drawing');
+      return;
+    }
+    
+    try {
+      // Decode the DXF content
+      const dxfText = this.base64ToText(drawing.dxfContent);
+      console.log('📄 DXF file size:', dxfText.length, 'characters');
+      console.log('📄 DXF content preview (first 500 chars):', dxfText.substring(0, 500));
+      console.log('📄 DXF content preview (last 200 chars):', dxfText.substring(dxfText.length - 200));
+      
+      // Check for key DXF sections
+      const hasHeader = dxfText.includes('HEADER');
+      const hasEntities = dxfText.includes('ENTITIES');
+      const hasEOF = dxfText.includes('EOF');
+      
+      console.log('📏 DXF structure check:', { hasHeader, hasEntities, hasEOF });
+      
+      // Count potential entities by looking for common entity types
+      const lineCount = (dxfText.match(/\nLINE\n/g) || []).length;
+      const polylineCount = (dxfText.match(/\nLWPOLYLINE\n/g) || []).length;
+      const circleCount = (dxfText.match(/\nCIRCLE\n/g) || []).length;
+      const textCount = (dxfText.match(/\nTEXT\n/g) || []).length;
+      
+      console.log('📏 Entity count in raw DXF:', { lineCount, polylineCount, circleCount, textCount });
+      
+      // Try to parse it
+      const parser = new DxfParser();
+      const dxf = parser.parse(dxfText);
+      
+      console.log('✅ DXF parsed successfully!');
+      console.log('📏 Parsed structure:', {
+        hasEntities: !!dxf.entities,
+        entityCount: dxf.entities?.length || 0,
+        hasBlocks: !!dxf.blocks,
+        blockCount: Object.keys(dxf.blocks || {}).length,
+        hasLayers: !!dxf.tables?.layer,
+        layerCount: Object.keys(dxf.tables?.layer?.layers || {}).length
+      });
+      
+      if (dxf.entities && dxf.entities.length > 0) {
+        console.log('🏗️ Parsed entities:', dxf.entities.map((e: any) => ({
+          type: e.type,
+          layer: e.layer,
+          hasStartPoint: !!e.startPoint,
+          hasEndPoint: !!e.endPoint,
+          hasVertices: !!e.vertices,
+          hasCenter: !!e.center,
+          hasRadius: !!e.radius
+        })));
+      } else {
+        console.warn('⚠️ No entities found in parsed DXF - this explains why PDF shows no drawing!');
+      }
+      
+    } catch (error) {
+      console.error('❌ Failed to inspect DXF content:', error);
     }
   }
 

@@ -90,6 +90,22 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
     }
   };
 
+  const handleInspectDXF = async () => {
+    if (!selectedDrawing) {
+      alert('Please select a drawing first');
+      return;
+    }
+    
+    try {
+      console.log('🔍 Inspecting DXF content...');
+      await DXFPDFService.inspectDXFContent(selectedDrawing);
+      alert('🔍 DXF inspection completed! Check console for detailed analysis.');
+    } catch (error) {
+      console.error('❌ DXF inspection failed:', error);
+      alert('❌ DXF inspection failed. Check console for details.');
+    }
+  };
+
 
 
   const handlePrintDrawing = (drawing: TechnicalDrawing) => {
@@ -148,12 +164,22 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-gray-700">Technical Drawings</h3>
-        <button
-          onClick={handleTestDXFParsing}
-          className="px-3 py-1 bg-purple-600 text-white text-sm rounded hover:bg-purple-700"
-        >
-          🧪 Test DXF Parsing
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleTestDXFParsing}
+            className="px-3 py-1 bg-purple-600 text-white text-sm rounded hover:bg-purple-700"
+          >
+            🧪 Test DXF Parsing
+          </button>
+          {selectedDrawing && (
+            <button
+              onClick={handleInspectDXF}
+              className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+            >
+              🔍 Inspect DXF Content
+            </button>
+          )}
+        </div>
       </div>
       
       {/* Drawing List */}
