@@ -54,29 +54,71 @@ export class DXFPDFService {
       const dxfText = this.base64ToText(drawing.dxfContent);
       console.log('📄 DXF text length:', dxfText.length);
       console.log('📄 DXF preview (first 200 chars):', dxfText.substring(0, 200));
+      console.log('📄 DXF contains ENTITIES section:', dxfText.includes('ENTITIES'));
+      console.log('📄 DXF contains EOF:', dxfText.includes('EOF'));
 
       console.log('🔍 Parsing DXF with dxf-parser...');
       const parser = new DxfParser();
-      const dxf = parser.parse(dxfText);
+      let dxf: any;
+      
+      try {
+        dxf = parser.parse(dxfText);
+        console.log('✅ DXF parsed successfully!');
+      } catch (parseError) {
+        console.error('❌ DXF parsing failed:', parseError);
+        console.log('🔍 Attempting to fix common DXF issues...');
+        
+        // Try to fix common issues
+        let fixedDxfText = dxfText;
+        
+        // Ensure proper line endings
+        fixedDxfText = fixedDxfText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+        
+        // Try parsing again
+        try {
+          dxf = parser.parse(fixedDxfText);
+          console.log('✅ DXF parsed successfully after fixes!');
+        } catch (secondError) {
+          console.error('❌ DXF parsing failed even after fixes:', secondError);
+          // Create a fallback empty DXF structure
+          dxf = { entities: [], blocks: {}, tables: {} };
+        }
+      }
 
-      console.log('✅ DXF parsed successfully!');
-      console.log('📊 Parsed DXF structure:', {
-        hasEntities: !!dxf.entities,
-        entityCount: dxf.entities?.length || 0,
-        hasBlocks: !!dxf.blocks,
-        blockCount: Object.keys(dxf.blocks || {}).length,
-        hasLayers: !!dxf.tables?.layer,
-        layerCount: Object.keys(dxf.tables?.layer?.layers || {}).length
-      });
-
+      // Comprehensive DXF analysis
+      console.log('📊 Detailed DXF analysis:');
+      console.log('  Structure keys:', Object.keys(dxf || {}));
+      console.log('  Entities type:', typeof dxf.entities, 'Array?', Array.isArray(dxf.entities));
+      console.log('  Entities count:', dxf.entities?.length || 0);
+      
       if (dxf.entities && dxf.entities.length > 0) {
-        console.log('🏗️ Found entities:', dxf.entities.slice(0, 5).map((e: any) => ({
-          type: e.type,
-          layer: e.layer,
-          hasGeometry: !!(e.startPoint || e.vertices || e.center || e.position)
-        })));
+        console.log('  🏗️ First few entities:');
+        dxf.entities.slice(0, 3).forEach((entity: any, index: number) => {
+          console.log(`    [${index}]:`, {
+            type: entity.type,
+            layer: entity.layer,
+            keys: Object.keys(entity || {}),
+            startPoint: entity.startPoint,
+            endPoint: entity.endPoint,
+            vertices: entity.vertices,
+            center: entity.center,
+            radius: entity.radius,
+            position: entity.position,
+            text: entity.text
+          });
+        });
       } else {
-        console.warn('⚠️ No entities found in DXF file!');
+        console.warn('  ⚠️ No entities found!');
+        // Check if entities might be in blocks
+        if (dxf.blocks && Object.keys(dxf.blocks).length > 0) {
+          console.log('  📏 Checking blocks for entities...');
+          Object.entries(dxf.blocks).forEach(([blockName, blockData]: [string, any]) => {
+            console.log(`    Block "${blockName}":`, {
+              hasEntities: !!(blockData.entities),
+              entityCount: blockData.entities?.length || 0
+            });
+          });
+        }
       }
 
       // Create PDF document
@@ -306,37 +348,80 @@ export class DXFPDFService {
    */
   private static getEntityPoints(entity: any): Array<{ x: number; y: number }> {
     const points: Array<{ x: number; y: number }> = [];
+    
+    console.log('📏 Extracting points from entity:', entity.type, Object.keys(entity));
 
     switch (entity.type) {
       case 'LINE':
-        if (entity.startPoint) points.push(entity.startPoint);
-        if (entity.endPoint) points.push(entity.endPoint);
-        break;
-      case 'POLYLINE':
-      case 'LWPOLYLINE':
-        if (entity.vertices) {
-          entity.vertices.forEach((v: any) => points.push({ x: v.x, y: v.y }));
+        // Handle different startPoint formats
+        let startPoint = entity.startPoint || entity.start_point || entity.start;
+        let endPoint = entity.endPoint || entity.end_point || entity.end;
+        
+        if (Array.isArray(startPoint) && startPoint.length >= 2) {
+          points.push({ x: startPoint[0], y: startPoint[1] });
+        } else if (startPoint && typeof startPoint.x === 'number' && typeof startPoint.y === 'number') {
+          points.push(startPoint);
+        }
+        
+        if (Array.isArray(endPoint) && endPoint.length >= 2) {
+          points.push({ x: endPoint[0], y: endPoint[1] });
+        } else if (endPoint && typeof endPoint.x === 'number' && typeof endPoint.y === 'number') {
+          points.push(endPoint);
         }
         break;
+        
+      case 'POLYLINE':
+      case 'LWPOLYLINE':
+        let vertices = entity.vertices || entity.points;
+        if (Array.isArray(vertices)) {
+          vertices.forEach((v: any) => {
+            if (Array.isArray(v) && v.length >= 2) {
+              points.push({ x: v[0], y: v[1] });
+            } else if (v && typeof v.x === 'number' && typeof v.y === 'number') {
+              points.push({ x: v.x, y: v.y });
+            }
+          });
+        }
+        break;
+        
       case 'CIRCLE':
       case 'ARC':
-        if (entity.center && entity.radius) {
+        let center = entity.center || entity.centerPoint;
+        let radius = entity.radius;
+        
+        if (Array.isArray(center) && center.length >= 2) {
+          center = { x: center[0], y: center[1] };
+        }
+        
+        if (center && radius !== undefined && 
+            typeof center.x === 'number' && typeof center.y === 'number' &&
+            typeof radius === 'number') {
           points.push(
-            { x: entity.center.x - entity.radius, y: entity.center.y - entity.radius },
-            { x: entity.center.x + entity.radius, y: entity.center.y + entity.radius }
+            { x: center.x - radius, y: center.y - radius },
+            { x: center.x + radius, y: center.y + radius }
           );
         }
         break;
+        
       case 'TEXT':
       case 'MTEXT':
-        if (entity.position) points.push(entity.position);
+        let position = entity.position || entity.insertionPoint;
+        if (Array.isArray(position) && position.length >= 2) {
+          points.push({ x: position[0], y: position[1] });
+        } else if (position && typeof position.x === 'number' && typeof position.y === 'number') {
+          points.push(position);
+        }
         break;
+        
       case 'DIMENSION':
         if (entity.definingPoint) points.push(entity.definingPoint);
         if (entity.middleOfText) points.push(entity.middleOfText);
+        if (entity.p1) points.push(entity.p1);
+        if (entity.p2) points.push(entity.p2);
         break;
     }
-
+    
+    console.log('📏 Extracted', points.length, 'points from', entity.type, ':', points);
     return points;
   }
 
@@ -404,13 +489,33 @@ export class DXFPDFService {
     transformX: (x: number) => number,
     transformY: (y: number) => number
   ): void {
-    if (entity.startPoint && entity.endPoint) {
-      pdf.line(
-        transformX(entity.startPoint.x),
-        transformY(entity.startPoint.y),
-        transformX(entity.endPoint.x),
-        transformY(entity.endPoint.y)
-      );
+    let startPoint = entity.startPoint || entity.start_point || entity.start;
+    let endPoint = entity.endPoint || entity.end_point || entity.end;
+    
+    // Handle different coordinate formats
+    if (Array.isArray(startPoint) && startPoint.length >= 2) {
+      startPoint = { x: startPoint[0], y: startPoint[1] };
+    }
+    if (Array.isArray(endPoint) && endPoint.length >= 2) {
+      endPoint = { x: endPoint[0], y: endPoint[1] };
+    }
+    
+    console.log('📍 Rendering LINE:', { startPoint, endPoint });
+    
+    if (startPoint && endPoint && 
+        typeof startPoint.x === 'number' && typeof startPoint.y === 'number' &&
+        typeof endPoint.x === 'number' && typeof endPoint.y === 'number') {
+      
+      const x1 = transformX(startPoint.x);
+      const y1 = transformY(startPoint.y);
+      const x2 = transformX(endPoint.x);
+      const y2 = transformY(endPoint.y);
+      
+      console.log('📍 LINE coordinates: PDF(', x1, y1, ') to (', x2, y2, ')');
+      
+      pdf.line(x1, y1, x2, y2);
+    } else {
+      console.warn('⚠️ Invalid LINE entity points:', { startPoint, endPoint });
     }
   }
 
@@ -423,27 +528,60 @@ export class DXFPDFService {
     transformX: (x: number) => number,
     transformY: (y: number) => number
   ): void {
-    if (entity.vertices && entity.vertices.length > 1) {
-      const vertices = entity.vertices;
-      
-      for (let i = 0; i < vertices.length - 1; i++) {
-        pdf.line(
-          transformX(vertices[i].x),
-          transformY(vertices[i].y),
-          transformX(vertices[i + 1].x),
-          transformY(vertices[i + 1].y)
-        );
+    let vertices = entity.vertices || entity.points;
+    
+    console.log('📍 Rendering POLYLINE with vertices:', vertices);
+    
+    if (!vertices || !Array.isArray(vertices) || vertices.length < 2) {
+      console.warn('⚠️ Invalid POLYLINE vertices:', vertices);
+      return;
+    }
+    
+    // Normalize vertices to {x, y} format
+    const normalizedVertices = vertices.map((v: any) => {
+      if (Array.isArray(v) && v.length >= 2) {
+        return { x: v[0], y: v[1] };
+      } else if (typeof v === 'object' && v.x !== undefined && v.y !== undefined) {
+        return { x: v.x, y: v.y };
+      } else {
+        console.warn('⚠️ Invalid vertex format:', v);
+        return null;
       }
+    }).filter(v => v !== null);
+    
+    console.log('📍 Normalized vertices:', normalizedVertices);
+    
+    if (normalizedVertices.length < 2) {
+      console.warn('⚠️ Not enough valid vertices after normalization');
+      return;
+    }
+    
+    // Draw lines between consecutive vertices
+    for (let i = 0; i < normalizedVertices.length - 1; i++) {
+      const v1 = normalizedVertices[i];
+      const v2 = normalizedVertices[i + 1];
       
-      // Close polyline if specified
-      if (entity.closed && vertices.length > 2) {
-        pdf.line(
-          transformX(vertices[vertices.length - 1].x),
-          transformY(vertices[vertices.length - 1].y),
-          transformX(vertices[0].x),
-          transformY(vertices[0].y)
-        );
-      }
+      const x1 = transformX(v1.x);
+      const y1 = transformY(v1.y);
+      const x2 = transformX(v2.x);
+      const y2 = transformY(v2.y);
+      
+      console.log(`📍 POLYLINE segment ${i}: PDF(${x1}, ${y1}) to (${x2}, ${y2})`);
+      pdf.line(x1, y1, x2, y2);
+    }
+    
+    // Close polyline if specified
+    if (entity.closed && normalizedVertices.length > 2) {
+      const first = normalizedVertices[0];
+      const last = normalizedVertices[normalizedVertices.length - 1];
+      
+      const x1 = transformX(last.x);
+      const y1 = transformY(last.y);
+      const x2 = transformX(first.x);
+      const y2 = transformY(first.y);
+      
+      console.log('📍 POLYLINE closing line: PDF(', x1, y1, ') to (', x2, y2, ')');
+      pdf.line(x1, y1, x2, y2);
     }
   }
 
@@ -456,12 +594,29 @@ export class DXFPDFService {
     transformX: (x: number) => number,
     transformY: (y: number) => number
   ): void {
-    if (entity.center && entity.radius) {
-      const centerX = transformX(entity.center.x);
-      const centerY = transformY(entity.center.y);
-      const radius = entity.radius * Math.abs(transformX(1) - transformX(0)); // Scale radius
+    let center = entity.center || entity.centerPoint;
+    let radius = entity.radius;
+    
+    // Handle different center formats
+    if (Array.isArray(center) && center.length >= 2) {
+      center = { x: center[0], y: center[1] };
+    }
+    
+    console.log('📍 Rendering CIRCLE:', { center, radius });
+    
+    if (center && radius !== undefined && 
+        typeof center.x === 'number' && typeof center.y === 'number' &&
+        typeof radius === 'number') {
       
-      pdf.circle(centerX, centerY, radius, 'S'); // 'S' for stroke only
+      const centerX = transformX(center.x);
+      const centerY = transformY(center.y);
+      const scaledRadius = radius * Math.abs(transformX(1) - transformX(0)); // Scale radius
+      
+      console.log('📍 CIRCLE: PDF center(', centerX, centerY, ') radius', scaledRadius);
+      
+      pdf.circle(centerX, centerY, scaledRadius, 'S'); // 'S' for stroke only
+    } else {
+      console.warn('⚠️ Invalid CIRCLE entity:', { center, radius });
     }
   }
 
@@ -670,6 +825,83 @@ EOF`;
     } catch (error) {
       console.error('❌ DXF parsing test failed:', error);
       throw new Error('DXF parsing is not working correctly');
+    }
+  }
+
+  /**
+   * Test function to create a PDF with hardcoded entities to verify rendering
+   */
+  static async testRenderingWithHardcodedEntities(): Promise<void> {
+    console.log('🧪 Testing PDF rendering with hardcoded entities...');
+    
+    // Create a fake drawing with hardcoded entities in the expected format
+    const testDrawing: TechnicalDrawing = {
+      id: 'test',
+      title: 'Test Rendering',
+      description: 'Test drawing with hardcoded entities',
+      dxfContent: '', // Not used for this test
+      dxfFilename: 'test.dxf',
+      dimensions: { width: 800, height: 600 },
+      scale: '1:100',
+      componentName: 'test',
+      createdAt: new Date(),
+      includeInContext: false,
+      dxfData: {} as any,
+      drawingType: 'dxf'
+    };
+    
+    // Create fake parsed DXF with known entities
+    const fakeDxf = {
+      entities: [
+        {
+          type: 'LINE',
+          startPoint: { x: 0, y: 0 },
+          endPoint: { x: 100, y: 100 },
+          layer: '0'
+        },
+        {
+          type: 'CIRCLE',
+          center: { x: 150, y: 50 },
+          radius: 25,
+          layer: '0'
+        },
+        {
+          type: 'LWPOLYLINE',
+          vertices: [
+            { x: 200, y: 0 },
+            { x: 300, y: 0 },
+            { x: 300, y: 100 },
+            { x: 200, y: 100 }
+          ],
+          closed: true,
+          layer: '0'
+        }
+      ],
+      blocks: {},
+      tables: {}
+    };
+    
+    try {
+      // Create PDF document
+      const pdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: 'a3'
+      });
+
+      // Add title page
+      await this.addTitlePage(pdf, testDrawing);
+
+      // Add drawing page with hardcoded entities
+      await this.addDXFDrawingPage(pdf, fakeDxf, testDrawing);
+
+      // Download PDF
+      pdf.save('test_hardcoded_entities.pdf');
+      
+      console.log('✅ Test PDF with hardcoded entities created successfully!');
+    } catch (error) {
+      console.error('❌ Test PDF creation failed:', error);
+      throw error;
     }
   }
 

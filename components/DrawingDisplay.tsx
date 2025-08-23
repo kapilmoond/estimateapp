@@ -90,6 +90,17 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
     }
   };
 
+  const handleTestHardcodedRendering = async () => {
+    try {
+      console.log('🧪 Testing PDF rendering with hardcoded entities...');
+      await DXFPDFService.testRenderingWithHardcodedEntities();
+      alert('✅ Test PDF with hardcoded entities created! Check downloads.');
+    } catch (error) {
+      console.error('❌ Hardcoded rendering test failed:', error);
+      alert('❌ Hardcoded rendering test failed. Check console for details.');
+    }
+  };
+
   const handleInspectDXF = async () => {
     if (!selectedDrawing) {
       alert('Please select a drawing first');
@@ -170,6 +181,12 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
             className="px-3 py-1 bg-purple-600 text-white text-sm rounded hover:bg-purple-700"
           >
             🧪 Test DXF Parsing
+          </button>
+          <button
+            onClick={handleTestHardcodedRendering}
+            className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700"
+          >
+            🎨 Test Rendering
           </button>
           {selectedDrawing && (
             <button
