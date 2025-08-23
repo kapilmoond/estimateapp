@@ -12,6 +12,7 @@ import tempfile
 import base64
 import io
 import math
+from datetime import datetime
 import google.generativeai as genai
 import ezdxf
 from ezdxf import units
@@ -19,6 +20,9 @@ from dxf_generator import generate_construction_drawing, ProfessionalDXFGenerato
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
+
+# Global debug data storage
+last_debug_data = {}
 
 # Configure Gemini API
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
@@ -29,6 +33,27 @@ else:
     print("⚠️ WARNING: GEMINI_API_KEY not found in environment variables")
     print("   AI-powered DXF generation will not work without API key")
     model = None
+
+@app.route('/get-debug-info', methods=['GET'])
+def get_debug_info():
+    """Retrieve the last debug information from DXF generation"""
+    try:
+        global last_debug_data
+        if last_debug_data:
+            return jsonify({
+                'success': True,
+                'debug_data': last_debug_data
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'No debug data available. Generate a drawing first.'
+            }), 404
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -763,9 +788,17 @@ CRITICAL REQUIREMENTS:
             print(f"\n✅ Success: {entity_summary['dimensions_created']} dimensions created successfully")
         print("="*50 + "\n")
 
-        # 7. Finalize debug information
-        debug_data['backend_logs'] = entity_summary
-        debug_data['processing_steps'].append(f"DXF generation completed: {entity_summary['dimensions_created']} dimensions, {entity_summary['errors']} errors")
+        # Store debug information globally for retrieval
+        global last_debug_data
+        last_debug_data = {
+            'timestamp': datetime.now().isoformat(),
+            'request_data': debug_data['request_data'],
+            'ai_response_raw': raw_ai_response,
+            'ai_response_cleaned': cleaned_response_text,
+            'parsed_data': geometry_data,
+            'backend_logs': entity_summary,
+            'processing_steps': debug_data['processing_steps']
+        }
         
         # Print final debug summary
         print("\n" + "="*60)
@@ -799,17 +832,40 @@ CRITICAL REQUIREMENTS:
             mimetype='application/vnd.dxf'
         )
         
-        # Add debug information to response headers (truncated for header size limits)
+        # Add comprehensive debug information to response headers
         try:
+            # Summary debug info (smaller for header limits)
             debug_summary = {
                 'dimensions_created': entity_summary['dimensions_created'],
                 'total_entities': entity_summary['total'],
                 'entity_types': entity_summary['by_type'],
                 'errors': entity_summary['errors']
             }
-            response.headers['X-Debug-Summary'] = json.dumps(debug_summary)[:1000]  # Limit header size
+            
+            # Detailed debug info (truncated for header size limits)
+            debug_details = {
+                'ai_response_raw': raw_ai_response[:500] + '...' if len(raw_ai_response) > 500 else raw_ai_response,
+                'ai_response_cleaned': cleaned_response_text[:500] + '...' if len(cleaned_response_text) > 500 else cleaned_response_text,
+                'parsed_data': {
+                    'entity_count': len(geometry_data.get('entities', [])),
+                    'has_dimensions': len([e for e in geometry_data.get('entities', []) if e.get('type') == 'DIMENSION']),
+                    'entity_types': list(set([e.get('type') for e in geometry_data.get('entities', [])]))
+                }
+            }
+            
+            # Add headers with size limits
+            response.headers['X-Debug-Summary'] = json.dumps(debug_summary)[:1000]
+            response.headers['X-Debug-Details'] = json.dumps(debug_details)[:2000]
+            
+            # CORS headers for debug data
+            response.headers['Access-Control-Expose-Headers'] = 'X-Debug-Summary, X-Debug-Details'
+            
+            print(f"✅ Debug headers added to response:")
+            print(f"  Summary size: {len(json.dumps(debug_summary))} chars")
+            print(f"  Details size: {len(json.dumps(debug_details))} chars")
+            
         except Exception as header_error:
-            print(f"Warning: Could not add debug headers: {header_error}")
+            print(f"⚠️ Warning: Could not add debug headers: {header_error}")
         
         return response
 

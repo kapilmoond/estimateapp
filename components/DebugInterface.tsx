@@ -16,7 +16,7 @@ interface DebugInterfaceProps {
 export const DebugInterface: React.FC<DebugInterfaceProps> = ({ drawing }) => {
   const [debugData, setDebugData] = useState<DebugData | null>(null);
   const [showDebug, setShowDebug] = useState(false);
-  const [debugSource, setDebugSource] = useState<'drawing' | 'localStorage' | 'none'>('none');
+  const [debugSource, setDebugSource] = useState<'drawing' | 'localStorage' | 'backend' | 'none'>('none');
 
   useEffect(() => {
     loadDebugData();
@@ -24,7 +24,7 @@ export const DebugInterface: React.FC<DebugInterfaceProps> = ({ drawing }) => {
 
   const loadDebugData = () => {
     let data: DebugData | null = null;
-    let source: 'drawing' | 'localStorage' | 'none' = 'none';
+    let source: 'drawing' | 'localStorage' | 'backend' | 'none' = 'none';
 
     // First try to get debug data from the drawing object
     if (drawing && drawing.debugInfo) {
@@ -54,6 +54,13 @@ export const DebugInterface: React.FC<DebugInterfaceProps> = ({ drawing }) => {
 
     setDebugData(data);
     setDebugSource(source);
+  };
+
+  const clearDebugData = () => {
+    localStorage.removeItem('dxf_debug_last_success');
+    localStorage.removeItem('dxf_debug_last_error');
+    setDebugData(null);
+    setDebugSource('none');
   };
 
   const formatDebugOutput = (): string => {
@@ -213,11 +220,48 @@ export const DebugInterface: React.FC<DebugInterfaceProps> = ({ drawing }) => {
     }
   };
 
-  const clearDebugData = () => {
-    localStorage.removeItem('dxf_debug_last_success');
-    localStorage.removeItem('dxf_debug_last_error');
-    setDebugData(null);
-    setDebugSource('none');
+  const fetchLatestDebugInfo = async () => {
+    try {
+      // Import CloudConfig dynamically to get the endpoint URL
+      const { CloudConfig } = await import('../services/cloudConfig');
+      const debugEndpoint = CloudConfig.getEndpointUrl('/get-debug-info');
+      
+      const response = await fetch(debugEndpoint, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.debug_data) {
+          const fetchedData: DebugData = {
+            prompt_sent: JSON.stringify(result.debug_data.request_data, null, 2),
+            ai_response_raw: result.debug_data.ai_response_raw,
+            ai_response_cleaned: result.debug_data.ai_response_cleaned,
+            parsed_data: result.debug_data.parsed_data,
+            backend_logs: JSON.stringify(result.debug_data.backend_logs, null, 2),
+            timestamp: result.debug_data.timestamp
+          };
+          
+          setDebugData(fetchedData);
+          setDebugSource('backend');
+          
+          // Also store in localStorage for persistence
+          localStorage.setItem('dxf_debug_last_success', JSON.stringify(fetchedData));
+          
+          alert('✅ Latest debug information fetched from backend!');
+        } else {
+          alert('⚠️ No debug data available on backend. Generate a drawing first.');
+        }
+      } else {
+        alert('❌ Failed to fetch debug info from backend.');
+      }
+    } catch (error) {
+      console.error('Error fetching debug info:', error);
+      alert('❌ Error fetching debug info. Check console for details.');
+    }
   };
 
   return (
@@ -249,6 +293,20 @@ export const DebugInterface: React.FC<DebugInterfaceProps> = ({ drawing }) => {
           }}
         >
           🔄 Refresh Debug Data
+        </button>
+        
+        <button
+          onClick={fetchLatestDebugInfo}
+          style={{
+            padding: '8px 16px',
+            backgroundColor: '#007bff',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer'
+          }}
+        >
+          🚀 Fetch Latest from Backend
         </button>
         
         <button

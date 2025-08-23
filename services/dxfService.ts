@@ -108,16 +108,28 @@ export class DXFService {
       }
 
       // 🔍 DEBUGGING: For successful responses, check if we can get debug info from headers
-      const debugHeader = response.headers.get('X-Debug-Info');
+      const debugHeader = response.headers.get('X-Debug-Summary');
+      const debugDetails = response.headers.get('X-Debug-Details');
+      
       if (debugHeader) {
         try {
           const backendDebug = JSON.parse(debugHeader);
-          debugInfo.ai_response_raw = backendDebug.ai_response_raw || '';
-          debugInfo.ai_response_cleaned = backendDebug.ai_response_cleaned || '';
-          debugInfo.parsed_data = backendDebug.parsed_data || null;
-          debugInfo.backend_logs = backendDebug.backend_logs || '';
+          debugInfo.backend_logs = backendDebug;
+          console.log('🔍 DEBUG: Backend summary captured:', backendDebug);
         } catch (e) {
           console.warn('Could not parse debug header:', e);
+        }
+      }
+      
+      if (debugDetails) {
+        try {
+          const detailedDebug = JSON.parse(debugDetails);
+          debugInfo.ai_response_raw = detailedDebug.ai_response_raw || '';
+          debugInfo.ai_response_cleaned = detailedDebug.ai_response_cleaned || '';
+          debugInfo.parsed_data = detailedDebug.parsed_data || null;
+          console.log('🔍 DEBUG: Detailed debug info captured:', detailedDebug);
+        } catch (e) {
+          console.warn('Could not parse debug details header:', e);
         }
       }
 
@@ -125,6 +137,30 @@ export class DXFService {
       const blob = await response.blob();
       const base64Content = await this.blobToBase64(blob);
 
+      // 🔍 DEBUGGING: Try to fetch detailed debug info from backend
+      try {
+        const debugEndpoint = CloudConfig.getEndpointUrl('/get-debug-info');
+        const debugResponse = await fetch(debugEndpoint, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
+        
+        if (debugResponse.ok) {
+          const debugResult = await debugResponse.json();
+          if (debugResult.success && debugResult.debug_data) {
+            debugInfo.ai_response_raw = debugResult.debug_data.ai_response_raw || '';
+            debugInfo.ai_response_cleaned = debugResult.debug_data.ai_response_cleaned || '';
+            debugInfo.parsed_data = debugResult.debug_data.parsed_data || null;
+            debugInfo.backend_logs = debugResult.debug_data.backend_logs || '';
+            console.log('🔍 DEBUG: Detailed debug info fetched from endpoint:', debugResult.debug_data);
+          }
+        }
+      } catch (debugError) {
+        console.warn('Could not fetch debug info from endpoint:', debugError);
+      }
+      
       // 🔍 DEBUGGING: Store debug info for user inspection
       localStorage.setItem('dxf_debug_last_success', JSON.stringify(debugInfo));
 
