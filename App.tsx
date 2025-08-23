@@ -360,18 +360,37 @@ const App: React.FC = () => {
   };
 
   const handleDrawingRequest = async (userInput: string) => {
-    setLoadingMessage('STAGE 1: Generating initial drawing specification...');
+    setLoadingMessage('🔍 Analyzing your drawing requirements...');
     setIsAiThinking(true);
     setError(null);
 
     try {
-      // Extract drawing details from user input
-      const titleMatch = userInput.match(/drawing\s+(?:for\s+)?(.+?)(?:\s|$)/i);
-      const title = titleMatch ? titleMatch[1].trim() : 'Technical Drawing';
-      const componentName = title;
+      // Enhanced input validation
+      if (!userInput.trim()) {
+        throw new Error('Please provide specific drawing requirements.');
+      }
 
-      // Drawing info will be handled directly in the generation process
+      if (userInput.trim().length < 10) {
+        throw new Error('Please provide more detailed drawing requirements (at least 10 characters).');
+      }
 
+      // Smart title extraction with flexible patterns
+      let title = 'Technical Drawing';
+      const titlePatterns = [
+        /(?:drawing|draw|create|generate|design)\s+(?:for\s+|of\s+|a\s+)?(.+?)(?:\s+(?:drawing|plan|view|section|detail)|$)/i,
+        /(?:plan|elevation|section|detail)\s+(?:for\s+|of\s+)?(.+?)(?:\s|$)/i,
+        /(.+?)\s+(?:drawing|plan|elevation|section|detail)/i
+      ];
+      
+      for (const pattern of titlePatterns) {
+        const match = userInput.match(pattern);
+        if (match && match[1].trim().length > 2) {
+          title = match[1].trim();
+          break;
+        }
+      }
+
+      // Gather all available context
       const activeGuidelines = GuidelinesService.getActiveGuidelines();
       const drawingGuidelines = GuidelinesService.getActiveGuidelines('drawing');
       const allGuidelines = [...activeGuidelines, ...drawingGuidelines];
@@ -379,6 +398,12 @@ const App: React.FC = () => {
 
       const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
       const designContext = ThreadService.getAllContextForMode('design');
+      
+      // Get existing designs that might be relevant
+      const existingDesigns = designs.filter(d => d.includeInContext !== false);
+      const designsContext = existingDesigns.length > 0 
+        ? existingDesigns.map(d => `**Design: ${d.componentName}**\n${d.designContent.substring(0, 500)}...`).join('\n\n')
+        : '';
 
       // Enhance user input with knowledge base if enabled
       let enhancedUserInput = userInput;
@@ -390,145 +415,106 @@ const App: React.FC = () => {
         enhancedUserInput = enhancedPrompt;
       }
 
-      // STAGE 1: Generate initial DXF drawing specification
+      // Create flexible, context-aware prompt for the LLM
+      const flexibleDrawingPrompt = `You are a professional construction engineer and technical draftsman. You need to create a technical drawing based on the user's specific requirements.
+
+**PRIMARY INSTRUCTION (MUST FOLLOW):**
+${enhancedUserInput}
+
+**PROJECT CONTEXT:**
+${scopeContext}
+
+**DESIGN CONTEXT (use if relevant to user's instruction):**
+${designContext}
+
+**EXISTING DESIGNS (use if helpful for user's instruction):**
+${designsContext}
+
+**GUIDELINES:**
+${guidelinesText}
+
+**REFERENCE DOCUMENTS:**
+${referenceText}
+
+**INSTRUCTIONS:**
+1. **PRIORITIZE the user's specific instruction above all else**
+2. Use existing designs and context ONLY if they support the user's main instruction
+3. Be flexible - the user may want plans, elevations, sections, details, or any other type of drawing
+4. Generate a comprehensive technical drawing description that includes:
+   - Drawing type and views needed
+   - All dimensions and measurements
+   - Material specifications
+   - Construction details and annotations
+   - Professional drawing standards and symbols
+   - Any special requirements from the user's instruction
+
+5. **Output a detailed technical drawing specification** that can be used to generate a professional DXF file.
+
+Focus on creating exactly what the user requested, using available context to enhance accuracy but never override the user's specific requirements.`;
+
+      setLoadingMessage('🤖 Generating professional technical drawing description...');
+
+      // Generate drawing description using LLM
+      const drawingDescription = await LLMService.generateContent(flexibleDrawingPrompt);
+
+      // Enhanced validation of LLM response
+      if (!drawingDescription || drawingDescription.trim().length < 50) {
+        throw new Error('Generated drawing description is too short. Please try with more specific requirements.');
+      }
+
+      if (!drawingDescription.toLowerCase().includes('drawing') && 
+          !drawingDescription.toLowerCase().includes('plan') &&
+          !drawingDescription.toLowerCase().includes('detail')) {
+        console.warn('LLM response may not be drawing-related:', drawingDescription.substring(0, 200));
+      }
+
+      setLoadingMessage('🔧 Creating professional DXF file with Python backend...');
+
+      // Now generate the actual DXF drawing using the backend
       const drawing = await DXFService.generateDXFFromDescription(
         title,
-        enhancedUserInput,
+        drawingDescription,
         enhancedUserInput
       );
 
-      // Add to conversation history for Stage 1
-      setConversationHistory(prev => [
-        ...prev,
-        { role: 'user', text: userInput },
-        { role: 'model', text: `STAGE 1 COMPLETE - Initial Drawing Specification Generated for ${title}:\n\n${drawing.description}\n\nProceeding to Stage 2 validation...` }
-      ]);
-
-      setLoadingMessage('STAGE 2: AI analyzing drawing for professional quality issues...');
-
-      // STAGE 2: Second separate LLM call to validate the complete drawing
-      const validationPrompt = `You are a professional CAD drawing validator and quality control expert. Analyze the following COMPLETE drawing specification and check for ALL possible issues that could make it unprofessional or incorrect.
-
-ORIGINAL USER REQUEST: ${userInput}
-DRAWING TITLE: ${title}
-COMPONENT: ${componentName}
-
-COMPLETE DRAWING TO VALIDATE:
-${drawing.description}
-DXF File: ${drawing.dxfFilename}
-
-CONTEXT INFORMATION:
-${scopeContext}
-${designContext}
-${guidelinesText}
-
-Please analyze this drawing specification thoroughly and check for:
-
-1. **OBJECT PLACEMENT & COMPLETENESS**:
-   - Are all required objects from user request included?
-   - Are objects positioned correctly relative to each other?
-   - Are structural elements properly aligned and connected?
-   - Are all necessary components present (foundations, connections, supports)?
-
-2. **OVERLAPPING ISSUES**:
-   - Are there any drawing elements overlapping each other?
-   - Do dimension lines overlap with drawing objects?
-   - Are text annotations overlapping with lines or other text?
-   - Are symbols or hatching patterns conflicting?
-
-3. **TEXT AND ANNOTATION QUALITY**:
-   - Are text sizes appropriate and readable (minimum 12px for technical drawings)?
-   - Are all text labels properly positioned without overlaps?
-   - Are dimension values clearly readable and not obscured?
-   - Are all annotations spelled correctly and technically accurate?
-
-4. **LINE WEIGHTS AND STYLES**:
-   - Are object lines thick enough (2-3px for main elements)?
-   - Are dimension lines thinner (1-2px) than object lines?
-   - Are hidden lines properly dashed or dotted?
-   - Are construction lines distinguished from finished lines?
-
-5. **DIMENSIONING STANDARDS**:
-   - Are all critical dimensions included?
-   - Are dimension lines properly positioned with adequate spacing?
-   - Are dimension arrows clear and properly sized?
-   - Are dimension values realistic and consistent with scale?
-
-6. **LAYOUT AND PROFESSIONAL APPEARANCE**:
-   - Is the drawing well-organized and balanced on the page?
-   - Is the title block complete with all required information?
-   - Are views properly positioned and scaled?
-   - Does the overall layout look professional?
-
-7. **TECHNICAL ACCURACY**:
-   - Do the specifications match the user requirements?
-   - Are construction details technically feasible?
-   - Are material specifications appropriate?
-   - Are connection details properly shown?
-
-Provide a CORRECTED and IMPROVED version of the complete drawing specification that fixes ALL identified issues. Make sure the corrected version is a complete, professional-quality technical drawing.
-
-CORRECTED DRAWING SPECIFICATION:`;
-
-      // Make the second LLM call for validation
-      const correctedDrawingSpec = await LLMService.generateContent(validationPrompt);
-
-      // Generate Professional CAD Drawing directly
-      setLoadingMessage('Generating Professional CAD Drawing...');
-
-      const cadPrompt = `You are a professional CAD drawing generator. Convert the following validated drawing specification into a precise, professional SVG drawing suitable for construction use.
-
-VALIDATED DRAWING SPECIFICATION:
-${correctedDrawingSpec}
-
-DRAWING TITLE: ${title}
-
-Generate a complete, professional SVG drawing with the following requirements:
-
-1. **SVG Structure**:
-   - Use viewBox="0 0 800 600" for standard drawing size
-   - Include proper xmlns="http://www.w3.org/2000/svg"
-   - Use professional coordinate system
-
-2. **Drawing Elements**:
-   - Main structural elements with thick lines (stroke-width="3")
-   - Dimension lines with thinner lines (stroke-width="1")
-   - Clear, readable text (font-size="14" minimum)
-   - Proper spacing and layout
-
-3. **Professional Standards**:
-   - Title block at bottom with drawing info
-   - Proper dimensioning with arrows and values
-   - Clear object lines vs dimension lines
-   - Professional appearance suitable for construction
-
-4. **Technical Accuracy**:
-   - All elements from the specification included
-   - Proper proportions and scaling
-   - Realistic measurements and dimensions
-   - Construction-ready details
-
-Generate ONLY the complete SVG code, no explanations:`;
-
-      const cadSVGContent = await LLMService.generateContent(cadPrompt);
-
-      // DXF drawing is already generated and ready to use
-
-      // Save the DXF drawing
+      // Save the drawing
       DXFStorageService.saveDrawing(drawing);
       setDrawings(prev => [drawing, ...prev]);
 
-      // Add final results to conversation
+      // Add to conversation history with enhanced feedback
       setConversationHistory(prev => [
         ...prev,
-        { role: 'model', text: `✅ PROFESSIONAL DXF DRAWING GENERATED SUCCESSFULLY!\n\n🏗️ **${title}**\n\n📋 **Description:** ${drawing.description}\n\n📁 **File:** ${drawing.dxfFilename}\n\n🎯 **Features:**\n• Professional CAD-quality DXF format\n• Construction industry standards\n• Proper dimensions and annotations\n• Standard layers and line weights\n• Compatible with AutoCAD, Revit, and other CAD software\n\n💾 **Download:** Click the download button below to get your professional DXF file.\n\n🔄 **Regenerate:** To modify the drawing, simply provide new instructions and the system will generate an updated version.` }
+        { role: 'user', text: userInput },
+        { role: 'model', text: `✅ **PROFESSIONAL TECHNICAL DRAWING GENERATED!**\n\n🏗️ **${title}**\n\n📋 **Drawing Description:**\n${drawingDescription.substring(0, 400)}...\n\n📁 **File:** ${drawing.dxfFilename}\n\n🎯 **Features:**\n• Professional DXF format compatible with AutoCAD, Revit, and other CAD software\n• Construction industry standards and symbols\n• Precise dimensions and annotations\n• Standard layers and line weights\n• Ready for construction use\n\n💾 **Download:** Click the download button in the Drawing Display section below.\n\n🔄 **Modify:** To change the drawing, provide specific modification instructions like:\n   - "Make the beam 8 meters long instead of 6"\n   - "Add reinforcement details"\n   - "Show section view"\n   - "Include foundation details"` }
       ]);
 
       loadDrawings();
 
     } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'An error occurred while generating the drawing.');
+      console.error('Drawing generation error:', err);
+      let errorMessage = 'An error occurred while generating the drawing.';
+      
+      // Enhanced error handling with specific messages
+      if (err.message?.includes('backend is not available')) {
+        errorMessage = '🔧 Backend Configuration Required: Please configure your Google Cloud Functions URL in the Backend Configuration section below.';
+      } else if (err.message?.includes('Failed to fetch')) {
+        errorMessage = '🌐 Connection Error: Unable to connect to the drawing generation service. Please check your backend configuration.';
+      } else if (err.message?.includes('timeout') || err.message?.includes('AbortError')) {
+        errorMessage = '⏱️ Request Timeout: The drawing generation is taking longer than expected. Please try again or check your backend configuration.';
+      } else if (err.message?.includes('too short')) {
+        errorMessage = '📝 Insufficient Detail: Please provide more specific drawing requirements. Include details like dimensions, materials, or drawing type.';
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
+      
+      // Add error to conversation for user visibility
+      setConversationHistory(prev => [
+        ...prev,
+        { role: 'user', text: userInput },
+        { role: 'model', text: `❌ **Drawing Generation Failed**\n\n${errorMessage}\n\nPlease ensure:\n1. Your backend is properly configured\n2. Your requirements are specific and clear\n3. You're connected to the internet\n\nTry again with more detailed requirements.` }
+      ]);
     } finally {
       setIsAiThinking(false);
       setLoadingMessage('');

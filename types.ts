@@ -101,158 +101,15 @@ export interface DXFElement {
   };
 }
 
-// Legacy CAD Drawing Types (deprecated - use DXF instead)
-export interface CADDrawingData {
-  id: string;
-  title: string;
-  description: string;
-  layers: CADLayer[];
-  entities: CADEntity[];
-  dimensions: CADDimension[];
-  annotations: CADAnnotation[];
-  viewport: CADViewport;
-  units: 'mm' | 'cm' | 'm' | 'in' | 'ft';
-  scale: string;
-  paperSize: 'A4' | 'A3' | 'A2' | 'A1' | 'A0' | 'Letter' | 'Legal';
-  createdAt: Date;
-  modifiedAt: Date;
-  version: number;
-}
-
-export interface CADLayer {
-  id: string;
-  name: string;
-  color: string;
-  lineType: 'solid' | 'dashed' | 'dotted' | 'dashdot';
-  lineWeight: number;
-  visible: boolean;
-  locked: boolean;
-  printable: boolean;
-}
-
-export interface CADEntity {
-  id: string;
-  type: 'line' | 'rectangle' | 'circle' | 'arc' | 'polyline' | 'text' | 'hatch';
-  layerId: string;
-  geometry: CADGeometry;
-  style: CADEntityStyle;
-  properties: Record<string, any>;
-}
-
-export interface CADGeometry {
-  type: string;
-  coordinates: number[][];
-  center?: { x: number; y: number };
-  radius?: number;
-  startAngle?: number;
-  endAngle?: number;
-  width?: number;
-  height?: number;
-}
-
-export interface CADEntityStyle {
-  color: string;
-  lineType: string;
-  lineWeight: number;
-  fillColor?: string;
-  fillPattern?: string;
-  transparency?: number;
-}
-
-export interface CADDimension {
-  id: string;
-  type: 'linear' | 'angular' | 'radial' | 'diameter';
-  startPoint: { x: number; y: number };
-  endPoint: { x: number; y: number };
-  textPosition: { x: number; y: number };
-  value: number;
-  unit: string;
-  precision: number;
-  style: CADDimensionStyle;
-}
-
-export interface CADDimensionStyle {
-  textHeight: number;
-  arrowSize: number;
-  extensionLineOffset: number;
-  dimensionLineOffset: number;
-  color: string;
-  textStyle: string;
-}
-
-export interface CADAnnotation {
-  id: string;
-  type: 'text' | 'leader' | 'note' | 'symbol';
-  position: { x: number; y: number };
-  content: string;
-  style: CADTextStyle;
-  leaderPoints?: { x: number; y: number }[];
-}
-
-export interface CADTextStyle {
-  fontFamily: string;
-  fontSize: number;
-  color: string;
-  bold: boolean;
-  italic: boolean;
-  alignment: 'left' | 'center' | 'right';
-  rotation: number;
-}
-
-export interface CADViewport {
-  center: { x: number; y: number };
-  zoom: number;
-  rotation: number;
-  bounds: {
-    minX: number;
-    minY: number;
-    maxX: number;
-    maxY: number;
-  };
-}
-
-// CAD Tool Types
-export interface CADTool {
-  id: string;
-  name: string;
-  icon: string;
-  category: 'draw' | 'modify' | 'annotate' | 'measure';
-  cursor: string;
-  shortcut?: string;
-}
-
-export interface CADDrawingSettings {
-  snapToGrid: boolean;
-  gridSize: number;
-  snapTolerance: number;
-  orthoMode: boolean;
-  polarTracking: boolean;
-  objectSnap: boolean;
-  snapModes: CADSnapMode[];
-}
-
-export interface CADSnapMode {
-  type: 'endpoint' | 'midpoint' | 'center' | 'intersection' | 'perpendicular' | 'tangent';
-  enabled: boolean;
-  icon: string;
-}
-
 // Export/Import Types
 export interface DXFExportOptions {
-  format: 'dxf' | 'pdf' | 'png' | 'jpg';  // Removed SVG - DXF is primary
+  format: 'dxf' | 'pdf' | 'png' | 'jpg';
   scale: number;
   paperSize?: string;
   orientation?: 'portrait' | 'landscape';
   layers?: string[];
   quality?: 'low' | 'medium' | 'high';
   units?: 'mm' | 'm' | 'ft' | 'in';
-}
-
-export interface CADImportResult {
-  success: boolean;
-  drawing?: CADDrawingData;
-  errors?: string[];
-  warnings?: string[];
 }
 
 export interface ProcessSummary {

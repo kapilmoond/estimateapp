@@ -18,28 +18,31 @@ export class DXFService {
     description: string,
     aiGeneratedContent: string
   ): Promise<TechnicalDrawing> {
-    // Always try fallback first to avoid network errors
-    console.log('🏗️ Generating DXF drawing...');
+    console.log('🏗️ Generating professional DXF drawing...');
 
     try {
-      // Quick backend check with very short timeout
+      // Always try backend first for real DXF generation
       const backendAvailable = await this.quickBackendCheck();
 
-      if (backendAvailable) {
-        console.log('✅ Python backend available - generating professional DXF');
-        try {
-          return await this.generateDXFWithBackend(title, description, aiGeneratedContent);
-        } catch (backendError) {
-          console.warn('❌ Backend generation failed, falling back to demo mode:', backendError);
-          return this.generateMockDXF(title, description, aiGeneratedContent);
-        }
-      } else {
-        console.log('⚠️ Python backend not available - using demo DXF generation');
-        return this.generateMockDXF(title, description, aiGeneratedContent);
+      if (!backendAvailable) {
+        throw new Error(
+          'Python backend is not available. Please ensure your Google Cloud Functions URL is configured correctly in Backend Configuration.'
+        );
       }
+
+      console.log('✅ Python backend available - generating professional DXF');
+      return await this.generateDXFWithBackend(title, description, aiGeneratedContent);
+
     } catch (error) {
-      console.warn('🔄 Error during generation, using demo mode:', error);
-      return this.generateMockDXF(title, description, aiGeneratedContent);
+      // If backend fails, provide specific error message
+      if (error instanceof Error && error.message.includes('backend is not available')) {
+        throw error; // Re-throw backend availability error
+      }
+      
+      console.error('❌ DXF generation failed:', error);
+      throw new Error(
+        `Failed to generate DXF drawing: ${error instanceof Error ? error.message : 'Unknown error'}. Please check your backend configuration and try again.`
+      );
     }
   }
 
@@ -169,158 +172,12 @@ export class DXFService {
   }
 
   /**
-   * Generate mock DXF for demo when backend is not available
-   */
-  private static generateMockDXF(
-    title: string,
-    description: string,
-    aiGeneratedContent: string
-  ): TechnicalDrawing {
-    console.log('📋 Generating demo DXF file...');
-
-    // Create a mock base64 DXF content (minimal DXF structure)
-    const mockDXFContent = this.createMockDXFContent(title, description);
-
-    const drawing: TechnicalDrawing = {
-      id: this.generateId(),
-      title: `${title} (DEMO)`,
-      description: `🎯 DEMO MODE DRAWING\n\n📋 Original Request: ${description}\n\n⚠️ This is a basic demo DXF file for testing purposes.\n\n🏗️ FOR PROFESSIONAL CAD FILES:\n• Start the Python backend server (python-backend/setup.py)\n• Get real ezdxf-generated professional drawings\n• Compatible with AutoCAD, Revit, and all CAD software\n• Construction industry standards and quality\n\n📁 This demo file is still a valid DXF that you can open in CAD software to test the workflow.`,
-      dxfContent: mockDXFContent,
-      dxfFilename: `${title.replace(/\s+/g, '_')}_DEMO.dxf`,
-      dimensions: { width: 800, height: 600 },
-      scale: '1:100',
-      componentName: this.extractComponentName(title),
-      createdAt: new Date(),
-      includeInContext: true,
-      dxfData: this.createDXFData(title, description, aiGeneratedContent),
-      drawingType: 'dxf'
-    };
-
-    console.log('✅ Demo DXF generated successfully');
-    return drawing;
-  }
-
-  /**
-   * Regenerate DXF drawing with user instructions
-   */
-  static async regenerateDXFWithInstructions(
-    originalDrawing: TechnicalDrawing,
-    userInstructions: string
-  ): Promise<TechnicalDrawing> {
-    console.log('🔄 Regenerating drawing with user instructions...');
-
-    try {
-      const enhancedDescription = `${originalDrawing.description}\n\nUSER MODIFICATIONS:\n${userInstructions}`;
-      const newTitle = originalDrawing.title.replace(' (DEMO)', '') + ' (Modified)';
-
-      const regeneratedDrawing = await this.generateDXFFromDescription(
-        newTitle,
-        enhancedDescription,
-        enhancedDescription
-      );
-
-      console.log('✅ Drawing regenerated successfully');
-      return regeneratedDrawing;
-    } catch (error) {
-      console.error('❌ DXF regeneration error:', error);
-      // Still return a demo version with the modifications noted
-      console.log('🔄 Falling back to demo regeneration...');
-
-      const enhancedDescription = `${originalDrawing.description}\n\nUSER MODIFICATIONS:\n${userInstructions}`;
-      return this.generateMockDXF(
-        originalDrawing.title.replace(' (DEMO)', '') + ' (Modified)',
-        enhancedDescription,
-        enhancedDescription
-      );
-    }
-  }
-
-  /**
-   * Download DXF file
-   */
-  static async downloadDXF(drawing: TechnicalDrawing): Promise<void> {
-    try {
-      // Decode base64 DXF content
-      const dxfBlob = this.base64ToBlob(drawing.dxfContent, 'application/dxf');
-      
-      // Create download link
-      const url = URL.createObjectURL(dxfBlob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = drawing.dxfFilename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('DXF download error:', error);
-      throw new Error('Failed to download DXF file');
-    }
-  }
-
-  /**
-   * Convert DXF to PDF for viewing
-   */
-  static async convertDXFToPDF(drawing: TechnicalDrawing): Promise<string> {
-    try {
-      const response = await fetch(`${this.PYTHON_BACKEND_URL}/convert-to-pdf`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          dxf_content: drawing.dxfContent,
-          filename: drawing.dxfFilename
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error('PDF conversion failed');
-      }
-
-      const result = await response.json();
-      return result.pdf_content; // Base64 encoded PDF
-    } catch (error) {
-      console.error('PDF conversion error:', error);
-      throw new Error('Failed to convert DXF to PDF');
-    }
-  }
-
-  /**
-   * Get DXF preview as SVG for web display
-   */
-  static async getDXFPreview(drawing: TechnicalDrawing): Promise<string> {
-    try {
-      const response = await fetch(`${this.PYTHON_BACKEND_URL}/dxf-to-svg`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          dxf_content: drawing.dxfContent
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error('DXF preview generation failed');
-      }
-
-      const result = await response.json();
-      return result.svg_content; // SVG for web preview only
-    } catch (error) {
-      console.error('DXF preview error:', error);
-      // Return a placeholder SVG if preview fails
-      return this.createPlaceholderSVG(drawing.title);
-    }
-  }
-
-  /**
    * Quick backend check with very short timeout for generation
    */
   private static async quickBackendCheck(): Promise<boolean> {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1000); // 1 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 3000); // Increased to 3 seconds for more reliable check
 
       const endpointUrl = CloudConfig.getEndpointUrl('/health');
       const response = await fetch(endpointUrl, {
@@ -331,7 +188,6 @@ export class DXFService {
       clearTimeout(timeoutId);
       return response.ok;
     } catch (error) {
-      // Don't log error here to avoid console spam
       return false;
     }
   }
@@ -408,203 +264,95 @@ export class DXFService {
   }
 
   /**
-   * Create mock DXF content for demo purposes
+   * Regenerate DXF drawing with user instructions
    */
-  private static createMockDXFContent(title: string, description: string): string {
-    // Create a minimal but valid DXF file structure
-    const dxfContent = `0
-SECTION
-2
-HEADER
-9
-$ACADVER
-1
-AC1021
-9
-$DWGCODEPAGE
-3
-ANSI_1252
-0
-ENDSEC
-0
-SECTION
-2
-TABLES
-0
-TABLE
-2
-LTYPE
-70
-1
-0
-LTYPE
-2
-CONTINUOUS
-70
-64
-3
-Solid line
-72
-65
-73
-0
-40
-0.0
-0
-ENDTAB
-0
-TABLE
-2
-LAYER
-70
-1
-0
-LAYER
-2
-0
-70
-64
-62
-7
-6
-CONTINUOUS
-0
-LAYER
-2
-STRUCTURAL
-70
-64
-62
-1
-6
-CONTINUOUS
-0
-LAYER
-2
-DIMENSIONS
-70
-64
-62
-2
-6
-CONTINUOUS
-0
-LAYER
-2
-TEXT
-70
-64
-62
-3
-6
-CONTINUOUS
-0
-ENDTAB
-0
-ENDSEC
-0
-SECTION
-2
-ENTITIES
-0
-TEXT
-8
-TEXT
-10
-50.0
-20
-50.0
-30
-0.0
-40
-5.0
-1
-${title}
-0
-TEXT
-8
-TEXT
-10
-50.0
-20
-40.0
-30
-0.0
-40
-3.0
-1
-DEMO MODE - Start Python backend for real DXF
-0
-LINE
-8
-STRUCTURAL
-10
-100.0
-20
-100.0
-30
-0.0
-11
-200.0
-21
-100.0
-31
-0.0
-0
-LINE
-8
-STRUCTURAL
-10
-200.0
-20
-100.0
-30
-0.0
-11
-200.0
-21
-150.0
-31
-0.0
-0
-LINE
-8
-STRUCTURAL
-10
-200.0
-20
-150.0
-30
-0.0
-11
-100.0
-21
-150.0
-31
-0.0
-0
-LINE
-8
-STRUCTURAL
-10
-100.0
-20
-150.0
-30
-0.0
-11
-100.0
-21
-100.0
-31
-0.0
-0
-ENDSEC
-0
-EOF`;
+  static async regenerateDXFWithInstructions(
+    originalDrawing: TechnicalDrawing,
+    userInstructions: string
+  ): Promise<TechnicalDrawing> {
+    console.log('🔄 Regenerating drawing with user instructions...');
 
-    // Convert to base64
-    return btoa(dxfContent);
+    try {
+      const enhancedDescription = `${originalDrawing.description}\n\nUSER MODIFICATIONS:\n${userInstructions}`;
+      const newTitle = originalDrawing.title.replace(' (Modified)', '') + ' (Modified)';
+
+      const regeneratedDrawing = await this.generateDXFFromDescription(
+        newTitle,
+        enhancedDescription,
+        enhancedDescription
+      );
+
+      console.log('✅ Drawing regenerated successfully');
+      return regeneratedDrawing;
+    } catch (error) {
+      console.error('❌ DXF regeneration error:', error);
+      throw new Error(
+        `Failed to regenerate DXF drawing: ${error instanceof Error ? error.message : 'Unknown error'}. Please check your backend configuration and try again.`
+      );
+    }
+  }
+
+  /**
+   * Generate DXF preview for display
+   */
+  static async getDXFPreview(drawing: TechnicalDrawing): Promise<string> {
+    try {
+      // For DXF files, we return a textual description as preview
+      const preview = `
+🏗️ DXF Technical Drawing Preview
+
+Title: ${drawing.title}
+Component: ${drawing.componentName}
+Scale: ${drawing.scale}
+File: ${drawing.dxfFilename}
+Dimensions: ${drawing.dimensions.width} × ${drawing.dimensions.height}
+
+Description:
+${drawing.description}
+
+Created: ${drawing.createdAt.toLocaleDateString()}
+
+📋 To view the full technical drawing, download the DXF file and open it in AutoCAD, Revit, or any compatible CAD software.
+      `;
+      
+      return preview;
+    } catch (error) {
+      console.error('Failed to generate DXF preview:', error);
+      return 'Preview unavailable - Download DXF file to view in CAD software';
+    }
+  }
+
+  /**
+   * Download DXF file to user's device
+   */
+  static async downloadDXF(drawing: TechnicalDrawing): Promise<void> {
+    try {
+      if (!drawing.dxfContent) {
+        throw new Error('No DXF content available for download');
+      }
+
+      // Convert base64 to blob
+      const blob = this.base64ToBlob(drawing.dxfContent, 'application/dxf');
+      
+      // Create download link
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = drawing.dxfFilename || `${drawing.title.replace(/\s+/g, '_')}.dxf`;
+      
+      // Trigger download
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Clean up
+      URL.revokeObjectURL(url);
+      
+      console.log(`✅ DXF file downloaded: ${link.download}`);
+    } catch (error) {
+      console.error('❌ DXF download failed:', error);
+      throw new Error(`Failed to download DXF: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   // Private helper methods
@@ -698,41 +446,7 @@ EOF`;
     });
   }
 
-  private static createPlaceholderSVG(title: string): string {
-    return `
-      <svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">
-        <rect width="800" height="600" fill="#fff3cd" stroke="#ffeaa7" stroke-width="2"/>
-        <text x="400" y="200" text-anchor="middle" font-family="Arial" font-size="24" fill="#856404">
-          🏗️ Professional DXF Drawing
-        </text>
-        <text x="400" y="240" text-anchor="middle" font-family="Arial" font-size="18" fill="#856404">
-          ${title}
-        </text>
-        <text x="400" y="280" text-anchor="middle" font-family="Arial" font-size="14" fill="#856404">
-          ⚠️ DEMO MODE - Python Backend Not Running
-        </text>
-        <text x="400" y="320" text-anchor="middle" font-family="Arial" font-size="12" fill="#856404">
-          To generate real professional DXF files:
-        </text>
-        <text x="400" y="340" text-anchor="middle" font-family="Arial" font-size="12" fill="#856404">
-          1. Navigate to python-backend folder
-        </text>
-        <text x="400" y="360" text-anchor="middle" font-family="Arial" font-size="12" fill="#856404">
-          2. Run: python setup.py
-        </text>
-        <text x="400" y="380" text-anchor="middle" font-family="Arial" font-size="12" fill="#856404">
-          3. Keep server running on localhost:5000
-        </text>
-        <rect x="300" y="420" width="200" height="40" fill="#ffc107" rx="5"/>
-        <text x="400" y="445" text-anchor="middle" font-family="Arial" font-size="14" fill="#212529">
-          Download Demo DXF
-        </text>
-        <text x="400" y="480" text-anchor="middle" font-family="Arial" font-size="10" fill="#856404">
-          See python-backend/README.md for setup instructions
-        </text>
-      </svg>
-    `;
-  }
+
 }
 
 // Storage service for DXF drawings
