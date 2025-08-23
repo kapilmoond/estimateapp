@@ -12,7 +12,7 @@ export interface BackendConfig {
 
 export class CloudConfig {
   private static readonly LOCAL_URL = 'http://localhost:5000';
-  private static readonly CLOUD_FUNCTIONS_URL = process.env.REACT_APP_CLOUD_FUNCTIONS_URL || '';
+  private static readonly CLOUD_FUNCTIONS_URL = import.meta.env?.VITE_CLOUD_FUNCTIONS_URL || '';
   
   /**
    * Get the current backend configuration
