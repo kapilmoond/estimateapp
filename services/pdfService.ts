@@ -292,37 +292,115 @@ export class DXFPDFService {
     const bounds = this.calculateDXFBounds(dxf.entities);
     console.log('📏 Drawing bounds:', bounds);
     
+    // Validate bounds
+    const boundsWidth = bounds.maxX - bounds.minX;
+    const boundsHeight = bounds.maxY - bounds.minY;
+    console.log('📏 Bounds dimensions:', { width: boundsWidth, height: boundsHeight });
+    
+    // Check if bounds are too small or too large
+    if (boundsWidth < 0.1 || boundsHeight < 0.1) {
+      console.warn('⚠️ Drawing bounds are very small - this might cause zoom issues');
+    }
+    if (boundsWidth > 10000 || boundsHeight > 10000) {
+      console.warn('⚠️ Drawing bounds are very large - this might cause zoom issues');
+    }
+    
     // Set up drawing area (leave margins for title and notes)
     const drawingArea = {
-      x: 20,
-      y: 40,
-      width: pageWidth - 40,
-      height: pageHeight - 80
+      x: 30,
+      y: 50,
+      width: pageWidth - 60,  // Increased margins
+      height: pageHeight - 100  // Increased margins
     };
+    
+    console.log('📏 Drawing area:', drawingArea);
 
-    // Calculate scale to fit drawing in available area
-    const scaleX = drawingArea.width / (bounds.maxX - bounds.minX || 1);
-    const scaleY = drawingArea.height / (bounds.maxY - bounds.minY || 1);
-    const scale = Math.min(scaleX, scaleY) * 0.8; // 80% to leave some padding
-
-    console.log('📏 Calculated scale:', scale, 'scaleX:', scaleX, 'scaleY:', scaleY);
+    // Calculate scale to fit drawing in available area with better logic
+    let scaleX = drawingArea.width / (boundsWidth || 1);
+    let scaleY = drawingArea.height / (boundsHeight || 1);
+    
+    // Use a more conservative scale factor
+    let scale = Math.min(scaleX, scaleY) * 0.9; // 90% to ensure visibility
+    
+    // Ensure minimum and maximum scale limits
+    const minScale = 0.1;
+    const maxScale = 100;
+    scale = Math.max(minScale, Math.min(maxScale, scale));
+    
+    console.log('📏 Scale calculation:', {
+      scaleX,
+      scaleY,
+      selectedScale: scale,
+      scaleFactor: '90%'
+    });
 
     // Center the drawing
-    const drawingWidth = (bounds.maxX - bounds.minX) * scale;
-    const drawingHeight = (bounds.maxY - bounds.minY) * scale;
+    const drawingWidth = boundsWidth * scale;
+    const drawingHeight = boundsHeight * scale;
     const offsetX = drawingArea.x + (drawingArea.width - drawingWidth) / 2;
     const offsetY = drawingArea.y + (drawingArea.height - drawingHeight) / 2;
 
-    console.log('📏 Drawing placement:', { offsetX, offsetY, drawingWidth, drawingHeight });
+    console.log('📏 Drawing placement:', {
+      offsetX,
+      offsetY,
+      drawingWidth,
+      drawingHeight,
+      finalScale: scale
+    });
 
     // Render each entity
     pdf.setLineWidth(0.2);
     
+    // Draw bounds rectangle for debugging (optional - can be removed later)
+    pdf.setDrawColor(255, 0, 0); // Red color for bounds
+    pdf.setLineWidth(0.1);
+    const boundsRect = {
+      x: offsetX,
+      y: offsetY,
+      width: drawingWidth,
+      height: drawingHeight
+    };
+    pdf.rect(boundsRect.x, boundsRect.y, boundsRect.width, boundsRect.height);
+    console.log('🔲 DEBUG: Bounds rectangle drawn at:', boundsRect);
+    
+    // Reset for actual drawing
+    pdf.setDrawColor(0, 0, 0); // Black color for entities
+    pdf.setLineWidth(0.2);
+    
     let renderedCount = 0;
     const entityTypes: Record<string, number> = {};
+    const renderingDetails: Array<{type: string, bounds: any, transformed: any}> = [];
     
     for (const entity of dxf.entities) {
       try {
+        // Track rendering details for debugging
+        const entityPoints = this.getEntityPoints(entity);
+        if (entityPoints.length > 0) {
+          const entityBounds = {
+            minX: Math.min(...entityPoints.map(p => p.x)),
+            maxX: Math.max(...entityPoints.map(p => p.x)),
+            minY: Math.min(...entityPoints.map(p => p.y)),
+            maxY: Math.max(...entityPoints.map(p => p.y))
+          };
+          
+          // Transform coordinates for this entity
+          const transformX = (x: number) => offsetX + (x - bounds.minX) * scale;
+          const transformY = (y: number) => offsetY + (bounds.maxY - y) * scale;
+          
+          const transformedBounds = {
+            minX: transformX(entityBounds.minX),
+            maxX: transformX(entityBounds.maxX),
+            minY: transformY(entityBounds.maxY), // Note: Y is flipped
+            maxY: transformY(entityBounds.minY)
+          };
+          
+          renderingDetails.push({
+            type: entity.type,
+            bounds: entityBounds,
+            transformed: transformedBounds
+          });
+        }
+        
         this.renderDXFEntity(pdf, entity, bounds, scale, offsetX, offsetY);
         renderedCount++;
         entityTypes[entity.type] = (entityTypes[entity.type] || 0) + 1;
@@ -333,6 +411,17 @@ export class DXFPDFService {
 
     console.log('✅ Successfully rendered', renderedCount, 'out of', dxf.entities.length, 'entities');
     console.log('📏 Entity types rendered:', entityTypes);
+    
+    // Log detailed rendering info for first few entities
+    console.log('🔍 First 3 entity rendering details:');
+    renderingDetails.slice(0, 3).forEach((detail, idx) => {
+      console.log(`  [${idx}] ${detail.type}:`, {
+        originalBounds: detail.bounds,
+        transformedBounds: detail.transformed,
+        isVisible: detail.transformed.minX >= 0 && detail.transformed.maxX <= pageWidth &&
+                   detail.transformed.minY >= 0 && detail.transformed.maxY <= pageHeight
+      });
+    });
 
     // Add scale and rendering information
     pdf.setFontSize(10);
@@ -385,6 +474,13 @@ export class DXFPDFService {
         let startPoint = entity.startPoint || entity.start_point || entity.start;
         let endPoint = entity.endPoint || entity.end_point || entity.end;
         
+        // Handle LINE entities that use vertices format (like in rendering)
+        if (!startPoint && !endPoint && entity.vertices && Array.isArray(entity.vertices) && entity.vertices.length >= 2) {
+          startPoint = entity.vertices[0];
+          endPoint = entity.vertices[1];
+          console.log('📏 Bounds: LINE using vertices format:', entity.vertices);
+        }
+        
         if (Array.isArray(startPoint) && startPoint.length >= 2) {
           points.push({ x: startPoint[0], y: startPoint[1] });
         } else if (startPoint && typeof startPoint.x === 'number' && typeof startPoint.y === 'number') {
@@ -396,6 +492,8 @@ export class DXFPDFService {
         } else if (endPoint && typeof endPoint.x === 'number' && typeof endPoint.y === 'number') {
           points.push(endPoint);
         }
+        
+        console.log('📏 LINE bounds points extracted:', points.slice(-2));
         break;
         
       case 'POLYLINE':
