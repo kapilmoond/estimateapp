@@ -9,9 +9,13 @@ from flask import request, jsonify, send_file
 import json
 import os
 import io
+from datetime import datetime
 import google.generativeai as genai
 from ezdxf import new
 from dxf_generator import generate_construction_drawing, ProfessionalDXFGenerator
+
+# Global debug data storage
+last_debug_data = {}
 
 # Configure Gemini API
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
@@ -89,10 +93,38 @@ def health_check(request):
         if hasattr(response, 'headers'):
             response.headers.update(headers)
         return response
+    elif request.path == '/get-debug-info' and request.method == 'GET':
+        response = get_debug_info(request)
+        if hasattr(response, 'headers'):
+            response.headers.update(headers)
+        return response
     else:
         error_response = jsonify({'error': 'Endpoint not found'})
         error_response.headers.update(headers)
         return error_response, 404
+
+def get_debug_info(request):
+    """Retrieve the last debug information from DXF generation"""
+    try:
+        global last_debug_data
+        if last_debug_data:
+            response = jsonify({
+                'success': True,
+                'debug_data': last_debug_data
+            })
+            return add_cors_headers(response), 200
+        else:
+            response = jsonify({
+                'success': False,
+                'message': 'No debug data available. Generate a drawing first.'
+            })
+            return add_cors_headers(response), 404
+    except Exception as e:
+        response = jsonify({
+            'success': False,
+            'error': str(e)
+        })
+        return add_cors_headers(response), 500
 
 def generate_dxf_endpoint(request):
     """AI-powered DXF generation endpoint with comprehensive debugging"""
@@ -171,6 +203,9 @@ REQUIREMENTS:
         print("--- RAW AI RESPONSE ---")
         print(ai_response.text)
         print("-----------------------")
+        
+        # Store raw AI response for debug
+        raw_ai_response = ai_response.text
 
         cleaned_response_text = ai_response.text.strip().replace('```json', '').replace('```', '')
         
@@ -185,6 +220,22 @@ REQUIREMENTS:
         print("--- PARSED GEOMETRY DATA ---")
         print(geometry_data)
         print("----------------------------")
+        
+        # Store debug information globally for retrieval
+        global last_debug_data
+        last_debug_data = {
+            'timestamp': datetime.now().isoformat(),
+            'request_data': {
+                'title': title,
+                'description': description,
+                'user_requirements': user_requirements
+            },
+            'ai_response_raw': raw_ai_response,
+            'ai_response_cleaned': cleaned_response_text,
+            'parsed_data': geometry_data,
+            'backend_logs': f"Processing {len(geometry_data.get('entities', []))} entities",
+            'processing_steps': [f"AI generation completed at {datetime.now().isoformat()}"]
+        }
 
         # 6. Generate the DXF file in memory with robust error handling
         doc = new()
