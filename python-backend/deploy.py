@@ -107,12 +107,11 @@ def deploy_function(project_id, function_name, region='us-central1'):
         '--region', region,
         '--source', '.',
         '--entry-point', 'health_check',
-        '--trigger', 'http',
+        '--trigger-http',
         '--allow-unauthenticated',
         '--memory', '512MB',
         '--timeout', '60s',
         '--max-instances', '10',
-        '--requirements-file', 'requirements-cloud.txt',
         '--project', project_id
     ]
     

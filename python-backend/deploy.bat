@@ -99,12 +99,11 @@ if "%GEMINI_API_KEY%"=="" (
         --region %REGION% ^
         --source . ^
         --entry-point health_check ^
-        --trigger http ^
+        --trigger-http ^
         --allow-unauthenticated ^
         --memory 512MB ^
         --timeout 60s ^
         --max-instances 10 ^
-        --requirements-file requirements-cloud.txt ^
         --project %PROJECT_ID%
 ) else (
     gcloud functions deploy %FUNCTION_NAME% ^
@@ -113,12 +112,11 @@ if "%GEMINI_API_KEY%"=="" (
         --region %REGION% ^
         --source . ^
         --entry-point health_check ^
-        --trigger http ^
+        --trigger-http ^
         --allow-unauthenticated ^
         --memory 512MB ^
         --timeout 60s ^
         --max-instances 10 ^
-        --requirements-file requirements-cloud.txt ^
         --set-env-vars GEMINI_API_KEY=%GEMINI_API_KEY% ^
         --project %PROJECT_ID%
 )

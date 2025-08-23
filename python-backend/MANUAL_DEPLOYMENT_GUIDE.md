@@ -40,7 +40,7 @@ gcloud services enable artifactregistry.googleapis.com --project micada-division
 Run this single command (copy and paste the entire block):
 
 ```bash
-gcloud functions deploy dxf-generator --gen2 --runtime python311 --region us-central1 --source . --entry-point health_check --trigger http --allow-unauthenticated --memory 512MB --timeout 60s --max-instances 10 --requirements-file requirements-cloud.txt --set-env-vars GEMINI_API_KEY=AIzaSyDG-d8A4_4Ech8jPzTTCq-hGFLySq4jF20 --project micada-division
+gcloud functions deploy dxf-generator --gen2 --runtime python311 --region us-central1 --source . --entry-point health_check --trigger-http --allow-unauthenticated --memory 512MB --timeout 60s --max-instances 10 --set-env-vars GEMINI_API_KEY=AIzaSyDG-d8A4_4Ech8jPzTTCq-hGFLySq4jF20 --project micada-division
 ```
 
 ### Step 5: Get Function URL
@@ -159,7 +159,7 @@ To update the function after making code changes:
 
 ```bash
 cd "C:\Users\LAPTOP PC\Documents\GitHub\estimateapp\python-backend"
-gcloud functions deploy dxf-generator --gen2 --runtime python311 --region us-central1 --source . --entry-point health_check --trigger http --allow-unauthenticated --memory 512MB --timeout 60s --max-instances 10 --requirements-file requirements-cloud.txt --set-env-vars GEMINI_API_KEY=AIzaSyDG-d8A4_4Ech8jPzTTCq-hGFLySq4jF20 --project micada-division
+gcloud functions deploy dxf-generator --gen2 --runtime python311 --region us-central1 --source . --entry-point health_check --trigger-http --allow-unauthenticated --memory 512MB --timeout 60s --max-instances 10 --set-env-vars GEMINI_API_KEY=AIzaSyDG-d8A4_4Ech8jPzTTCq-hGFLySq4jF20 --project micada-division
 ```
 
 ## 🎯 Success Checklist

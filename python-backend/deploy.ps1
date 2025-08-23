@@ -137,16 +137,15 @@ Write-Host "Deploying function..." -ForegroundColor Cyan
 $deployCmd = @(
     "gcloud", "functions", "deploy", $functionName,
     "--gen2",
-    "--runtime", "python311", 
+    "--runtime", "python311",
     "--region", $region,
     "--source", ".",
     "--entry-point", "health_check",
-    "--trigger", "http",
+    "--trigger-http",
     "--allow-unauthenticated",
     "--memory", "512MB",
-    "--timeout", "60s", 
+    "--timeout", "60s",
     "--max-instances", "10",
-    "--requirements-file", "requirements-cloud.txt",
     "--project", $projectId
 )
 
