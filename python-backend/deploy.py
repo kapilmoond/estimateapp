@@ -84,9 +84,9 @@ def enable_required_apis(project_id):
     for api in apis:
         try:
             result = subprocess.run([
-                'gcloud', 'services', 'enable', api, 
+                'gcloud', 'services', 'enable', api,
                 '--project', project_id
-            ], capture_output=True, text=True)
+            ], capture_output=True, text=True, shell=True)
             
             if result.returncode == 0:
                 print(f"SUCCESS: Enabled {api}")
@@ -129,7 +129,7 @@ def deploy_function(project_id, function_name, region='us-central1'):
         print("Running deployment command...")
         print(" ".join(cmd))
         
-        result = subprocess.run(cmd, text=True)
+        result = subprocess.run(cmd, text=True, shell=True)
         
         if result.returncode == 0:
             print("SUCCESS: Function deployed successfully!")
@@ -142,7 +142,7 @@ def deploy_function(project_id, function_name, region='us-central1'):
                 '--format', 'value(serviceConfig.uri)'
             ]
             
-            url_result = subprocess.run(url_cmd, capture_output=True, text=True)
+            url_result = subprocess.run(url_cmd, capture_output=True, text=True, shell=True)
             if url_result.returncode == 0 and url_result.stdout.strip():
                 function_url = url_result.stdout.strip()
                 print(f"Function URL: {function_url}")
