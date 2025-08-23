@@ -92,7 +92,35 @@ export class DXFPDFService {
       console.log('  Entities count:', dxf.entities?.length || 0);
       
       if (dxf.entities && dxf.entities.length > 0) {
-        console.log('  🏗️ First few entities:');
+        console.log('  🏗️ Detailed entity analysis:');
+        
+        // Count entities by type and analyze LINE entities specifically
+        const entityCounts = {};
+        const lineEntities = [];
+        
+        dxf.entities.forEach((entity: any, index: number) => {
+          entityCounts[entity.type] = (entityCounts[entity.type] || 0) + 1;
+          
+          if (entity.type === 'LINE') {
+            lineEntities.push({
+              index,
+              hasStartPoint: !!(entity.startPoint || entity.start_point || entity.start),
+              hasEndPoint: !!(entity.endPoint || entity.end_point || entity.end),
+              hasVertices: !!entity.vertices,
+              verticesLength: entity.vertices?.length,
+              verticesContent: entity.vertices,
+              allKeys: Object.keys(entity)
+            });
+          }
+        });
+        
+        console.log('  📊 Entity type counts:', entityCounts);
+        console.log('  📏 LINE entities analysis (first 3):');
+        lineEntities.slice(0, 3).forEach((lineInfo, idx) => {
+          console.log(`    LINE[${idx}]:`, lineInfo);
+        });
+        
+        console.log('  🏗️ First few entities (general):');
         dxf.entities.slice(0, 3).forEach((entity: any, index: number) => {
           console.log(`    [${index}]:`, {
             type: entity.type,
@@ -492,6 +520,31 @@ export class DXFPDFService {
     let startPoint = entity.startPoint || entity.start_point || entity.start;
     let endPoint = entity.endPoint || entity.end_point || entity.end;
     
+    // Debug: Log entity structure to understand the exact format
+    console.log('🔍 LINE entity structure:', {
+      type: entity.type,
+      hasStartPoint: !!startPoint,
+      hasEndPoint: !!endPoint,
+      hasVertices: !!entity.vertices,
+      verticesLength: entity.vertices?.length,
+      entityKeys: Object.keys(entity)
+    });
+    
+    // Handle LINE entities that use vertices format (unexpected but happens)
+    if (!startPoint && !endPoint && entity.vertices && Array.isArray(entity.vertices) && entity.vertices.length >= 2) {
+      startPoint = entity.vertices[0];
+      endPoint = entity.vertices[1];
+      console.log('📍 LINE using vertices format:', entity.vertices);
+      console.log('📍 Extracted start:', startPoint, 'end:', endPoint);
+    }
+    
+    // Additional fallback: check for vertices even if startPoint/endPoint exist but are invalid
+    if ((!startPoint || !endPoint) && entity.vertices && Array.isArray(entity.vertices) && entity.vertices.length >= 2) {
+      startPoint = entity.vertices[0];
+      endPoint = entity.vertices[1];
+      console.log('📍 LINE fallback to vertices format:', { startPoint, endPoint });
+    }
+    
     // Handle different coordinate formats
     if (Array.isArray(startPoint) && startPoint.length >= 2) {
       startPoint = { x: startPoint[0], y: startPoint[1] };
@@ -500,7 +553,7 @@ export class DXFPDFService {
       endPoint = { x: endPoint[0], y: endPoint[1] };
     }
     
-    console.log('📍 Rendering LINE:', { startPoint, endPoint });
+    console.log('📍 Final LINE points after processing:', { startPoint, endPoint });
     
     if (startPoint && endPoint && 
         typeof startPoint.x === 'number' && typeof startPoint.y === 'number' &&
@@ -514,8 +567,14 @@ export class DXFPDFService {
       console.log('📍 LINE coordinates: PDF(', x1, y1, ') to (', x2, y2, ')');
       
       pdf.line(x1, y1, x2, y2);
+      console.log('✅ LINE rendered successfully');
     } else {
-      console.warn('⚠️ Invalid LINE entity points:', { startPoint, endPoint });
+      console.warn('⚠️ Failed to render LINE - invalid points:', { 
+        startPoint, 
+        endPoint, 
+        vertices: entity.vertices,
+        allEntityData: entity
+      });
     }
   }
 
