@@ -38,30 +38,16 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
       setDxfPreview(preview);
     } catch (error) {
       console.error('Failed to load DXF preview:', error);
-      // Use placeholder if preview fails
-      setDxfPreview(createPlaceholderSVG(selectedDrawing.title));
+      setDxfPreview(createFallbackPreview(selectedDrawing.title));
     }
   };
 
-  const createPlaceholderSVG = (title: string): string => {
-    return `
-      <svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">
-        <rect width="800" height="600" fill="#f8f9fa" stroke="#dee2e6" stroke-width="2"/>
-        <text x="400" y="280" text-anchor="middle" font-family="Arial" font-size="24" fill="#6c757d">
-          🏗️ Professional DXF Drawing
-        </text>
-        <text x="400" y="320" text-anchor="middle" font-family="Arial" font-size="18" fill="#6c757d">
-          ${title}
-        </text>
-        <text x="400" y="360" text-anchor="middle" font-family="Arial" font-size="14" fill="#6c757d">
-          Download DXF file to view in CAD software
-        </text>
-        <rect x="350" y="380" width="100" height="40" fill="#007bff" rx="5"/>
-        <text x="400" y="405" text-anchor="middle" font-family="Arial" font-size="14" fill="white">
-          Download DXF
-        </text>
-      </svg>
-    `;
+  const createFallbackPreview = (title: string): string => {
+    return `🏗️ Professional DXF Drawing\n\nTitle: ${title}\n\nDownload the DXF file below to view in CAD software.`;
+  };
+
+  const createDrawingPreviewCard = (drawing: TechnicalDrawing): string => {
+    return `🏗️ ${drawing.title}\n📐 ${drawing.componentName} | Scale: ${drawing.scale}\n📅 ${drawing.createdAt.toLocaleDateString()}`;
   };
 
   const handleDeleteDrawing = (drawingId: string) => {
@@ -95,17 +81,29 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
       return;
     }
 
-    if (onRegenerateDrawing) {
-      try {
-        setIsRegenerating(true);
-        await onRegenerateDrawing(selectedDrawing.id, regenerationInstructions);
-        setRegenerationInstructions('');
-        setIsRegenerating(false);
-      } catch (error) {
-        console.error('Regeneration failed:', error);
-        alert('Failed to regenerate drawing. Please try again.');
-        setIsRegenerating(false);
-      }
+    try {
+      setIsRegenerating(true);
+      
+      // Use DXF service to regenerate the drawing
+      const regeneratedDrawing = await DXFService.regenerateDXFWithInstructions(
+        selectedDrawing,
+        regenerationInstructions
+      );
+      
+      // Save the regenerated drawing
+      DXFStorageService.saveDrawing(regeneratedDrawing);
+      
+      // Update the UI
+      onDrawingUpdate();
+      setSelectedDrawing(regeneratedDrawing);
+      setRegenerationInstructions('');
+      
+      alert('✅ Drawing regenerated successfully!');
+    } catch (error) {
+      console.error('Regeneration failed:', error);
+      alert(`❌ Failed to regenerate drawing: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsRegenerating(false);
     }
   };
 
@@ -150,27 +148,33 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
             {/* Drawing Preview */}
             <div className="mb-3 bg-gray-100 rounded p-2">
               <div
-                className="w-full h-32 bg-white rounded border overflow-hidden flex items-center justify-center"
+                className="w-full h-32 bg-white rounded border overflow-hidden flex items-center justify-center p-2"
                 style={{ minHeight: '128px' }}
               >
-                <div
-                  className="max-w-full max-h-full"
-                  dangerouslySetInnerHTML={{ __html: selectedDrawing?.id === drawing.id ? dxfPreview : createPlaceholderSVG(drawing.title) }}
-                />
+                <div className="text-center text-sm text-gray-600">
+                  <div className="whitespace-pre-line">
+                    {selectedDrawing?.id === drawing.id ? 
+                      (dxfPreview || createDrawingPreviewCard(drawing)) : 
+                      createDrawingPreviewCard(drawing)
+                    }
+                  </div>
+                </div>
               </div>
             </div>
 
             {/* Action Buttons */}
-            <div className="grid grid-cols-1 gap-1">
-
+            <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  handlePrintDrawing(drawing);
+                  handleDownloadDXF(drawing);
                 }}
-                className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
+                className="px-3 py-2 bg-green-600 text-white text-xs rounded hover:bg-green-700 flex items-center justify-center gap-1"
               >
-                Print
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Download DXF
               </button>
 
               <button
@@ -178,8 +182,11 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
                   e.stopPropagation();
                   handleDeleteDrawing(drawing.id);
                 }}
-                className="px-2 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700"
+                className="px-3 py-2 bg-red-600 text-white text-xs rounded hover:bg-red-700 flex items-center justify-center gap-1"
               >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
                 Delete
               </button>
             </div>
@@ -232,11 +239,11 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
             </div>
           </div>
 
-          {/* Professional CAD Drawing Viewer */}
+          {/* Professional DXF Drawing Viewer */}
           <div className="bg-white p-4 rounded-lg border border-gray-200 mb-6">
             <div className="flex items-center justify-between mb-4">
               <h5 className="font-semibold text-gray-700">
-                {selectedDrawing.drawingType === 'cad' ? '🏗️ Professional CAD Drawing' : '📐 Technical Drawing'}
+                🏗️ Professional DXF Drawing
               </h5>
               <div className="flex gap-2">
                 <button
@@ -261,18 +268,13 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
                 </div>
               )}
               <div
-                className={`w-full bg-white border rounded p-4 flex items-center justify-center overflow-auto ${
-                  isFullscreen ? 'h-full' : 'min-h-[500px] max-h-[700px]'
-                }`}
+                className={`w-full bg-white border rounded p-6 overflow-auto ${isFullscreen ? 'h-full' : 'min-h-[500px] max-h-[700px]'}`}
               >
-                <div
-                  className="w-full h-full flex items-center justify-center"
-                  style={{
-                    minWidth: '800px',
-                    minHeight: '600px'
-                  }}
-                  dangerouslySetInnerHTML={{ __html: dxfPreview || createPlaceholderSVG(selectedDrawing.title) }}
-                />
+                <div className="w-full h-full">
+                  <pre className="whitespace-pre-wrap text-sm text-gray-700 font-mono leading-relaxed">
+                    {dxfPreview || createFallbackPreview(selectedDrawing.title)}
+                  </pre>
+                </div>
               </div>
               {!isFullscreen && (
                 <div className="mt-2 text-center">
@@ -320,31 +322,54 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
 
           {/* Regeneration Interface */}
           {isRegenerating && (
-            <div className="mt-6 p-4 bg-orange-50 border border-orange-200 rounded-lg">
-              <h4 className="font-semibold text-orange-800 mb-3">🔄 Regenerate Drawing with Instructions</h4>
-              <p className="text-sm text-orange-700 mb-3">
-                Provide specific instructions for how you want the drawing modified:
-              </p>
+            <div className="mt-6 p-6 bg-orange-50 border border-orange-200 rounded-lg">
+              <div className="flex items-center gap-2 mb-4">
+                <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <h4 className="font-semibold text-orange-800">
+                  Regenerate Drawing with Instructions
+                </h4>
+              </div>
+              
+              <div className="bg-white p-4 rounded border border-orange-200 mb-4">
+                <p className="text-sm text-orange-700 mb-2">
+                  <strong>Original Drawing:</strong> {selectedDrawing.title}
+                </p>
+                <p className="text-sm text-orange-700">
+                  Provide specific instructions for how you want the drawing modified:
+                </p>
+              </div>
+              
               <textarea
                 value={regenerationInstructions}
                 onChange={(e) => setRegenerationInstructions(e.target.value)}
-                className="w-full h-24 p-3 border border-orange-300 rounded-lg resize-none"
-                placeholder="Example: Make the beam 8 meters long instead of 6 meters, add more reinforcement details, change the foundation depth to 1.5 meters..."
+                className="w-full h-32 p-4 border border-orange-300 rounded-lg resize-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                placeholder="Example: Make the beam 8 meters long instead of 6 meters, add more reinforcement details, change the foundation depth to 1.5 meters, add section view..."
               />
-              <div className="flex gap-2 mt-3">
-                <button
-                  onClick={handleRegenerateWithInstructions}
-                  disabled={!regenerationInstructions.trim()}
-                  className="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                >
-                  ✅ Regenerate Drawing
-                </button>
-                <button
-                  onClick={handleCancelRegeneration}
-                  className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
-                >
-                  ❌ Cancel
-                </button>
+              
+              <div className="flex items-center justify-between mt-4">
+                <div className="text-sm text-orange-600">
+                  Characters: {regenerationInstructions.length} / Minimum: 10
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleCancelRegeneration}
+                    className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+                  >
+                    ❌ Cancel
+                  </button>
+                  <button
+                    onClick={handleRegenerateWithInstructions}
+                    disabled={regenerationInstructions.trim().length < 10}
+                    className="px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Regenerate Drawing
+                  </button>
+                </div>
               </div>
             </div>
           )}
