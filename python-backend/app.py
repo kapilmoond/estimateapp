@@ -11,6 +11,7 @@ import os
 import tempfile
 import base64
 import io
+import math
 import google.generativeai as genai
 import ezdxf
 from ezdxf import units
@@ -363,26 +364,74 @@ CRITICAL REQUIREMENTS:
 """
 
         # 5. Call the AI model and parse its response
+        print("\n🤖 CALLING GEMINI AI MODEL...")
+        print(f"Prompt length: {len(prompt)} characters")
+        print("First 200 chars of prompt:")
+        print(prompt[:200] + "...")
+        
         ai_response = model.generate_content(prompt)
 
-        # 📌 CHECKPOINT 1: Log the raw response from the AI
-        print("--- RAW AI RESPONSE ---")
+        # 📍 CHECKPOINT 1: Log the raw response from the AI
+        print("\n" + "="*50)
+        print("📍 RAW AI RESPONSE (FIRST)")
+        print("="*50)
         print(ai_response.text)
-        print("-----------------------")
+        print("="*50)
+        
+        # Store for debugging
+        raw_ai_response = ai_response.text
 
         cleaned_response_text = ai_response.text.strip().replace('```json', '').replace('```', '')
 
-        # 📌 CHECKPOINT 2: Log the cleaned text before parsing
-        print("--- CLEANED TEXT FOR JSON PARSING ---")
+        # 📍 CHECKPOINT 2: Log the cleaned text before parsing
+        print("\n" + "="*50)
+        print("📍 CLEANED TEXT FOR JSON PARSING")
+        print("="*50)
         print(cleaned_response_text)
-        print("-----------------------------------")
+        print("="*50)
 
-        geometry_data = json.loads(cleaned_response_text)
+        try:
+            geometry_data = json.loads(cleaned_response_text)
+        except json.JSONDecodeError as e:
+            print(f"\n🔴 JSON PARSING FAILED: {e}")
+            print("Attempting to fix common JSON issues...")
+            
+            # Try to fix common JSON issues
+            fixed_text = cleaned_response_text
+            # Add more JSON fixing logic here if needed
+            
+            try:
+                geometry_data = json.loads(fixed_text)
+                print("✅ JSON parsing succeeded after fixing")
+            except json.JSONDecodeError as e2:
+                print(f"🔴 JSON parsing failed even after fixing: {e2}")
+                return jsonify({
+                    'success': False,
+                    'error': f'AI response is not valid JSON: {e}',
+                    'raw_response': raw_ai_response,
+                    'cleaned_response': cleaned_response_text
+                }), 500
 
-        # 📌 CHECKPOINT 3: Log the final Python dictionary
-        print("--- PARSED GEOMETRY DATA ---")
-        print(geometry_data)
-        print("----------------------------")
+        # 📍 CHECKPOINT 3: Log the final Python dictionary
+        print("\n" + "="*50)
+        print("📍 PARSED GEOMETRY DATA")
+        print("="*50)
+        print(json.dumps(geometry_data, indent=2))
+        print("="*50)
+        
+        # Collect debug information
+        debug_data = {
+            'request_data': {
+                'title': title,
+                'description': description,
+                'user_requirements': user_requirements
+            },
+            'ai_response_raw': raw_ai_response,
+            'ai_response_cleaned': cleaned_response_text,
+            'parsed_data': geometry_data,
+            'backend_logs': [],
+            'processing_steps': []
+        }
 
         # 6. Generate the DXF file with professional setup and enhanced entity handling
         doc = ezdxf.new("R2010", setup=True)
@@ -477,8 +526,12 @@ CRITICAL REQUIREMENTS:
             'processed': 0,
             'by_type': {},
             'dimensions_created': 0,
-            'errors': 0
+            'dimensions_details': [],
+            'errors': 0,
+            'error_details': []
         }
+        
+        debug_data['processing_steps'].append(f"Starting entity processing: {len(entities)} entities")
 
         for entity in entities:
             entity_type = entity.get('type')
@@ -551,6 +604,8 @@ CRITICAL REQUIREMENTS:
                         print(f"  P2 (second extension line start): {p2}")
                         print(f"  Layer: {layer}")
                         
+                        debug_data['processing_steps'].append(f"Processing LINEAR DIMENSION: base={base}, p1={p1}, p2={p2}, layer={layer}")
+                        
                         if base and p1 and p2:
                             # Validate dimension geometry for proper extension lines
                             distance = math.sqrt((p2[0] - p1[0])**2 + (p2[1] - p1[1])**2)
@@ -595,6 +650,20 @@ CRITICAL REQUIREMENTS:
                                     print(f"  Lines in block (including extension lines): {len(lines)}")
                                     
                                     entity_summary['dimensions_created'] += 1
+                                    
+                                    # Store detailed dimension info for debugging
+                                    dim_details = {
+                                        'base': base,
+                                        'p1': p1,
+                                        'p2': p2,
+                                        'measurement': f"{distance:.0f}mm",
+                                        'geometry_block': dim.dxf.geometry,
+                                        'block_entity_count': len(block_entities),
+                                        'line_count': len(lines),
+                                        'layer': layer
+                                    }
+                                    entity_summary['dimensions_details'].append(dim_details)
+                                    debug_data['processing_steps'].append(f"Dimension SUCCESS: {distance:.0f}mm dimension created with {len(lines)} lines in geometry block")
                                 else:
                                     print(f"⚠️ WARNING: Dimension created but no geometry block found")
                                     print(f"  This means extension lines may not be visible")
@@ -694,7 +763,22 @@ CRITICAL REQUIREMENTS:
             print(f"\n✅ Success: {entity_summary['dimensions_created']} dimensions created successfully")
         print("="*50 + "\n")
 
-        # 7. Save DXF to memory buffer
+        # 7. Finalize debug information
+        debug_data['backend_logs'] = entity_summary
+        debug_data['processing_steps'].append(f"DXF generation completed: {entity_summary['dimensions_created']} dimensions, {entity_summary['errors']} errors")
+        
+        # Print final debug summary
+        print("\n" + "="*60)
+        print("📍 FINAL DEBUG SUMMARY")
+        print("="*60)
+        print(f"Total entities processed: {entity_summary['processed']}/{entity_summary['total']}")
+        print(f"Dimensions created: {entity_summary['dimensions_created']}")
+        print(f"Dimension details: {entity_summary['dimensions_details']}")
+        print(f"Errors encountered: {entity_summary['errors']}")
+        print(f"Entity types: {entity_summary['by_type']}")
+        print("="*60)
+        
+        # 8. Save DXF to memory buffer
         # ezdxf expects a text stream, not binary
         string_buffer = io.StringIO()
         doc.write(string_buffer)
@@ -705,14 +789,29 @@ CRITICAL REQUIREMENTS:
         bytes_buffer = io.BytesIO(dxf_content.encode('utf-8'))
         bytes_buffer.seek(0)
 
-        # 8. Return file for download
+        # 9. Return file for download with debug headers
         filename = f"{title.replace(' ', '_')}.dxf"
-        return send_file(
+        
+        response = send_file(
             bytes_buffer,
             as_attachment=True,
             download_name=filename,
             mimetype='application/vnd.dxf'
         )
+        
+        # Add debug information to response headers (truncated for header size limits)
+        try:
+            debug_summary = {
+                'dimensions_created': entity_summary['dimensions_created'],
+                'total_entities': entity_summary['total'],
+                'entity_types': entity_summary['by_type'],
+                'errors': entity_summary['errors']
+            }
+            response.headers['X-Debug-Summary'] = json.dumps(debug_summary)[:1000]  # Limit header size
+        except Exception as header_error:
+            print(f"Warning: Could not add debug headers: {header_error}")
+        
+        return response
 
     except json.JSONDecodeError as e:
         print(f"🔴 JSON PARSING ERROR: {e}")

@@ -3,6 +3,7 @@ import { TechnicalDrawing } from '../types';
 import { DXFService, DXFStorageService } from '../services/dxfService';
 import { DrawingService } from '../services/drawingService';
 import { DXFPDFService } from '../services/pdfService';
+import DebugInterface from './DebugInterface';
 
 interface DrawingDisplayProps {
   drawings: TechnicalDrawing[];
@@ -468,6 +469,9 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({ drawings, onDraw
               </div>
             </div>
           )}
+
+          {/* Debug Interface for LLM and Backend Analysis */}
+          <DebugInterface drawing={selectedDrawing} />
         </div>
       )}
     </div>

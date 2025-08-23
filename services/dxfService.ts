@@ -55,6 +55,15 @@ export class DXFService {
     description: string,
     aiGeneratedContent: string
   ): Promise<TechnicalDrawing> {
+    // 🔍 DEBUGGING: Store debug information for user inspection
+    const debugInfo = {
+      prompt_sent: '',
+      ai_response_raw: '',
+      ai_response_cleaned: '',
+      parsed_data: null as any,
+      backend_logs: '',
+      timestamp: new Date().toISOString()
+    };
     const controller = new AbortController();
     const timeout = CloudConfig.getTimeout();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -62,30 +71,62 @@ export class DXFService {
     try {
       // First try the new AI-powered endpoint
       const endpointUrl = CloudConfig.getEndpointUrl('/generate-dxf-endpoint');
+      
+      // 🔍 DEBUGGING: Log the request payload
+      const requestPayload = {
+        title,
+        description,
+        user_requirements: aiGeneratedContent
+      };
+      
+      console.log('🔍 DEBUG: Request payload to backend:', requestPayload);
+      debugInfo.prompt_sent = JSON.stringify(requestPayload, null, 2);
+      
       const response = await fetch(endpointUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          title,
-          description,
-          user_requirements: aiGeneratedContent
-        }),
+        body: JSON.stringify(requestPayload),
         signal: controller.signal
       });
 
       clearTimeout(timeoutId);
 
       if (!response.ok) {
+        // 🔍 DEBUGGING: Capture error response
+        const errorText = await response.text();
+        debugInfo.backend_logs = `ERROR ${response.status}: ${errorText}`;
+        console.log('🔍 DEBUG: Backend error response:', debugInfo.backend_logs);
+        
+        // Store debug info in localStorage for user inspection
+        localStorage.setItem('dxf_debug_last_error', JSON.stringify(debugInfo));
+        
         // If AI endpoint fails, try the fallback endpoint
         console.warn('AI endpoint failed, trying fallback...');
         return await this.generateDXFWithFallback(title, description, aiGeneratedContent);
       }
 
+      // 🔍 DEBUGGING: For successful responses, check if we can get debug info from headers
+      const debugHeader = response.headers.get('X-Debug-Info');
+      if (debugHeader) {
+        try {
+          const backendDebug = JSON.parse(debugHeader);
+          debugInfo.ai_response_raw = backendDebug.ai_response_raw || '';
+          debugInfo.ai_response_cleaned = backendDebug.ai_response_cleaned || '';
+          debugInfo.parsed_data = backendDebug.parsed_data || null;
+          debugInfo.backend_logs = backendDebug.backend_logs || '';
+        } catch (e) {
+          console.warn('Could not parse debug header:', e);
+        }
+      }
+
       // For the new endpoint, we get the DXF file directly
       const blob = await response.blob();
       const base64Content = await this.blobToBase64(blob);
+
+      // 🔍 DEBUGGING: Store debug info for user inspection
+      localStorage.setItem('dxf_debug_last_success', JSON.stringify(debugInfo));
 
       // Create TechnicalDrawing object
       const drawing: TechnicalDrawing = {
@@ -100,8 +141,10 @@ export class DXFService {
         createdAt: new Date(),
         includeInContext: true,
         dxfData: this.createDXFData(title, description, aiGeneratedContent),
-        drawingType: 'dxf'
-      };
+        drawingType: 'dxf',
+        // 🔍 Add debug information to drawing object
+        debugInfo: debugInfo
+      } as any;
 
       console.log('✅ AI-powered DXF generated successfully');
       return drawing;
