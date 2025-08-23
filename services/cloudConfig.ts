@@ -127,12 +127,26 @@ export class CloudConfig {
       }
     } catch (error) {
       const responseTime = Date.now() - startTime;
+      let errorMessage = 'Unknown error';
+      
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          errorMessage = 'Request timeout - please check your internet connection';
+        } else if (error.message.includes('Failed to fetch')) {
+          errorMessage = 'Failed to connect - check URL format and CORS configuration';
+        } else if (error.message.includes('NetworkError')) {
+          errorMessage = 'Network error - please check your internet connection';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
       return {
         available: false,
         type: config.type,
         url: config.url,
         responseTime,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: errorMessage
       };
     }
   }

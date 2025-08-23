@@ -22,30 +22,77 @@ else:
     print("WARNING: GEMINI_API_KEY not found in environment variables")
     model = None
 
+def add_cors_headers(response):
+    """Add CORS headers to response"""
+    headers = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+    }
+    if hasattr(response, 'headers'):
+        response.headers.update(headers)
+    return response
+
 @functions_framework.http
 def health_check(request):
     """Health check endpoint"""
+    # Set CORS headers for all requests
+    headers = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+    }
+    
+    # Handle preflight OPTIONS request
+    if request.method == 'OPTIONS':
+        return ('', 204, headers)
+    
     if request.path == '/health' and request.method == 'GET':
-        return jsonify({
+        response = jsonify({
             'status': 'healthy',
             'service': 'Professional DXF Drawing Generator (Cloud Functions)',
             'version': '1.0.0',
             'gemini_available': model is not None
         })
+        response.headers.update(headers)
+        return response
     
-    # Route to appropriate handler
+    # Route to appropriate handler with CORS
+    headers = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+    }
+    
     if request.path == '/generate-dxf-endpoint' and request.method == 'POST':
-        return generate_dxf_endpoint(request)
+        response = generate_dxf_endpoint(request)
+        if hasattr(response, 'headers'):
+            response.headers.update(headers)
+        return response
     elif request.path == '/test-hardcoded-dxf' and request.method == 'POST':
-        return test_hardcoded_dxf(request)
+        response = test_hardcoded_dxf(request)
+        if hasattr(response, 'headers'):
+            response.headers.update(headers)
+        return response
     elif request.path == '/parse-ai-drawing' and request.method == 'POST':
-        return parse_ai_drawing(request)
+        response = parse_ai_drawing(request)
+        if hasattr(response, 'headers'):
+            response.headers.update(headers)
+        return response
     elif request.path == '/generate-dxf' and request.method == 'POST':
-        return generate_dxf(request)
+        response = generate_dxf(request)
+        if hasattr(response, 'headers'):
+            response.headers.update(headers)
+        return response
     elif request.path == '/download-dxf' and request.method == 'POST':
-        return download_dxf(request)
+        response = download_dxf(request)
+        if hasattr(response, 'headers'):
+            response.headers.update(headers)
+        return response
     else:
-        return jsonify({'error': 'Endpoint not found'}), 404
+        error_response = jsonify({'error': 'Endpoint not found'})
+        error_response.headers.update(headers)
+        return error_response, 404
 
 def generate_dxf_endpoint(request):
     """AI-powered DXF generation endpoint with comprehensive debugging"""
@@ -53,10 +100,11 @@ def generate_dxf_endpoint(request):
         # 1. Get request data
         data = request.get_json()
         if not data:
-            return jsonify({
+            error_response = jsonify({
                 'success': False,
                 'error': 'No request data provided'
-            }), 400
+            })
+            return add_cors_headers(error_response), 400
         
         # 2. Extract parameters
         title = data.get('title', 'AI Generated Drawing')
@@ -64,17 +112,19 @@ def generate_dxf_endpoint(request):
         user_requirements = data.get('user_requirements', '')
         
         if not description and not user_requirements:
-            return jsonify({
+            error_response = jsonify({
                 'success': False,
                 'error': 'No description or requirements provided'
-            }), 400
+            })
+            return add_cors_headers(error_response), 400
         
         # 3. Check if AI model is available
         if not model:
-            return jsonify({
+            error_response = jsonify({
                 'success': False,
                 'error': 'Gemini AI model not configured. Please set GEMINI_API_KEY environment variable.'
-            }), 500
+            })
+            return add_cors_headers(error_response), 500
         
         # 4. Create AI prompt for geometry generation
         combined_description = f"{description}\n{user_requirements}".strip()
@@ -193,27 +243,30 @@ REQUIREMENTS:
 
         # 8. Return file for download
         filename = f"{title.replace(' ', '_')}.dxf"
-        return send_file(
+        response = send_file(
             bytes_buffer,
             as_attachment=True,
             download_name=filename,
             mimetype='application/vnd.dxf'
         )
+        return add_cors_headers(response)
 
     except json.JSONDecodeError as e:
         print(f"JSON PARSING ERROR: {e}")
-        return jsonify({
+        error_response = jsonify({
             'success': False,
             'error': f'Failed to parse AI response as JSON: {str(e)}',
             'message': 'AI returned invalid JSON format'
-        }), 500
+        })
+        return add_cors_headers(error_response), 500
     except Exception as e:
         print(f"GENERAL ERROR: {e}")
-        return jsonify({
+        error_response = jsonify({
             'success': False,
             'error': str(e),
             'message': 'An error occurred during DXF generation'
-        }), 500
+        })
+        return add_cors_headers(error_response), 500
 
 def test_hardcoded_dxf(request):
     """Test endpoint with hardcoded DXF generation to isolate ezdxf issues"""
@@ -247,15 +300,17 @@ def test_hardcoded_dxf(request):
         bytes_buffer.seek(0)
 
         print("SUCCESS: Hardcoded DXF generated successfully. Sending file.")
-        return send_file(
+        response = send_file(
             bytes_buffer,
             as_attachment=True,
             download_name='hardcoded_test.dxf',
             mimetype='application/vnd.dxf'
         )
+        return add_cors_headers(response)
     except Exception as e:
         print(f"ERROR during hardcoded test: {e}")
-        return jsonify({"error": f"An error occurred during the hardcoded test: {str(e)}"}), 500
+        error_response = jsonify({"error": f"An error occurred during the hardcoded test: {str(e)}"})
+        return add_cors_headers(error_response), 500
 
 def parse_ai_drawing(request):
     """Parse AI-generated drawing description into DXF specifications"""
