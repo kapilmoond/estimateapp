@@ -21,6 +21,11 @@ export const BackendConfig: React.FC = () => {
     const savedUrl = CloudConfig.getCloudFunctionsUrl();
     setCloudFunctionsUrl(savedUrl);
     
+    // Show config panel by default if no URL is configured
+    if (!savedUrl) {
+      setShowConfig(true);
+    }
+    
     // Test current configuration
     testBackend();
   }, []);
@@ -97,9 +102,13 @@ export const BackendConfig: React.FC = () => {
         <h3 className="text-lg font-semibold text-gray-900">Backend Configuration</h3>
         <button
           onClick={() => setShowConfig(!showConfig)}
-          className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+          className={`text-sm font-medium rounded-md px-3 py-1 ${
+            !cloudFunctionsUrl && !status?.available 
+              ? 'bg-blue-600 text-white hover:bg-blue-700' 
+              : 'text-blue-600 hover:text-blue-800'
+          }`}
         >
-          {showConfig ? 'Hide Config' : 'Configure'}
+          {showConfig ? 'Hide Config' : (!cloudFunctionsUrl ? 'Setup Backend' : 'Configure')}
         </button>
       </div>
 
@@ -119,6 +128,11 @@ export const BackendConfig: React.FC = () => {
           )}
           {status?.error && (
             <div className="text-sm text-red-600">{status.error}</div>
+          )}
+          {status && !status.available && !cloudFunctionsUrl && (
+            <div className="text-sm text-blue-600 font-medium">
+              ⚠️ Please configure your Google Cloud Functions URL to enable DXF generation
+            </div>
           )}
         </div>
         <button
