@@ -318,22 +318,59 @@ CRITICAL REQUIREMENTS:
 
         # Setup dimension style
         if 'STRUCTURAL' not in doc.dimstyles:
+            print("🗏 Setting up STRUCTURAL dimension style...")
             dimstyle = doc.dimstyles.add('STRUCTURAL')
-            dimstyle.dxf.dimtxt = 2.5
-            dimstyle.dxf.dimasz = 2.5
-            dimstyle.dxf.dimexe = 1.25
-            dimstyle.dxf.dimexo = 0.625
-            dimstyle.dxf.dimgap = 0.625
-            dimstyle.dxf.dimtad = 1
+            
+            # Text properties
+            dimstyle.dxf.dimtxt = 2.5        # Text height
+            dimstyle.dxf.dimasz = 2.5        # Arrow size
+            dimstyle.dxf.dimexe = 1.25       # Extension line extension
+            dimstyle.dxf.dimexo = 0.625      # Extension line offset
+            dimstyle.dxf.dimgap = 0.625      # Text gap
+            dimstyle.dxf.dimtad = 1          # Text above line
+            
+            # Additional dimension properties for better rendering
+            dimstyle.dxf.dimdec = 0          # No decimals for whole numbers
+            dimstyle.dxf.dimunit = 2         # Decimal units
+            dimstyle.dxf.dimdsep = '.'       # Decimal separator
+            dimstyle.dxf.dimtxsty = 'STANDARD'  # Text style
+            dimstyle.dxf.dimlunit = 2        # Linear units format
+            
+            # Extension line properties
+            dimstyle.dxf.dimse1 = 0          # First extension line on
+            dimstyle.dxf.dimse2 = 0          # Second extension line on
+            dimstyle.dxf.dimdle = 0          # Dimension line extension
+            
+            # Scale factor
+            dimstyle.dxf.dimscale = 1.0      # Overall scale factor
+            
+            print("✅ STRUCTURAL dimension style configured successfully")
+            print(f"  Text height: {dimstyle.dxf.dimtxt}mm")
+            print(f"  Arrow size: {dimstyle.dxf.dimasz}mm")
+            print(f"  Extension offset: {dimstyle.dxf.dimexo}mm")
+        else:
+            print("🗏 STRUCTURAL dimension style already exists")
 
         entities = geometry_data.get('entities', [])
         if not entities:
             print("🔴 WARNING: AI response contained no entities.")
+            
+        # Track entity processing for debugging
+        entity_summary = {
+            'total': len(entities),
+            'processed': 0,
+            'by_type': {},
+            'dimensions_created': 0,
+            'errors': 0
+        }
 
         for entity in entities:
             entity_type = entity.get('type')
             layer = entity.get('layer', '0')
             print(f"➡️ Processing entity: {entity_type} on layer: {layer}")
+            
+            # Track entity types
+            entity_summary['by_type'][entity_type] = entity_summary['by_type'].get(entity_type, 0) + 1
 
             try:
                 if entity_type == 'LINE':
@@ -391,17 +428,62 @@ CRITICAL REQUIREMENTS:
                         base = entity.get('base')
                         p1 = entity.get('p1')
                         p2 = entity.get('p2')
+                        
+                        print(f"🗏 Processing LINEAR DIMENSION:")
+                        print(f"  Base: {base}")
+                        print(f"  P1: {p1}")
+                        print(f"  P2: {p2}")
+                        print(f"  Layer: {layer}")
+                        
                         if base and p1 and p2:
-                            dim = msp.add_linear_dim(
-                                base=base, p1=p1, p2=p2,
-                                dimstyle='STRUCTURAL',
-                                dxfattribs={'layer': layer}
-                            )
-                            dim.render()
+                            try:
+                                # Create linear dimension with enhanced error handling
+                                dim = msp.add_linear_dim(
+                                    base=base, p1=p1, p2=p2,
+                                    dimstyle='STRUCTURAL',
+                                    dxfattribs={'layer': layer}
+                                )
+                                
+                                # Always call render() to generate the dimension geometry
+                                dim.render()
+                                
+                                # Calculate dimension value for verification
+                                import math
+                                distance = math.sqrt((p2[0] - p1[0])**2 + (p2[1] - p1[1])**2)
+                                
+                                print(f"✅ Successfully created LINEAR DIMENSION:")
+                                print(f"  Distance: {distance:.0f}mm")
+                                print(f"  Base offset: {base[1] - max(p1[1], p2[1]):.0f}mm")
+                                print(f"  Dimension style: STRUCTURAL")
+                                
+                            except Exception as dim_error:
+                                print(f"🔴 ERROR creating LINEAR DIMENSION: {dim_error}")
+                                print(f"  This may be due to invalid coordinates or dimstyle issues")
+                                print(f"  Attempting fallback dimension creation...")
+                                
+                                # Fallback: try with simpler parameters
+                                try:
+                                    dim = msp.add_linear_dim(
+                                        base=base, p1=p1, p2=p2,
+                                        dxfattribs={'layer': layer}  # Without dimstyle
+                                    )
+                                    dim.render()
+                                    print(f"✅ Fallback dimension created successfully")
+                                except Exception as fallback_error:
+                                    print(f"🔴 Fallback dimension also failed: {fallback_error}")
+                                    entity_summary['errors'] += 1
+                                else:
+                                    entity_summary['dimensions_created'] += 1
+                            else:
+                                entity_summary['dimensions_created'] += 1
                         else:
-                            print(f"🔴 WARNING: Skipping malformed LINEAR DIMENSION: {entity}")
+                            print(f"🔴 WARNING: Skipping malformed LINEAR DIMENSION:")
+                            print(f"  Missing required parameters: base={bool(base)}, p1={bool(p1)}, p2={bool(p2)}")
+                            print(f"  Entity data: {entity}")
+                            entity_summary['errors'] += 1
                     else:
-                        print(f"🟡 WARNING: Unsupported dimension type '{dim_type}'. Skipping.")
+                        print(f"🟡 WARNING: Unsupported dimension type '{dim_type}'. Only LINEAR dimensions supported.")
+                        entity_summary['errors'] += 1
 
                 elif entity_type == 'HATCH':
                     pattern = entity.get('pattern', 'ANSI31')
@@ -433,9 +515,35 @@ CRITICAL REQUIREMENTS:
 
                 else:
                     print(f"🟡 WARNING: Unhandled entity type '{entity_type}'. Skipping.")
+                    entity_summary['errors'] += 1
+                    
+                entity_summary['processed'] += 1
 
             except (TypeError, ValueError) as e:
                 print(f"🔴 ERROR processing entity {entity}: {e}. Skipping.")
+                entity_summary['errors'] += 1
+        
+        # Print comprehensive summary
+        print("\n" + "="*50)
+        print("🗊 ENTITY PROCESSING SUMMARY")
+        print("="*50)
+        print(f"Total entities: {entity_summary['total']}")
+        print(f"Successfully processed: {entity_summary['processed']}")
+        print(f"Errors encountered: {entity_summary['errors']}")
+        print(f"Dimensions created: {entity_summary['dimensions_created']}")
+        print("\nBy entity type:")
+        for entity_type, count in entity_summary['by_type'].items():
+            print(f"  {entity_type}: {count}")
+        
+        if entity_summary['dimensions_created'] == 0:
+            print("\n⚠️  WARNING: NO DIMENSIONS WERE CREATED!")
+            print("   This may be due to:")
+            print("   1. AI not generating DIMENSION entities")
+            print("   2. Malformed dimension data")
+            print("   3. Dimension style configuration issues")
+        else:
+            print(f"\n✅ Success: {entity_summary['dimensions_created']} dimensions created successfully")
+        print("="*50 + "\n")
 
         # 7. Save DXF to memory buffer
         # ezdxf expects a text stream, not binary

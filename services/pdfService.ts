@@ -540,10 +540,19 @@ export class DXFPDFService {
         break;
         
       case 'DIMENSION':
-        if (entity.definingPoint) points.push(entity.definingPoint);
-        if (entity.middleOfText) points.push(entity.middleOfText);
-        if (entity.p1) points.push(entity.p1);
-        if (entity.p2) points.push(entity.p2);
+        // Handle various dimension coordinate formats
+        if (entity.definingPoint) points.push(this.normalizePoint(entity.definingPoint));
+        if (entity.middleOfText) points.push(this.normalizePoint(entity.middleOfText));
+        if (entity.p1) points.push(this.normalizePoint(entity.p1));
+        if (entity.p2) points.push(this.normalizePoint(entity.p2));
+        if (entity.base) points.push(this.normalizePoint(entity.base));
+        if (entity.definitionPoint) points.push(this.normalizePoint(entity.definitionPoint));
+        if (entity.textMidPoint) points.push(this.normalizePoint(entity.textMidPoint));
+        if (entity.insertionPoint) points.push(this.normalizePoint(entity.insertionPoint));
+        
+        // Filter out null points
+        const validDimPoints = points.filter(p => p !== null);
+        console.log('🗏 DIMENSION bounds points extracted:', validDimPoints);
         break;
     }
     
@@ -842,20 +851,164 @@ export class DXFPDFService {
     transformX: (x: number) => number,
     transformY: (y: number) => number
   ): void {
-    // Render dimension lines and text
+    console.log('🗏 Rendering DIMENSION entity:', {
+      type: entity.type,
+      keys: Object.keys(entity),
+      definingPoint: entity.definingPoint,
+      middleOfText: entity.middleOfText,
+      base: entity.base,
+      p1: entity.p1,
+      p2: entity.p2,
+      text: entity.text
+    });
+    
+    // Handle different dimension property formats
+    let dimensionLine1: {x: number, y: number} | null = null;
+    let dimensionLine2: {x: number, y: number} | null = null;
+    let textPosition: {x: number, y: number} | null = null;
+    let dimensionText = entity.text || entity.textOverride || '';
+    
+    // Method 1: Standard DXF format with definingPoint and middleOfText
     if (entity.definingPoint && entity.middleOfText) {
-      const x1 = transformX(entity.definingPoint.x);
-      const y1 = transformY(entity.definingPoint.y);
-      const x2 = transformX(entity.middleOfText.x);
-      const y2 = transformY(entity.middleOfText.y);
+      dimensionLine1 = this.normalizePoint(entity.definingPoint);
+      dimensionLine2 = this.normalizePoint(entity.middleOfText);
+      textPosition = dimensionLine2;
+    }
+    // Method 2: Linear dimension format with base, p1, p2
+    else if (entity.base && entity.p1 && entity.p2) {
+      const base = this.normalizePoint(entity.base);
+      const p1 = this.normalizePoint(entity.p1);
+      const p2 = this.normalizePoint(entity.p2);
       
-      pdf.line(x1, y1, x2, y2);
+      // Create dimension line from base point
+      dimensionLine1 = base;
       
-      if (entity.text) {
-        pdf.setFontSize(8);
-        pdf.text(entity.text, x2, y2);
+      // Calculate text position (middle of dimension line)
+      textPosition = {
+        x: base.x + (p2.x - p1.x) / 2,
+        y: base.y
+      };
+      
+      // Calculate dimension value if not provided
+      if (!dimensionText) {
+        const distance = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+        dimensionText = Math.round(distance).toString();
+      }
+      
+      // Draw extension lines from p1 and p2 to base
+      const extP1X = transformX(p1.x);
+      const extP1Y = transformY(p1.y);
+      const extP2X = transformX(p2.x);
+      const extP2Y = transformY(p2.y);
+      const baseX = transformX(base.x);
+      const baseY = transformY(base.y);
+      
+      // Extension lines
+      pdf.setLineWidth(0.1);
+      pdf.line(extP1X, extP1Y, transformX(p1.x), baseY); // Extension line 1
+      pdf.line(extP2X, extP2Y, transformX(p2.x), baseY); // Extension line 2
+      
+      // Main dimension line
+      pdf.setLineWidth(0.2);
+      dimensionLine2 = {
+        x: base.x + (p2.x - p1.x),
+        y: base.y
+      };
+      
+      console.log('🗏 LINEAR dimension setup:', {
+        base, p1, p2, textPosition, dimensionText,
+        extensionLines: `(${extP1X},${extP1Y}) to (${transformX(p1.x)},${baseY}), (${extP2X},${extP2Y}) to (${transformX(p2.x)},${baseY})`
+      });
+    }
+    // Method 3: Fallback - try to extract any coordinate data
+    else {
+      const availablePoints = [];
+      
+      // Collect any available point data
+      if (entity.definitionPoint) availablePoints.push(this.normalizePoint(entity.definitionPoint));
+      if (entity.textMidPoint) availablePoints.push(this.normalizePoint(entity.textMidPoint));
+      if (entity.insertionPoint) availablePoints.push(this.normalizePoint(entity.insertionPoint));
+      
+      if (availablePoints.length >= 2) {
+        dimensionLine1 = availablePoints[0];
+        dimensionLine2 = availablePoints[1];
+        textPosition = availablePoints[1];
+      } else {
+        console.warn('⚠️ DIMENSION entity missing coordinate data:', entity);
+        return;
       }
     }
+    
+    // Render the dimension if we have valid coordinates
+    if (dimensionLine1 && dimensionLine2 && textPosition) {
+      const x1 = transformX(dimensionLine1.x);
+      const y1 = transformY(dimensionLine1.y);
+      const x2 = transformX(dimensionLine2.x);
+      const y2 = transformY(dimensionLine2.y);
+      const textX = transformX(textPosition.x);
+      const textY = transformY(textPosition.y);
+      
+      // Draw dimension line
+      pdf.setLineWidth(0.2);
+      pdf.setDrawColor(128, 128, 128); // Gray for dimensions
+      pdf.line(x1, y1, x2, y2);
+      
+      // Draw dimension text
+      if (dimensionText) {
+        pdf.setFontSize(8);
+        pdf.setTextColor(0, 0, 0); // Black text
+        pdf.text(dimensionText, textX, textY - 2); // Offset text slightly above line
+      }
+      
+      // Draw arrowheads (simple lines)
+      const arrowSize = 2;
+      const angle = Math.atan2(y2 - y1, x2 - x1);
+      
+      // Arrow at start
+      const arrow1X1 = x1 + arrowSize * Math.cos(angle + Math.PI * 0.8);
+      const arrow1Y1 = y1 + arrowSize * Math.sin(angle + Math.PI * 0.8);
+      const arrow1X2 = x1 + arrowSize * Math.cos(angle - Math.PI * 0.8);
+      const arrow1Y2 = y1 + arrowSize * Math.sin(angle - Math.PI * 0.8);
+      
+      pdf.line(x1, y1, arrow1X1, arrow1Y1);
+      pdf.line(x1, y1, arrow1X2, arrow1Y2);
+      
+      // Arrow at end
+      const arrow2X1 = x2 - arrowSize * Math.cos(angle + Math.PI * 0.8);
+      const arrow2Y1 = y2 - arrowSize * Math.sin(angle + Math.PI * 0.8);
+      const arrow2X2 = x2 - arrowSize * Math.cos(angle - Math.PI * 0.8);
+      const arrow2Y2 = y2 - arrowSize * Math.sin(angle - Math.PI * 0.8);
+      
+      pdf.line(x2, y2, arrow2X1, arrow2Y1);
+      pdf.line(x2, y2, arrow2X2, arrow2Y2);
+      
+      console.log('✅ DIMENSION rendered successfully:', {
+        line: `(${x1}, ${y1}) to (${x2}, ${y2})`,
+        text: dimensionText,
+        textPos: `(${textX}, ${textY})`
+      });
+    } else {
+      console.warn('⚠️ Failed to render DIMENSION - insufficient coordinate data');
+    }
+  }
+  
+  /**
+   * Normalize point to {x, y} format
+   */
+  private static normalizePoint(point: any): {x: number, y: number} | null {
+    if (!point) return null;
+    
+    // Handle array format [x, y]
+    if (Array.isArray(point) && point.length >= 2) {
+      return { x: point[0], y: point[1] };
+    }
+    
+    // Handle object format {x, y}
+    if (typeof point === 'object' && typeof point.x === 'number' && typeof point.y === 'number') {
+      return { x: point.x, y: point.y };
+    }
+    
+    return null;
   }
 
   /**
