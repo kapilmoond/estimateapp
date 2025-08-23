@@ -6,6 +6,7 @@
 
 import { TechnicalDrawing, DXFDrawingData, DXFElement } from '../types';
 import { CloudConfig } from './cloudConfig';
+import { DXFPDFService } from './pdfService';
 
 export class DXFService {
   private static backendConfig = CloudConfig.getBackendConfig();
@@ -466,6 +467,20 @@ Created: ${drawing.createdAt.toLocaleDateString()}
     } catch (error) {
       console.error('❌ DXF download failed:', error);
       throw new Error(`Failed to download DXF: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Convert DXF drawing to PDF and download
+   */
+  static async downloadDXFAsPDF(drawing: TechnicalDrawing): Promise<void> {
+    try {
+      console.log('🔄 Converting DXF to PDF for download...');
+      await DXFPDFService.convertDXFToPDF(drawing);
+      console.log('✅ DXF to PDF conversion completed');
+    } catch (error) {
+      console.error('❌ DXF to PDF conversion failed:', error);
+      throw new Error(`Failed to convert DXF to PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
