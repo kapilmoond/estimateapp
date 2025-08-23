@@ -42,7 +42,7 @@ export class DXFService {
   }
 
   /**
-   * Generate DXF using Python backend
+   * Generate DXF using Python backend with AI-powered geometry parsing
    */
   private static async generateDXFWithBackend(
     title: string,
@@ -50,7 +50,69 @@ export class DXFService {
     aiGeneratedContent: string
   ): Promise<TechnicalDrawing> {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout for generation
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout for AI generation
+
+    try {
+      // First try the new AI-powered endpoint
+      const response = await fetch(`${this.PYTHON_BACKEND_URL}/generate-dxf-endpoint`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title,
+          description,
+          user_requirements: aiGeneratedContent
+        }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        // If AI endpoint fails, try the fallback endpoint
+        console.warn('AI endpoint failed, trying fallback...');
+        return await this.generateDXFWithFallback(title, description, aiGeneratedContent);
+      }
+
+      // For the new endpoint, we get the DXF file directly
+      const blob = await response.blob();
+      const base64Content = await this.blobToBase64(blob);
+
+      // Create TechnicalDrawing object
+      const drawing: TechnicalDrawing = {
+        id: this.generateId(),
+        title,
+        description,
+        dxfContent: base64Content,
+        dxfFilename: `${title.replace(/\s+/g, '_')}.dxf`,
+        dimensions: { width: 800, height: 600 },
+        scale: '1:100',
+        componentName: this.extractComponentName(title),
+        createdAt: new Date(),
+        includeInContext: true,
+        dxfData: this.createDXFData(title, description, aiGeneratedContent),
+        drawingType: 'dxf'
+      };
+
+      console.log('✅ AI-powered DXF generated successfully');
+      return drawing;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      throw error;
+    }
+  }
+
+  /**
+   * Fallback DXF generation using the original endpoint
+   */
+  private static async generateDXFWithFallback(
+    title: string,
+    description: string,
+    aiGeneratedContent: string
+  ): Promise<TechnicalDrawing> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     try {
       const response = await fetch(`${this.PYTHON_BACKEND_URL}/parse-ai-drawing`, {
@@ -285,6 +347,50 @@ export class DXFService {
     } catch (error) {
       console.warn('Python backend not available:', error);
       return false;
+    }
+  }
+
+  /**
+   * Test hardcoded DXF generation to isolate ezdxf issues
+   */
+  static async testHardcodedDXF(): Promise<TechnicalDrawing> {
+    console.log('🧪 Testing hardcoded DXF generation...');
+
+    try {
+      const response = await fetch(`${this.PYTHON_BACKEND_URL}/test-hardcoded-dxf`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Hardcoded test failed: ${response.statusText}`);
+      }
+
+      const blob = await response.blob();
+      const base64Content = await this.blobToBase64(blob);
+
+      const drawing: TechnicalDrawing = {
+        id: this.generateId(),
+        title: 'Hardcoded Test Drawing',
+        description: '🧪 This is a hardcoded test to verify ezdxf library functionality.\n\nContains:\n• Simple line from (0,0) to (50,25)\n• Circle at center (25,12.5) with radius 10\n\nIf this downloads successfully, the ezdxf library is working correctly.',
+        dxfContent: base64Content,
+        dxfFilename: 'hardcoded_test.dxf',
+        dimensions: { width: 800, height: 600 },
+        scale: '1:1',
+        componentName: 'test',
+        createdAt: new Date(),
+        includeInContext: false,
+        dxfData: this.createDXFData('Test', 'Hardcoded test drawing', 'Test content'),
+        drawingType: 'dxf'
+      };
+
+      console.log('✅ Hardcoded DXF test completed successfully');
+      return drawing;
+    } catch (error) {
+      console.error('❌ Hardcoded DXF test failed:', error);
+      throw error;
     }
   }
 
@@ -563,6 +669,20 @@ EOF`;
     }
     const byteArray = new Uint8Array(byteNumbers);
     return new Blob([byteArray], { type: mimeType });
+  }
+
+  private static async blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        // Remove the data URL prefix to get just the base64 content
+        const base64 = result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
   }
 
   private static createPlaceholderSVG(title: string): string {
