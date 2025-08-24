@@ -174,6 +174,21 @@ def generate_dxf_endpoint():
         # 4. Create enhanced AI prompt with comprehensive ezdxf knowledge
         combined_description = f"{description}\n{user_requirements}".strip()
         prompt = f"""
+🚨 CRITICAL REQUIREMENT: YOU MUST INCLUDE DIMENSION ENTITIES 🚨
+
+Your JSON response MUST contain at least 5 entities with "type": "DIMENSION".
+If you do not include DIMENSION entities, the response will be rejected.
+
+Example DIMENSION entity (COPY THIS FORMAT):
+{{
+  "type": "DIMENSION",
+  "dim_type": "LINEAR",
+  "base": [3000, -1000],
+  "p1": [1000, 0],
+  "p2": [5000, 0],
+  "layer": "2-DIMENSIONS-LINEAR"
+}}
+
 You are a professional CAD engineer with expertise in Python ezdxf library. Convert this construction drawing description into a complete, professional DXF drawing using proper ezdxf standards.
 
 DESCRIPTION: {combined_description}
@@ -386,6 +401,8 @@ CRITICAL REQUIREMENTS:
 - Dimensions must be offset at least 5000mm from structural elements
 - Hatching must use appropriate construction patterns (ANSI31 for concrete)
 - Return valid JSON only, no explanations
+
+🚨 DIMENSION ENTITY VERIFICATION: Your response MUST contain the word "DIMENSION" at least 3 times in "type" fields 🚨
 """
 
         # 5. Call the AI model and parse its response

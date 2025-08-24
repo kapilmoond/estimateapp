@@ -89,7 +89,7 @@ class ProfessionalDXFGenerator:
                 'height': 8,
                 'style': 'Standard'
             }
-        ).set_pos((tb_x + 10, tb_y + 35))
+        ).set_placement((tb_x + 10, tb_y + 35))
         
         # Add description
         self.msp.add_text(
@@ -99,7 +99,7 @@ class ProfessionalDXFGenerator:
                 'height': 4,
                 'style': 'Standard'
             }
-        ).set_pos((tb_x + 10, tb_y + 25))
+        ).set_placement((tb_x + 10, tb_y + 25))
         
         # Add date and drawing number
         import datetime
@@ -113,7 +113,7 @@ class ProfessionalDXFGenerator:
                 'height': 3,
                 'style': 'Standard'
             }
-        ).set_pos((tb_x + 10, tb_y + 15))
+        ).set_placement((tb_x + 10, tb_y + 15))
         
         self.msp.add_text(
             f"Drawing No: {drawing_no}",
@@ -122,7 +122,7 @@ class ProfessionalDXFGenerator:
                 'height': 3,
                 'style': 'Standard'
             }
-        ).set_pos((tb_x + 10, tb_y + 8))
+        ).set_placement((tb_x + 10, tb_y + 8))
     
     def add_structural_element(self, element_type: str, specifications: Dict[str, Any]):
         """Add structural elements like beams, columns, foundations"""
@@ -246,7 +246,7 @@ class ProfessionalDXFGenerator:
                 'height': 0.05,
                 'style': 'Standard'
             }
-        ).set_pos((x, y - 0.1))
+        ).set_placement((x, y - 0.1))
     
     def save_dxf(self, filename: str = None) -> str:
         """Save DXF file and return file path"""
