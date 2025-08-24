@@ -625,7 +625,7 @@ def generate_dxf_endpoint():
 
 EZDXF DIMENSION MASTERY FOR PROFESSIONAL CONSTRUCTION DRAWINGS:
 
-🏗️ CRITICAL DIMENSION SETUP (FIXES EXTENSION LINE ISSUES):
+# CRITICAL DIMENSION SETUP (FIXES EXTENSION LINE ISSUES):
 
 # MANDATORY: R2010+ with setup=True for proper dimension rendering
 doc = ezdxf.new("R2010", setup=True)  # setup=True creates default dimension styles
@@ -686,7 +686,7 @@ def create_dimension_with_extension_lines(msp, p1, p2, offset_distance=5000):
     
     return dim
 
-🎯 MANDATORY DIMENSION REQUIREMENTS FOR ALL DRAWINGS:
+# MANDATORY DIMENSION REQUIREMENTS FOR ALL DRAWINGS:
 - MINIMUM 3-5 dimension entities per drawing
 - Each dimension MUST have offset_distance >= 3000mm from elements
 - ALL dimensions MUST call .render() after creation
