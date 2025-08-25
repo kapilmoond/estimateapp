@@ -102,9 +102,7 @@ export class DXFService {
         // Store debug info in localStorage for user inspection
         localStorage.setItem('dxf_debug_last_error', JSON.stringify(debugInfo));
         
-        // If AI endpoint fails, try the fallback endpoint
-        console.warn('AI endpoint failed, trying fallback...');
-        return await this.generateDXFWithFallback(title, description, aiGeneratedContent);
+        throw new Error(`DXF generation failed: ${response.status} ${response.statusText}. ${errorText}`);
       }
 
       // 🔍 DEBUGGING: For successful responses, check if we can get debug info from headers
@@ -183,67 +181,6 @@ export class DXFService {
       } as any;
 
       console.log('✅ AI-powered DXF generated successfully');
-      return drawing;
-    } catch (error) {
-      clearTimeout(timeoutId);
-      throw error;
-    }
-  }
-
-  /**
-   * Fallback DXF generation using the original endpoint
-   */
-  private static async generateDXFWithFallback(
-    title: string,
-    description: string,
-    aiGeneratedContent: string
-  ): Promise<TechnicalDrawing> {
-    const controller = new AbortController();
-    const timeout = CloudConfig.getTimeout();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-    try {
-      const endpointUrl = CloudConfig.getEndpointUrl('/parse-ai-drawing');
-      const response = await fetch(endpointUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          title,
-          description: aiGeneratedContent
-        }),
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        throw new Error(`DXF generation failed: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-
-      if (!result.success) {
-        throw new Error(result.error || 'DXF generation failed');
-      }
-
-      // Create TechnicalDrawing object
-      const drawing: TechnicalDrawing = {
-        id: this.generateId(),
-        title,
-        description,
-        dxfContent: result.dxf_content, // Base64 encoded DXF
-        dxfFilename: result.filename,
-        dimensions: { width: 800, height: 600 },
-        scale: '1:100',
-        componentName: this.extractComponentName(title),
-        createdAt: new Date(),
-        includeInContext: true,
-        dxfData: this.createDXFData(title, description, aiGeneratedContent),
-        drawingType: 'dxf'
-      };
-
       return drawing;
     } catch (error) {
       clearTimeout(timeoutId);

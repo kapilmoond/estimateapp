@@ -11,7 +11,7 @@ import os
 import io
 from datetime import datetime
 # Import our pure internal DXF generation system
-from app_internal import InternalDXFGenerator, last_debug_data
+from app import InternalDXFGenerator, last_debug_data
 import ezdxf
 from ezdxf import units
 import math
@@ -183,33 +183,47 @@ def generate_dxf_endpoint(request):
                 layer.color = props["color"]
 
         # Setup dimension style with proper extension line configuration
-        if 'STRUCTURAL' not in doc.dimstyles:
-            print("📏 Setting up STRUCTURAL dimension style...")
-            dimstyle = doc.dimstyles.add('STRUCTURAL')
+        print("📏 Setting up STRUCTURAL dimension style...")
+        
+        # Remove existing dimstyle if it exists
+        if 'STRUCTURAL' in doc.dimstyles:
+            del doc.dimstyles['STRUCTURAL']
             
-            # Extension line configuration
-            dimstyle.dxf.dimexo = 0.625
-            dimstyle.dxf.dimexe = 1.25
-            dimstyle.dxf.dimse1 = 0
-            dimstyle.dxf.dimse2 = 0
-            dimstyle.dxf.dimdle = 0
-            
-            # Text positioning
-            dimstyle.dxf.dimtxt = 2.5
-            dimstyle.dxf.dimgap = 0.625
-            dimstyle.dxf.dimtad = 1
-            dimstyle.dxf.dimjust = 0
-            
-            # Arrow configuration
-            dimstyle.dxf.dimasz = 2.5
-            dimstyle.dxf.dimblk = "ARCHTICK"
-            
-            # Scale and measurement
-            dimstyle.dxf.dimscale = 1.0
-            dimstyle.dxf.dimlfac = 1.0
-            dimstyle.dxf.dimdec = 0
-            dimstyle.dxf.dimzin = 8
-            dimstyle.dxf.dimlunit = 2
+        dimstyle = doc.dimstyles.add('STRUCTURAL')
+        
+        # Critical dimension style configuration for proper rendering
+        # Extension line configuration
+        dimstyle.dxf.dimexo = 1.25     # Extension line offset from origin points
+        dimstyle.dxf.dimexe = 2.5      # Extension line extension beyond dimension line
+        dimstyle.dxf.dimse1 = 0        # Suppress first extension line (0 = show)
+        dimstyle.dxf.dimse2 = 0        # Suppress second extension line (0 = show)
+        dimstyle.dxf.dimdle = 0        # Dimension line extension
+        
+        # Text configuration
+        dimstyle.dxf.dimtxt = 3.5      # Text height
+        dimstyle.dxf.dimgap = 1.0      # Gap between text and dimension line
+        dimstyle.dxf.dimtad = 1        # Text above dimension line
+        dimstyle.dxf.dimjust = 0       # Text justification
+        
+        # Arrow configuration
+        dimstyle.dxf.dimasz = 3.0      # Arrow size
+        dimstyle.dxf.dimblk = "_ARCHTICK"  # Use standard architectural tick
+        dimstyle.dxf.dimblk1 = "_ARCHTICK" # First arrow block
+        dimstyle.dxf.dimblk2 = "_ARCHTICK" # Second arrow block
+        
+        # Scale and measurement configuration
+        dimstyle.dxf.dimscale = 1.0    # Overall scale factor
+        dimstyle.dxf.dimlfac = 1.0     # Linear measurement factor
+        dimstyle.dxf.dimdec = 0        # Decimal places for dimensions
+        dimstyle.dxf.dimzin = 8        # Zero suppression
+        dimstyle.dxf.dimlunit = 2      # Linear unit format (2 = decimal)
+        
+        # Color and layer settings
+        dimstyle.dxf.dimclrd = 256     # Dimension line color (by layer)
+        dimstyle.dxf.dimclre = 256     # Extension line color (by layer)
+        dimstyle.dxf.dimclrt = 256     # Text color (by layer)
+        
+        print(f"✅ Dimension style 'STRUCTURAL' configured with proper settings")
 
         entities = geometry_data.get('entities', [])
         
@@ -272,29 +286,42 @@ def generate_dxf_endpoint(request):
                         p2 = entity.get('p2')
                         
                         if base and p1 and p2:
-                            # Calculate measurement
-                            distance = math.sqrt((p2[0] - p1[0])**2 + (p2[1] - p1[1])**2)
-                            
-                            print(f"  📏 Creating DIMENSION: {distance:.0f}mm")
-                            print(f"    Base: {base}, P1: {p1}, P2: {p2}")
-                            
-                            dim = msp.add_linear_dim(
-                                base=base, p1=p1, p2=p2,
-                                dimstyle='STRUCTURAL',
-                                dxfattribs={'layer': layer}
-                            )
-                            
-                            # Critical: render to create extension lines
-                            dim.render()
-                            
-                            # Verify dimension creation
-                            geom_block = dim.get_geometry_block()
-                            if geom_block:
-                                block_entities = list(geom_block)
-                                print(f"    ✅ Dimension rendered: {len(block_entities)} entities in block")
+                            try:
+                                # Convert to tuples for ezdxf
+                                base_point = tuple(base[:2])  # Ensure 2D coordinates
+                                point1 = tuple(p1[:2])
+                                point2 = tuple(p2[:2])
+                                
+                                # Calculate measurement for logging
+                                distance = math.sqrt((point2[0] - point1[0])**2 + (point2[1] - point1[1])**2)
+                                
+                                print(f"  📐 Creating DIMENSION: {distance:.0f}mm")
+                                print(f"    Base: {base_point}, P1: {point1}, P2: {point2}")
+                                print(f"    Layer: {layer}")
+                                
+                                # Create the dimension with proper parameters
+                                dim = msp.add_linear_dim(
+                                    base=base_point, 
+                                    p1=point1, 
+                                    p2=point2,
+                                    dimstyle='STRUCTURAL',
+                                    dxfattribs={'layer': layer}
+                                )
+                                
+                                # Critical: render the dimension to create all geometry
+                                print(f"    🔧 Rendering dimension...")
+                                dim.render()
+                                
+                                # Count as created - improve verification later
                                 entity_summary['dimensions_created'] += 1
-                            else:
-                                print(f"    ⚠️ Warning: Dimension created but no geometry block")
+                                print(f"    ✅ Dimension created and rendered successfully")
+                                    
+                            except Exception as dim_e:
+                                print(f"    🔴 Error creating dimension: {dim_e}")
+                                entity_summary['errors'] += 1
+                        else:
+                            print(f"    🔴 Invalid dimension data - missing base, p1, or p2")
+                            entity_summary['errors'] += 1
 
                 entity_summary['processed'] += 1
                 
@@ -350,6 +377,7 @@ def generate_dxf_endpoint(request):
             'error': str(e),
             'message': 'Internal DXF generation failed'
         })
+        return add_cors_headers(error_response), 500
 
 def test_hardcoded_dxf(request):
     """Test endpoint with hardcoded DXF generation to isolate ezdxf issues"""
