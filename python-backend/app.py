@@ -229,7 +229,7 @@ class InternalDXFGenerator:
     
     @staticmethod
     def _generate_building_entities(text: str) -> list:
-        """Generate simple building plan entities"""
+        """Generate simple building plan entities with proper geometries for dimensions"""
         dims = InternalDXFGenerator._extract_dimensions(text)
         
         length = dims['length']
@@ -237,24 +237,43 @@ class InternalDXFGenerator:
         
         origin = [8000, 8000]
         
-        # Outer walls
-        outer_walls = [
-            origin,
-            [origin[0] + length, origin[1]],
-            [origin[0] + length, origin[1] + width],
-            [origin[0], origin[1] + width],
-            origin
-        ]
+        entities = []
         
-        entities = [{
-            "type": "LWPOLYLINE",
-            "points": outer_walls,
-            "closed": True,
+        # Create individual wall segments for better dimension attachment
+        # Bottom wall (horizontal)
+        entities.append({
+            "type": "LINE",
+            "start_point": origin,
+            "end_point": [origin[0] + length, origin[1]],
             "layer": "0-STRUCTURAL-WALLS"
-        }]
+        })
         
-        # Add a simple interior division
-        if length > 4000:  # Only for larger buildings
+        # Right wall (vertical)
+        entities.append({
+            "type": "LINE",
+            "start_point": [origin[0] + length, origin[1]],
+            "end_point": [origin[0] + length, origin[1] + width],
+            "layer": "0-STRUCTURAL-WALLS"
+        })
+        
+        # Top wall (horizontal)
+        entities.append({
+            "type": "LINE",
+            "start_point": [origin[0] + length, origin[1] + width],
+            "end_point": [origin[0], origin[1] + width],
+            "layer": "0-STRUCTURAL-WALLS"
+        })
+        
+        # Left wall (vertical)
+        entities.append({
+            "type": "LINE",
+            "start_point": [origin[0], origin[1] + width],
+            "end_point": origin,
+            "layer": "0-STRUCTURAL-WALLS"
+        })
+        
+        # Add interior division if building is large enough
+        if length > 4000:
             mid_x = origin[0] + length / 2
             entities.append({
                 "type": "LINE",
@@ -358,6 +377,23 @@ class InternalDXFGenerator:
                 })
         
         return annotations
+
+@app.route('/', methods=['GET'])
+def root():
+    """Root endpoint for basic connectivity test"""
+    return jsonify({
+        'message': 'Professional DXF Drawing Generator API',
+        'status': 'online',
+        'version': '2.0.0',
+        'generation_mode': 'Internal Logic - No External APIs',
+        'endpoints': [
+            '/health',
+            '/generate-dxf-endpoint',
+            '/test-hardcoded-dxf',
+            '/parse-ai-drawing',
+            '/get-debug-info'
+        ]
+    }), 200
 
 @app.route('/get-debug-info', methods=['GET'])
 def get_debug_info():

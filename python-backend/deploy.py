@@ -106,11 +106,11 @@ def deploy_function(project_id, function_name, region='us-central1'):
         '--runtime', 'python311',
         '--region', region,
         '--source', '.',
-        '--entry-point', 'health_check',
+        '--entry-point', 'app',  # Fixed: Use 'app' as entry point for Flask app
         '--trigger-http',
         '--allow-unauthenticated',
-        '--memory', '512MB',
-        '--timeout', '60s',
+        '--memory', '1GB',  # Increased for ezdxf operations
+        '--timeout', '300s',  # Increased timeout for dimension rendering
         '--max-instances', '10',
         '--project', project_id
     ]
