@@ -1,8 +1,7 @@
-import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { HsrItem, ChatMessage, KeywordsByItem, OutputMode, UserGuideline, ComponentDesign, ConversationThread, TechnicalDrawing } from './types';
 import { continueConversation, generatePlainTextEstimate, generateKeywordsForItems } from './services/geminiService';
 import { searchHSR } from './services/hsrService';
-import { extractHsrNumbersFromText } from './services/keywordService';
 import { speak } from './services/speechService';
 import { GuidelinesService } from './services/guidelinesService';
 import { ThreadService } from './services/threadService';
@@ -39,12 +38,10 @@ const App: React.FC = () => {
   const [keywords, setKeywords] = useState<string[]>([]);
   const [keywordsByItem, setKeywordsByItem] = useState<KeywordsByItem>({});
   const [hsrItems, setHsrItems] = useState<HsrItem[]>([]);
-  const [newlyFoundHsrItems, setNewlyFoundHsrItems] = useState<HsrItem[]>([]);
   const [finalEstimateText, setFinalEstimateText] = useState<string>('');
   const [editInstruction, setEditInstruction] = useState<string>('');
   const [keywordFeedback, setKeywordFeedback] = useState<string>('');
   const [hsrItemFeedback, setHsrItemFeedback] = useState<string>('');
-  const [refinedHsrItemFeedback, setRefinedHsrItemFeedback] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
   const [loadingMessage, setLoadingMessage] = useState<string>('');
@@ -68,8 +65,8 @@ const App: React.FC = () => {
   const [isLLMSettingsOpen, setIsLLMSettingsOpen] = useState<boolean>(false);
   const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState<boolean>(false);
   const [includeKnowledgeBase, setIncludeKnowledgeBase] = useState<boolean>(false);
-  const [currentProvider, setCurrentProvider] = useState<string>(LLMService.getCurrentProvider());
-  const [currentModel, setCurrentModel] = useState<string>(LLMService.getCurrentModel());
+  const [currentProvider] = useState<string>(LLMService.getCurrentProvider());
+  const [currentModel] = useState<string>(LLMService.getCurrentModel());
   const [showProjectData, setShowProjectData] = useState<boolean>(false);
   const [contextKey, setContextKey] = useState<number>(0); // Force re-render of context
 
@@ -282,7 +279,7 @@ const App: React.FC = () => {
         enhancedUserInput = enhancedPrompt;
       }
 
-      const design = await DesignService.generateComponentDesign(
+      await DesignService.generateComponentDesign(
         componentName,
         scopeContext,
         enhancedUserInput,
@@ -347,7 +344,6 @@ const App: React.FC = () => {
       const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
 
       const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
-      const designContext = ThreadService.getAllContextForMode('design');
 
       // Get existing designs that might be relevant
       const existingDesigns = designs.filter(d => d.includeInContext !== false);
@@ -480,8 +476,11 @@ Focus on creating exactly what the user requested, using available context to en
       // Add finalized scope to context
       ContextService.addStepSummary('scope', 'Project scope finalized', scope.substring(0, 200));
 
-      const generatedKeywords = await generateKeywordsForItems(scope, referenceText);
-      setKeywords(generatedKeywords);
+      const generatedKeywords = await generateKeywordsForItems(scope, '', referenceText);
+      // Extract keywords from the returned object
+      const keywordsList = Object.keys(generatedKeywords);
+      setKeywords(keywordsList);
+      setKeywordsByItem(generatedKeywords);
       setStep('approvingKeywords');
     } catch (err: any) {
       console.error(err);
@@ -505,33 +504,20 @@ Focus on creating exactly what the user requested, using available context to en
     setError(null);
 
     try {
-      const foundItems: HsrItem[] = [];
+      // Create keywordsByItem structure from keywords
       const keywordsByItemTemp: KeywordsByItem = {};
+      keywords.forEach(keyword => {
+        keywordsByItemTemp[keyword] = [keyword];
+      });
 
-      for (const keyword of keywords) {
-        const items = await searchHSR(keyword);
-        foundItems.push(...items);
+      // Search HSR using the keywordsByItem structure
+      const foundItems = searchHSR(keywordsByItemTemp);
 
-        items.forEach(item => {
-          if (!keywordsByItemTemp[item.Description]) {
-            keywordsByItemTemp[item.Description] = [];
-          }
-          if (!keywordsByItemTemp[item.Description].includes(keyword)) {
-            keywordsByItemTemp[item.Description].push(keyword);
-          }
-        });
-      }
-
-      // Remove duplicates
-      const uniqueItems = foundItems.filter((item, index, self) =>
-        index === self.findIndex(t => t["HSR No."] === item["HSR No."])
-      );
-
-      setHsrItems(uniqueItems);
+      setHsrItems(foundItems);
       setKeywordsByItem(keywordsByItemTemp);
 
       // Add HSR items to context
-      ContextService.addStepSummary('hsr_search', 'HSR items found', `Found ${uniqueItems.length} HSR items`);
+      ContextService.addStepSummary('hsr_search', 'HSR items found', `Found ${foundItems.length} HSR items`);
     } catch (err: any) {
       console.error(err);
       setError(err.message || 'An error occurred while searching HSR items.');
@@ -557,7 +543,9 @@ Focus on creating exactly what the user requested, using available context to en
       const estimate = await generatePlainTextEstimate(
         finalizedScope,
         hsrItems,
-        keywordsByItem,
+        conversationHistory,
+        '',
+        '',
         referenceText
       );
       setFinalEstimateText(estimate);
@@ -589,7 +577,9 @@ Focus on creating exactly what the user requested, using available context to en
       const editedEstimate = await generatePlainTextEstimate(
         finalizedScope + '\n\nEdit Instructions: ' + editInstruction,
         hsrItems,
-        keywordsByItem,
+        conversationHistory,
+        finalEstimateText,
+        editInstruction,
         referenceText
       );
       setFinalEstimateText(editedEstimate);
@@ -603,11 +593,7 @@ Focus on creating exactly what the user requested, using available context to en
     }
   };
 
-  const handleProviderChange = (providerId: string, modelId: string) => {
-    LLMService.setProvider(providerId, modelId);
-    setCurrentProvider(providerId);
-    setCurrentModel(modelId);
-  };
+
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -747,7 +733,9 @@ Focus on creating exactly what the user requested, using available context to en
                 {isAiThinking && (
                   <div className="flex justify-start">
                     <div className="bg-gray-100 text-gray-900 p-3 rounded-lg flex items-center">
-                      <Spinner size="sm" className="mr-2" />
+                      <div className="mr-2">
+                        <Spinner />
+                      </div>
                       {loadingMessage || 'Thinking...'}
                     </div>
                   </div>
@@ -770,7 +758,7 @@ Focus on creating exactly what the user requested, using available context to en
                     disabled={isAiThinking}
                   />
                   <VoiceInput
-                    onTranscript={setCurrentMessage}
+                    appendToTranscript={setCurrentMessage}
                     disabled={isAiThinking}
                   />
                   <button
@@ -788,9 +776,9 @@ Focus on creating exactly what the user requested, using available context to en
             <FileUpload
               onFileUpload={handleFileUpload}
               onFileRemove={handleFileRemove}
-              referenceDocs={referenceDocs}
-              isProcessing={isFileProcessing}
-              setIsProcessing={setIsFileProcessing}
+              uploadedFiles={referenceDocs}
+              isFileProcessing={isFileProcessing}
+              setIsFileProcessing={setIsFileProcessing}
             />
           </div>
 
@@ -836,35 +824,74 @@ Focus on creating exactly what the user requested, using available context to en
                 )}
 
                 {step === 'approvingKeywords' && (
-                  <KeywordsDisplay
-                    keywords={keywords}
-                    onApprove={handleKeywordApproval}
-                    onFeedback={setKeywordFeedback}
-                    feedback={keywordFeedback}
-                    isLoading={isAiThinking}
-                  />
+                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <h3 className="text-xl font-semibold text-gray-900 mb-4">
+                      🔍 Generated Keywords
+                    </h3>
+                    <KeywordsDisplay keywords={keywords} />
+                    <div className="mt-4 flex gap-2">
+                      <button
+                        onClick={handleKeywordApproval}
+                        disabled={isAiThinking}
+                        className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 transition-colors"
+                      >
+                        ✅ Approve & Search HSR Items
+                      </button>
+                    </div>
+                  </div>
                 )}
 
                 {(step === 'approvingHsrItems' || step === 'approvingRefinedHsrItems') && (
-                  <HsrItemsDisplay
-                    hsrItems={hsrItems}
-                    keywordsByItem={keywordsByItem}
-                    onApprove={handleHsrItemApproval}
-                    onFeedback={setHsrItemFeedback}
-                    feedback={hsrItemFeedback}
-                    isLoading={isAiThinking}
-                  />
+                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <h3 className="text-xl font-semibold text-gray-900 mb-4">
+                      📋 Found HSR Items
+                    </h3>
+                    <HsrItemsDisplay items={hsrItems} />
+                    <div className="mt-4 flex gap-2">
+                      <button
+                        onClick={handleHsrItemApproval}
+                        disabled={isAiThinking}
+                        className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 transition-colors"
+                      >
+                        ✅ Generate Cost Estimate
+                      </button>
+                    </div>
+                  </div>
                 )}
 
                 {(step === 'reviewingEstimate' || step === 'done') && (
-                  <ResultDisplay
-                    finalEstimateText={finalEstimateText}
-                    editInstruction={editInstruction}
-                    onEditInstructionChange={setEditInstruction}
-                    onEdit={handleEstimateEdit}
-                    isLoading={isAiThinking}
-                    onComplete={() => setStep('done')}
-                  />
+                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <h3 className="text-xl font-semibold text-gray-900 mb-4">
+                      💰 Cost Estimate
+                    </h3>
+                    <ResultDisplay textContent={finalEstimateText} />
+                    {step === 'reviewingEstimate' && (
+                      <div className="mt-4 space-y-2">
+                        <textarea
+                          value={editInstruction}
+                          onChange={(e) => setEditInstruction(e.target.value)}
+                          placeholder="Enter edit instructions..."
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          rows={3}
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            onClick={handleEstimateEdit}
+                            disabled={isAiThinking || !editInstruction.trim()}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 transition-colors"
+                          >
+                            ✏️ Edit Estimate
+                          </button>
+                          <button
+                            onClick={() => setStep('done')}
+                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                          >
+                            ✅ Complete
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
               </>
             )}
@@ -879,6 +906,7 @@ Focus on creating exactly what the user requested, using available context to en
             <KnowledgeBaseDisplay
               includeInPrompts={includeKnowledgeBase}
               onToggleInclude={setIncludeKnowledgeBase}
+              onOpenManager={() => setIsKnowledgeBaseOpen(true)}
             />
           </div>
         </div>
@@ -941,7 +969,6 @@ Focus on creating exactly what the user requested, using available context to en
           <GuidelinesManager
             isOpen={isGuidelinesOpen}
             onClose={() => setIsGuidelinesOpen(false)}
-            guidelines={guidelines}
             onGuidelinesUpdate={loadGuidelines}
           />
         )}
@@ -950,9 +977,6 @@ Focus on creating exactly what the user requested, using available context to en
           <LLMProviderSelector
             isOpen={isLLMSettingsOpen}
             onClose={() => setIsLLMSettingsOpen(false)}
-            currentProvider={currentProvider}
-            currentModel={currentModel}
-            onProviderChange={handleProviderChange}
           />
         )}
 
@@ -960,7 +984,7 @@ Focus on creating exactly what the user requested, using available context to en
           <KnowledgeBaseManager
             isOpen={isKnowledgeBaseOpen}
             onClose={() => setIsKnowledgeBaseOpen(false)}
-            onUpdate={handleKnowledgeBaseUpdate}
+            onKnowledgeBaseUpdate={handleKnowledgeBaseUpdate}
           />
         )}
       </div>
