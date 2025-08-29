@@ -15,7 +15,6 @@ import { ResultDisplay } from './components/ResultDisplay';
 import { KeywordsDisplay } from './components/KeywordsDisplay';
 import { HsrItemsDisplay } from './components/HsrItemsDisplay';
 import { VoiceInput } from './components/VoiceInput';
-import { FileUpload } from './components/FileUpload';
 import { GuidelinesManager } from './components/GuidelinesManager';
 import { OutputModeSelector } from './components/OutputModeSelector';
 import { DesignDisplay } from './components/DesignDisplay';
@@ -28,6 +27,7 @@ import { DiscussionContextManager } from './components/DiscussionContextManager'
 import { TemplateSelector } from './components/TemplateSelector';
 import { TemplateManager } from './components/TemplateManager';
 import { CollapsibleControlPanel } from './components/CollapsibleControlPanel';
+import { CompactFileUpload } from './components/CompactFileUpload';
 import { LLMService } from './services/llmService';
 import { RAGService } from './services/ragService';
 
@@ -858,14 +858,6 @@ Focus on creating exactly what the user requested while leveraging all available
 
         {/* Collapsible Control Panel */}
         <CollapsibleControlPanel
-          onFileUpload={handleFileUpload}
-          onFileRemove={handleFileRemove}
-          uploadedFiles={referenceDocs}
-          isFileProcessing={isFileProcessing}
-          setIsFileProcessing={setIsFileProcessing}
-          includeKnowledgeBase={includeKnowledgeBase}
-          onToggleInclude={setIncludeKnowledgeBase}
-          onOpenManager={() => setIsKnowledgeBaseOpen(true)}
           onOpenGuidelines={() => setIsGuidelinesOpen(true)}
           onOpenLLMSettings={() => setIsLLMSettingsOpen(true)}
           onOpenKnowledgeBase={() => setIsKnowledgeBaseOpen(true)}
@@ -874,6 +866,7 @@ Focus on creating exactly what the user requested while leveraging all available
           guidelinesCount={guidelines.filter(g => g.isActive).length}
           currentProvider={currentProvider}
           outputMode={outputMode}
+          uploadedFiles={referenceDocs}
           onNewProject={resetState}
           onToggleProjectData={() => setShowProjectData(!showProjectData)}
           onTestLLM={async () => {
@@ -893,12 +886,31 @@ Focus on creating exactly what the user requested while leveraging all available
           }}
         />
 
-        {/* Output Mode Selector */}
-        <div className="mb-6">
+        {/* Output Mode Selector and Knowledge Base Toggle */}
+        <div className="mb-6 flex items-center justify-between">
           <OutputModeSelector
             currentMode={outputMode}
             onModeChange={handleOutputModeChange}
           />
+
+          {/* Knowledge Base Toggle */}
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={includeKnowledgeBase}
+                onChange={(e) => setIncludeKnowledgeBase(e.target.checked)}
+                className="rounded"
+              />
+              <span className="text-gray-700">Include Knowledge Base</span>
+            </label>
+            <button
+              onClick={() => setIsKnowledgeBaseOpen(true)}
+              className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+            >
+              📚 Manage
+            </button>
+          </div>
         </div>
 
         {/* Error Display */}
@@ -975,15 +987,11 @@ Focus on creating exactly what the user requested while leveraging all available
               />
 
               {/* Compact File Upload */}
-              <div className="relative">
-                <FileUpload
-                  onFileUpload={handleFileUpload}
-                  onFileRemove={handleFileRemove}
-                  uploadedFiles={referenceDocs}
-                  isFileProcessing={isFileProcessing}
-                  setIsFileProcessing={setIsFileProcessing}
-                />
-              </div>
+              <CompactFileUpload
+                onFileUpload={handleFileUpload}
+                uploadedFiles={referenceDocs}
+                isFileProcessing={isFileProcessing}
+              />
 
               <button
                 type="submit"

@@ -4,30 +4,19 @@ import { FileUpload } from './FileUpload';
 import { KnowledgeBaseDisplay } from './KnowledgeBaseDisplay';
 
 interface CollapsibleControlPanelProps {
-  // File Upload Props
-  onFileUpload: (newFiles: ReferenceDoc[]) => void;
-  onFileRemove: (fileName: string) => void;
-  uploadedFiles: ReferenceDoc[];
-  isFileProcessing: boolean;
-  setIsFileProcessing: (processing: boolean) => void;
-  
-  // Knowledge Base Props
-  includeKnowledgeBase: boolean;
-  onToggleInclude: (include: boolean) => void;
-  onOpenManager: () => void;
-  
   // Settings Props
   onOpenGuidelines: () => void;
   onOpenLLMSettings: () => void;
   onOpenKnowledgeBase: () => void;
   onOpenContextManager?: () => void;
   onOpenTemplateManager?: () => void;
-  
+
   // Status Props
   guidelinesCount: number;
   currentProvider: string;
   outputMode: string;
-  
+  uploadedFiles: ReferenceDoc[];
+
   // Project Actions
   onNewProject: () => void;
   onToggleProjectData: () => void;
@@ -35,14 +24,6 @@ interface CollapsibleControlPanelProps {
 }
 
 export const CollapsibleControlPanel: React.FC<CollapsibleControlPanelProps> = ({
-  onFileUpload,
-  onFileRemove,
-  uploadedFiles,
-  isFileProcessing,
-  setIsFileProcessing,
-  includeKnowledgeBase,
-  onToggleInclude,
-  onOpenManager,
   onOpenGuidelines,
   onOpenLLMSettings,
   onOpenKnowledgeBase,
@@ -51,6 +32,7 @@ export const CollapsibleControlPanel: React.FC<CollapsibleControlPanelProps> = (
   guidelinesCount,
   currentProvider,
   outputMode,
+  uploadedFiles,
   onNewProject,
   onToggleProjectData,
   onTestLLM
@@ -104,40 +86,13 @@ export const CollapsibleControlPanel: React.FC<CollapsibleControlPanelProps> = (
       {isExpanded && (
         <div className="border-t border-gray-200 p-4 bg-gray-50">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            
-            {/* Left Column - File Upload & Knowledge Base */}
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-2">Reference Documents</h3>
-                <div className="bg-white rounded-lg p-3 border">
-                  <FileUpload
-                    onFileUpload={onFileUpload}
-                    onFileRemove={onFileRemove}
-                    uploadedFiles={uploadedFiles}
-                    isFileProcessing={isFileProcessing}
-                    setIsFileProcessing={setIsFileProcessing}
-                  />
-                </div>
-              </div>
 
-              <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-2">Knowledge Base</h3>
-                <div className="bg-white rounded-lg p-3 border">
-                  <KnowledgeBaseDisplay
-                    includeInPrompts={includeKnowledgeBase}
-                    onToggleInclude={onToggleInclude}
-                    onOpenManager={onOpenManager}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Right Column - Settings & Actions */}
+            {/* Left Column - Main Settings */}
             <div className="space-y-4">
               <div>
                 <h3 className="text-sm font-medium text-gray-700 mb-2">Settings & Configuration</h3>
                 <div className="bg-white rounded-lg p-3 border space-y-2">
-                  
+
                   <button
                     onClick={onOpenGuidelines}
                     className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded flex items-center justify-between"
@@ -188,7 +143,10 @@ export const CollapsibleControlPanel: React.FC<CollapsibleControlPanelProps> = (
                   )}
                 </div>
               </div>
+            </div>
 
+            {/* Right Column - Quick Status */}
+            <div className="space-y-4">
               <div>
                 <h3 className="text-sm font-medium text-gray-700 mb-2">Quick Status</h3>
                 <div className="bg-white rounded-lg p-3 border">
