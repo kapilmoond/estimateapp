@@ -15,14 +15,58 @@ export class DesignService {
       throw new Error('Gemini API key not found. Please set your API key first.');
     }
 
+    // Get existing designs for context
+    const existingDesigns = this.loadDesigns();
+    let existingDesignsContext = '';
+    if (existingDesigns.length > 0) {
+      existingDesignsContext = '\n\nEXISTING COMPONENT DESIGNS FOR REFERENCE:\n';
+      existingDesigns.slice(-5).forEach((design, index) => {
+        existingDesignsContext += `${index + 1}. ${design.componentName}:\n`;
+        existingDesignsContext += `   Materials: ${design.specifications.materials.join(', ')}\n`;
+        existingDesignsContext += `   Dimensions: ${JSON.stringify(design.specifications.dimensions)}\n`;
+        existingDesignsContext += `   Summary: ${design.designContent.substring(0, 200)}...\n\n`;
+      });
+      existingDesignsContext += 'ENSURE COMPATIBILITY AND INTEGRATION WITH THESE EXISTING DESIGNS.\n';
+    }
+
     const prompt = `Create a detailed component design for: ${componentName}
 
+**PROJECT CONTEXT:**
 Project Scope: ${projectScope}
-Requirements: ${userRequirements}
-Guidelines: ${guidelines}
-Reference: ${referenceText}
 
-Provide a comprehensive design with specifications, materials, and dimensions.`;
+**CURRENT REQUIREMENTS:**
+${userRequirements}
+
+**DESIGN GUIDELINES:**
+${guidelines}
+
+**REFERENCE DOCUMENTS:**
+${referenceText}
+
+${existingDesignsContext}
+
+**DESIGN REQUIREMENTS:**
+1. Provide comprehensive structural calculations and load analysis
+2. Specify exact materials with quantities and specifications
+3. Include detailed dimensions with tolerances
+4. Consider integration with existing project components
+5. Reference relevant Indian building codes (IS codes, NBC)
+6. Include safety factors and construction methodology
+7. Ensure compatibility with existing designs in this project
+8. Provide clear, implementable design documentation
+
+**OUTPUT FORMAT:**
+Provide a comprehensive design document that includes:
+- Component overview and purpose
+- Structural analysis and calculations
+- Material specifications with quantities
+- Detailed dimensions and tolerances
+- Construction methodology
+- Integration notes with other components
+- Code compliance references
+- Safety considerations
+
+Focus on creating a professional, implementable design that integrates seamlessly with the overall project.`;
 
     try {
       const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=' + apiKey, {

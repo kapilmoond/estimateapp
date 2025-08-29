@@ -144,13 +144,34 @@ export class ContextService {
       prompt += '\n';
     }
 
-    // Add active context items
+    // Add active context items with special handling for recent discussions
     if (activeItems.length > 0) {
       prompt += 'Relevant Context:\n';
-      activeItems.slice(0, 5).forEach(item => {
-        prompt += `- ${item.type.toUpperCase()}: ${item.title}\n`;
-        prompt += `  ${item.content.substring(0, 300)}\n\n`;
-      });
+
+      // Get discussion items and other items separately
+      const discussionItems = activeItems.filter(item => item.type === 'discussion');
+      const otherItems = activeItems.filter(item => item.type !== 'discussion');
+
+      // Add last 2 discussions in full (not summarized)
+      const recentDiscussions = discussionItems.slice(0, 2);
+      if (recentDiscussions.length > 0) {
+        prompt += 'Recent Discussions (Full Content):\n';
+        recentDiscussions.forEach((item, index) => {
+          prompt += `${index + 1}. ${item.content}\n\n`;
+        });
+      }
+
+      // Add older discussions and other items with summary
+      const olderDiscussions = discussionItems.slice(2, 5);
+      const allOtherItems = [...olderDiscussions, ...otherItems].slice(0, 3);
+
+      if (allOtherItems.length > 0) {
+        prompt += 'Additional Context (Summarized):\n';
+        allOtherItems.forEach(item => {
+          prompt += `- ${item.type.toUpperCase()}: ${item.title}\n`;
+          prompt += `  ${item.content.substring(0, 300)}\n\n`;
+        });
+      }
     }
 
     prompt += '--- END CONTEXT ---\n\n';

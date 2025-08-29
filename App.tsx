@@ -364,31 +364,59 @@ const App: React.FC = () => {
       // Create comprehensive drawing description using LLM
       setLoadingMessage('🤖 Generating professional technical drawing description...');
 
-      const drawingPrompt = `You are a professional construction engineer and technical draftsman. Create a detailed technical drawing specification based on the user's requirements.
+      const drawingPrompt = `You are a professional construction engineer and technical draftsman working within the HSR Construction Estimator application. Create a detailed technical drawing specification based on the user's requirements and all available project context.
 
-**PRIMARY INSTRUCTION:**
+**APPLICATION CONTEXT:**
+This drawing is part of a comprehensive construction project that has gone through:
+1. Discussion Section: Complete project scoping and requirements gathering
+2. Design Section: Detailed component designs with specifications and calculations
+3. Drawing Section (CURRENT): Professional technical drawing generation
+
+**PRIMARY DRAWING REQUEST:**
 ${enhancedUserInput}
 
-**PROJECT CONTEXT:**
+**COMPLETE PROJECT SCOPE:**
 ${scopeContext}
 
-**DESIGN CONTEXT:**
+**EXISTING COMPONENT DESIGNS FOR INTEGRATION:**
 ${designsContext}
 
-**GUIDELINES:**
+**PROJECT GUIDELINES:**
 ${guidelinesText}
 
 **REFERENCE DOCUMENTS:**
 ${referenceText}
 
-**INSTRUCTIONS:**
-1. Generate a comprehensive technical drawing specification
-2. Include specific dimensions, materials, and construction details
-3. Specify drawing type (plan, elevation, section, detail)
-4. Include professional annotations and symbols
-5. Provide clear construction guidance
+**COMPREHENSIVE DRAWING REQUIREMENTS:**
+1. **Context Integration**: Use all available project context and existing designs
+2. **Technical Accuracy**: Include specific dimensions from component designs
+3. **Drawing Standards**: Follow IS 696, IS 962 standards for technical drawings
+4. **Drawing Type**: Specify appropriate drawing type (plan, elevation, section, detail, assembly)
+5. **Dimensional Accuracy**: Use exact dimensions from component designs where applicable
+6. **Material Representation**: Include proper material symbols and construction details
+7. **Professional Annotations**: Add comprehensive annotations, dimensions, and symbols
+8. **Construction Guidance**: Provide clear construction and assembly guidance
+9. **Integration Notes**: Show relationships with other project components
+10. **Quality Standards**: Ensure drawing is suitable for construction and cost estimation
 
-Focus on creating exactly what the user requested, using available context to enhance accuracy.`;
+**OUTPUT REQUIREMENTS:**
+Generate a comprehensive technical drawing specification that will be processed by a Python backend using ezdxf library to create professional DXF files. Include:
+- Detailed geometric specifications
+- Complete dimensioning requirements
+- Material symbols and hatching patterns
+- Layer organization and line types
+- Title block information
+- Drawing scale and units
+- Construction notes and details
+
+**INTEGRATION FOCUS:**
+- Reference existing component designs for accurate dimensions
+- Maintain consistency with project scope and requirements
+- Consider construction sequencing and methodology
+- Ensure compatibility with other project drawings
+- Prepare drawing suitable for quantity takeoff and estimation
+
+Focus on creating exactly what the user requested while leveraging all available project context to enhance accuracy, completeness, and professional quality.`;
 
       const drawingDescription = await LLMService.generateContent(drawingPrompt);
 
