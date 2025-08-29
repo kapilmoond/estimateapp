@@ -68,6 +68,7 @@ const App: React.FC = () => {
   const [currentProvider] = useState<string>(LLMService.getCurrentProvider());
   const [currentModel] = useState<string>(LLMService.getCurrentModel());
   const [showProjectData, setShowProjectData] = useState<boolean>(false);
+  const [showSettings, setShowSettings] = useState<boolean>(false);
   const [contextKey, setContextKey] = useState<number>(0); // Force re-render of context
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -664,45 +665,93 @@ Focus on creating exactly what the user requested while leveraging all available
         )}
 
         {/* Control Panel */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
           <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-            <div className="flex items-center gap-4">
+            {/* Primary Actions */}
+            <div className="flex items-center gap-3">
               <button
                 onClick={resetState}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
               >
                 🔄 New Project
               </button>
 
               <button
                 onClick={() => setShowProjectData(!showProjectData)}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
               >
                 📊 Project Data
               </button>
+
+              {/* File Upload - More Accessible */}
+              <div className="relative">
+                <FileUpload
+                  onFileUpload={handleFileUpload}
+                  onFileRemove={handleFileRemove}
+                  uploadedFiles={referenceDocs}
+                  isFileProcessing={isFileProcessing}
+                  setIsFileProcessing={setIsFileProcessing}
+                />
+              </div>
             </div>
 
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => setIsGuidelinesOpen(true)}
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-              >
-                📋 Guidelines ({guidelines.filter(g => g.isActive).length})
-              </button>
+            {/* Settings Dropdown */}
+            <div className="flex items-center gap-3">
+              {/* Knowledge Base Display - More Prominent */}
+              <KnowledgeBaseDisplay
+                includeInPrompts={includeKnowledgeBase}
+                onToggleInclude={setIncludeKnowledgeBase}
+                onOpenManager={() => setIsKnowledgeBaseOpen(true)}
+              />
 
-              <button
-                onClick={() => setIsLLMSettingsOpen(true)}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-              >
-                🤖 LLM Settings
-              </button>
+              {/* Settings Dropdown */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowSettings(!showSettings)}
+                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm flex items-center gap-2"
+                >
+                  ⚙️ Settings
+                  <span className="text-xs">
+                    {showSettings ? '▲' : '▼'}
+                  </span>
+                </button>
 
-              <button
-                onClick={() => setIsKnowledgeBaseOpen(true)}
-                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
-              >
-                📚 Knowledge Base
-              </button>
+                {showSettings && (
+                  <div className="absolute right-0 top-full mt-2 bg-white border border-gray-200 rounded-lg shadow-lg z-10 min-w-48">
+                    <div className="p-2 space-y-1">
+                      <button
+                        onClick={() => {
+                          setIsGuidelinesOpen(true);
+                          setShowSettings(false);
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded flex items-center gap-2"
+                      >
+                        📋 Guidelines ({guidelines.filter(g => g.isActive).length})
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setIsLLMSettingsOpen(true);
+                          setShowSettings(false);
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded flex items-center gap-2"
+                      >
+                        🤖 LLM Provider ({currentProvider})
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setIsKnowledgeBaseOpen(true);
+                          setShowSettings(false);
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded flex items-center gap-2"
+                      >
+                        📚 Knowledge Base
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -723,133 +772,120 @@ Focus on creating exactly what the user requested while leveraging all available
           </div>
         )}
 
-        {/* Main Content Area */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Left Column - Chat Interface */}
-          <div className="space-y-6">
-            {/* Chat Container */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-              <div className="p-4 border-b border-gray-200">
-                <h2 className="text-xl font-semibold text-gray-900">
-                  {outputMode === 'discussion' && '💬 Project Discussion'}
-                  {outputMode === 'design' && '🎨 Component Design'}
-                  {outputMode === 'drawing' && '📐 Technical Drawing'}
-                </h2>
-              </div>
-
-              <div
-                ref={chatContainerRef}
-                className="h-96 overflow-y-auto p-4 space-y-4"
-              >
-                {conversationHistory.map((message, index) => (
-                  <div
-                    key={index}
-                    className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                  >
-                    <div
-                      className={`max-w-[80%] p-3 rounded-lg ${
-                        message.role === 'user'
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-100 text-gray-900'
-                      }`}
-                    >
-                      <div className="whitespace-pre-wrap">{message.text}</div>
-                    </div>
-                  </div>
-                ))}
-
-                {isAiThinking && (
-                  <div className="flex justify-start">
-                    <div className="bg-gray-100 text-gray-900 p-3 rounded-lg flex items-center">
-                      <div className="mr-2">
-                        <Spinner />
-                      </div>
-                      {loadingMessage || 'Thinking...'}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Message Input */}
-              <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-200">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={currentMessage}
-                    onChange={(e) => setCurrentMessage(e.target.value)}
-                    placeholder={
-                      outputMode === 'discussion' ? "Describe your project or ask questions..." :
-                      outputMode === 'design' ? "Request component design (e.g., 'Design a foundation for 2-story building')" :
-                      "Request technical drawing (e.g., 'Draw foundation plan with dimensions')"
-                    }
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    disabled={isAiThinking}
-                  />
-                  <VoiceInput
-                    appendToTranscript={setCurrentMessage}
-                    disabled={isAiThinking}
-                  />
-                  <button
-                    type="submit"
-                    disabled={isAiThinking || !currentMessage.trim()}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 transition-colors"
-                  >
-                    Send
-                  </button>
-                </div>
-              </form>
-            </div>
-
-            {/* File Upload */}
-            <FileUpload
-              onFileUpload={handleFileUpload}
-              onFileRemove={handleFileRemove}
-              uploadedFiles={referenceDocs}
-              isFileProcessing={isFileProcessing}
-              setIsFileProcessing={setIsFileProcessing}
-            />
+        {/* Main Chat Interface - Full Width */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
+          <div className="p-4 border-b border-gray-200">
+            <h2 className="text-xl font-semibold text-gray-900">
+              {outputMode === 'discussion' && '💬 Project Discussion'}
+              {outputMode === 'design' && '🎨 Component Design'}
+              {outputMode === 'drawing' && '📐 Technical Drawing'}
+            </h2>
           </div>
 
-          {/* Right Column - Results and Displays */}
-          <div className="space-y-6">
-            {/* Design Display */}
-            {outputMode === 'design' && (
-              <DesignDisplay
-                designs={designs}
-                onDesignUpdate={loadDesigns}
-                onContextUpdate={handleContextUpdate}
-              />
-            )}
+          <div
+            ref={chatContainerRef}
+            className="h-96 overflow-y-auto p-4 space-y-4"
+          >
+            {conversationHistory.map((message, index) => (
+              <div
+                key={index}
+                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                <div
+                  className={`max-w-[70%] p-3 rounded-lg ${
+                    message.role === 'user'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-900'
+                  }`}
+                >
+                  <div className="whitespace-pre-wrap">{message.text}</div>
+                </div>
+              </div>
+            ))}
 
-            {/* Drawing Display */}
-            {outputMode === 'drawing' && (
-              <DrawingDisplay
-                drawings={drawings}
-                onDrawingUpdate={loadDrawings}
-                onContextUpdate={handleContextUpdate}
-              />
-            )}
-
-            {/* Discussion Mode Results */}
-            {outputMode === 'discussion' && (
-              <>
-                {step === 'scoping' && (
-                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                    <h3 className="text-xl font-semibold text-gray-900 mb-4">
-                      📋 Project Scoping
-                    </h3>
-                    <p className="text-gray-600 mb-4">
-                      Discuss your project requirements with the AI. Once you're satisfied with the scope, click "Finalize Scope" to proceed to cost estimation.
-                    </p>
-                    <button
-                      onClick={handleFinalizeScope}
-                      disabled={isAiThinking || conversationHistory.length <= 1}
-                      className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 transition-colors"
-                    >
-                      ✅ Finalize Scope & Generate Keywords
-                    </button>
+            {isAiThinking && (
+              <div className="flex justify-start">
+                <div className="bg-gray-100 text-gray-900 p-3 rounded-lg flex items-center">
+                  <div className="mr-2">
+                    <Spinner />
                   </div>
-                )}
+                  {loadingMessage || 'Thinking...'}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Message Input */}
+          <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-200">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={currentMessage}
+                onChange={(e) => setCurrentMessage(e.target.value)}
+                placeholder={
+                  outputMode === 'discussion' ? "Describe your project or ask questions..." :
+                  outputMode === 'design' ? "Request component design (e.g., 'Design a foundation for 2-story building')" :
+                  "Request technical drawing (e.g., 'Draw foundation plan with dimensions')"
+                }
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={isAiThinking}
+              />
+              <VoiceInput
+                appendToTranscript={setCurrentMessage}
+                disabled={isAiThinking}
+              />
+              <button
+                type="submit"
+                disabled={isAiThinking || !currentMessage.trim()}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 transition-colors"
+              >
+                Send
+              </button>
+            </div>
+          </form>
+        </div>
+
+        {/* Results and Displays Area */}
+        <div className="space-y-6">
+
+          {/* Design Display */}
+          {outputMode === 'design' && (
+            <DesignDisplay
+              designs={designs}
+              onDesignUpdate={loadDesigns}
+              onContextUpdate={handleContextUpdate}
+            />
+          )}
+
+          {/* Drawing Display */}
+          {outputMode === 'drawing' && (
+            <DrawingDisplay
+              drawings={drawings}
+              onDrawingUpdate={loadDrawings}
+              onContextUpdate={handleContextUpdate}
+            />
+          )}
+
+          {/* Discussion Mode Results */}
+          {outputMode === 'discussion' && (
+            <>
+              {step === 'scoping' && (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                  <h3 className="text-xl font-semibold text-gray-900 mb-4">
+                    📋 Project Scoping
+                  </h3>
+                  <p className="text-gray-600 mb-4">
+                    Discuss your project requirements with the AI. Once you're satisfied with the scope, click "Finalize Scope" to proceed to cost estimation.
+                  </p>
+                  <button
+                    onClick={handleFinalizeScope}
+                    disabled={isAiThinking || conversationHistory.length <= 1}
+                    className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 transition-colors"
+                  >
+                    ✅ Finalize Scope & Generate Keywords
+                  </button>
+                </div>
+              )}
 
                 {step === 'approvingKeywords' && (
                   <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
@@ -921,22 +957,15 @@ Focus on creating exactly what the user requested while leveraging all available
                     )}
                   </div>
                 )}
+
+                {/* Context Manager */}
+                <ContextManager
+                  key={contextKey}
+                  onContextUpdate={handleContextUpdate}
+                />
               </>
             )}
 
-            {/* Context Manager */}
-            <ContextManager
-              key={contextKey}
-              onContextUpdate={handleContextUpdate}
-            />
-
-            {/* Knowledge Base Display */}
-            <KnowledgeBaseDisplay
-              includeInPrompts={includeKnowledgeBase}
-              onToggleInclude={setIncludeKnowledgeBase}
-              onOpenManager={() => setIsKnowledgeBaseOpen(true)}
-            />
-          </div>
         </div>
 
         {/* Project Data Display */}
