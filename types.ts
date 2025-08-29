@@ -16,13 +16,13 @@ export interface KeywordsByItem {
 }
 
 // Enhanced types for integrated workflow
-export type OutputMode = 'discussion' | 'design' | 'drawing';
+export type OutputMode = 'discussion' | 'design';
 
 export interface UserGuideline {
   id: string;
   title: string;
   content: string;
-  category: 'general' | 'scoping' | 'design' | 'drawing' | 'estimation';
+  category: 'general' | 'scoping' | 'design' | 'estimation';
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -51,66 +51,6 @@ export interface ComponentDesign {
   includeInContext?: boolean;
 }
 
-export interface TechnicalDrawing {
-  id: string;
-  title: string;
-  description: string;
-  dxfContent: string;  // Base64 encoded DXF content
-  dxfFilename: string; // DXF filename
-  dimensions: { width: number; height: number };
-  scale: string;
-  componentName: string;
-  createdAt: Date;
-  includeInContext?: boolean;
-  // Professional DXF properties
-  dxfData: DXFDrawingData;
-  drawingType: 'dxf';  // Only DXF supported now
-}
-
-// Professional DXF Drawing Types
-export interface DXFDrawingData {
-  id: string;
-  title: string;
-  description: string;
-  elements: DXFElement[];
-  layers: string[];
-  units: 'mm' | 'm' | 'ft' | 'in';
-  scale: string;
-  paperSize: string;
-  createdAt: Date;
-  modifiedAt: Date;
-}
-
-export interface DXFElement {
-  id: string;
-  type: 'concrete_beam' | 'steel_column' | 'foundation' | 'wall' | 'slab' | 'reinforcement';
-  layer: string;
-  specifications: {
-    [key: string]: any;
-  };
-  coordinates: {
-    x: number;
-    y: number;
-    z?: number;
-  };
-  dimensions: {
-    length?: number;
-    width?: number;
-    height?: number;
-    diameter?: number;
-  };
-}
-
-// Export/Import Types
-export interface DXFExportOptions {
-  format: 'dxf' | 'pdf' | 'png' | 'jpg';
-  scale: number;
-  paperSize?: string;
-  orientation?: 'portrait' | 'landscape';
-  layers?: string[];
-  quality?: 'low' | 'medium' | 'high';
-  units?: 'mm' | 'm' | 'ft' | 'in';
-}
 
 export interface ProcessSummary {
   id: string;
@@ -130,7 +70,7 @@ export interface StepSummary {
 
 export interface ContextItem {
   id: string;
-  type: 'design' | 'drawing' | 'discussion' | 'estimate' | 'guideline';
+  type: 'design' | 'discussion' | 'estimate' | 'guideline';
   title: string;
   content: string;
   includeInContext: boolean;
@@ -162,7 +102,6 @@ export interface LLMModel {
 export interface ProjectData {
   discussions: ConversationThread[];
   designs: ComponentDesign[];
-  drawings: TechnicalDrawing[];
   finalizedScope: string;
   keywords: string[];
   keywordsByItem: KeywordsByItem;

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { HsrItem, ChatMessage, KeywordsByItem, OutputMode, UserGuideline, ComponentDesign, TechnicalDrawing, ConversationThread } from './types';
+import { HsrItem, ChatMessage, KeywordsByItem, OutputMode, UserGuideline, ComponentDesign, ConversationThread } from './types';
 import { continueConversation, generatePlainTextEstimate, generateKeywordsForItems } from './services/geminiService';
 import { searchHSR } from './services/hsrService';
 import { extractHsrNumbersFromText } from './services/keywordService';
@@ -7,7 +7,6 @@ import { speak } from './services/speechService';
 import { GuidelinesService } from './services/guidelinesService';
 import { ThreadService } from './services/threadService';
 import { DesignService } from './services/designService';
-import { DrawingService } from './services/drawingService';
 import { ContextService } from './services/contextService';
 import { Spinner } from './components/Spinner';
 import { ResultDisplay } from './components/ResultDisplay';
@@ -18,7 +17,6 @@ import { FileUpload } from './components/FileUpload';
 import { GuidelinesManager } from './components/GuidelinesManager';
 import { OutputModeSelector } from './components/OutputModeSelector';
 import { DesignDisplay } from './components/DesignDisplay';
-import { DrawingDisplay } from './components/DrawingDisplay';
 import { ContextManager } from './components/ContextManager';
 import { LLMProviderSelector } from './components/LLMProviderSelector';
 import { KnowledgeBaseManager } from './components/KnowledgeBaseManager';
@@ -63,7 +61,6 @@ const App: React.FC = () => {
   const [currentThread, setCurrentThread] = useState<ConversationThread | null>(null);
   const [guidelines, setGuidelines] = useState<UserGuideline[]>([]);
   const [designs, setDesigns] = useState<ComponentDesign[]>([]);
-  const [drawings, setDrawings] = useState<TechnicalDrawing[]>([]);
   const [isGuidelinesOpen, setIsGuidelinesOpen] = useState<boolean>(false);
   const [isLLMSettingsOpen, setIsLLMSettingsOpen] = useState<boolean>(false);
   const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState<boolean>(false);
@@ -94,7 +91,6 @@ const App: React.FC = () => {
     // Load guidelines and project data
     loadGuidelines();
     loadDesigns();
-    loadDrawings();
 
     // Initialize context if not exists
     const existingContext = ContextService.getCurrentContext();
@@ -112,11 +108,6 @@ const App: React.FC = () => {
   const loadDesigns = () => {
     const loadedDesigns = DesignService.loadDesigns();
     setDesigns(loadedDesigns);
-  };
-
-  const loadDrawings = () => {
-    const loadedDrawings = DrawingService.loadDrawings();
-    setDrawings(loadedDrawings);
   };
 
   const handleContextUpdate = () => {

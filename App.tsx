@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { HsrItem, ChatMessage, KeywordsByItem, OutputMode, UserGuideline, ComponentDesign, TechnicalDrawing, ConversationThread } from './types';
+import { HsrItem, ChatMessage, KeywordsByItem, OutputMode, UserGuideline, ComponentDesign, ConversationThread } from './types';
 import { continueConversation, generatePlainTextEstimate, generateKeywordsForItems } from './services/geminiService';
 import { searchHSR } from './services/hsrService';
 import { extractHsrNumbersFromText } from './services/keywordService';
@@ -7,7 +7,6 @@ import { speak } from './services/speechService';
 import { GuidelinesService } from './services/guidelinesService';
 import { ThreadService } from './services/threadService';
 import { DesignService } from './services/designService';
-import { DXFService, DXFStorageService } from './services/dxfService';
 import { ContextService } from './services/contextService';
 import { Spinner } from './components/Spinner';
 import { ResultDisplay } from './components/ResultDisplay';
@@ -18,13 +17,10 @@ import { FileUpload } from './components/FileUpload';
 import { GuidelinesManager } from './components/GuidelinesManager';
 import { OutputModeSelector } from './components/OutputModeSelector';
 import { DesignDisplay } from './components/DesignDisplay';
-import { DrawingDisplay } from './components/DrawingDisplay';
-import { DXFSetupGuide } from './components/DXFSetupGuide';
 import { ContextManager } from './components/ContextManager';
 import { LLMProviderSelector } from './components/LLMProviderSelector';
 import { KnowledgeBaseManager } from './components/KnowledgeBaseManager';
 import { KnowledgeBaseDisplay } from './components/KnowledgeBaseDisplay';
-import { BackendConfig } from './components/BackendConfig';
 import { LLMService } from './services/llmService';
 import { RAGService } from './services/ragService';
 
@@ -65,7 +61,6 @@ const App: React.FC = () => {
   const [currentThread, setCurrentThread] = useState<ConversationThread | null>(null);
   const [guidelines, setGuidelines] = useState<UserGuideline[]>([]);
   const [designs, setDesigns] = useState<ComponentDesign[]>([]);
-  const [drawings, setDrawings] = useState<TechnicalDrawing[]>([]);
   const [isGuidelinesOpen, setIsGuidelinesOpen] = useState<boolean>(false);
   const [isLLMSettingsOpen, setIsLLMSettingsOpen] = useState<boolean>(false);
   const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState<boolean>(false);
@@ -96,7 +91,6 @@ const App: React.FC = () => {
     // Load guidelines and project data
     loadGuidelines();
     loadDesigns();
-    loadDrawings();
 
     // Initialize context if not exists
     const existingContext = ContextService.getCurrentContext();
@@ -116,49 +110,6 @@ const App: React.FC = () => {
     setDesigns(loadedDesigns);
   };
 
-  const loadDrawings = () => {
-    const loadedDrawings = DXFStorageService.getAllDrawings();
-    setDrawings(loadedDrawings);
-  };
-
-  const handleRegenerateDrawing = async (drawingId: string, instructions: string) => {
-    try {
-      const originalDrawing = drawings.find(d => d.id === drawingId);
-      if (!originalDrawing) {
-        throw new Error('Drawing not found');
-      }
-
-      setIsAiThinking(true);
-      setLoadingMessage('🔄 Regenerating drawing with your instructions...');
-
-      // Use DXF service to regenerate with instructions
-      const regeneratedDrawing = await DXFService.regenerateDXFWithInstructions(
-        originalDrawing,
-        instructions
-      );
-
-      // Save the regenerated drawing
-      DXFStorageService.saveDrawing(regeneratedDrawing);
-
-      // Update the drawings list
-      setDrawings(prev => [regeneratedDrawing, ...prev.filter(d => d.id !== drawingId)]);
-
-      // Add to conversation history
-      setConversationHistory(prev => [
-        ...prev,
-        { role: 'user', text: `Regenerate drawing: ${instructions}` },
-        { role: 'model', text: `✅ DRAWING REGENERATED SUCCESSFULLY!\n\n🔄 **Updated:** ${regeneratedDrawing.title}\n\n📝 **Your Instructions:** ${instructions}\n\n📁 **New File:** ${regeneratedDrawing.dxfFilename}\n\n🎯 **Changes Applied:** The drawing has been updated according to your specifications while maintaining professional CAD standards.` }
-      ]);
-
-    } catch (error) {
-      console.error('Regeneration failed:', error);
-      setError(`Failed to regenerate drawing: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      setIsAiThinking(false);
-      setLoadingMessage('');
-    }
-  };
-
   const handleContextUpdate = () => {
     setContextKey(prev => prev + 1); // Force re-render of context components
   };
@@ -168,15 +119,7 @@ const App: React.FC = () => {
     setContextKey(prev => prev + 1);
   };
 
-  // Handle regeneration requests for drawings
-  const handleDrawingRegeneration = async (userInput: string, modifications?: string) => {
-    const fullInput = modifications
-      ? `${userInput}\n\nModifications requested: ${modifications}`
-      : userInput;
 
-    // Run the same two-stage process for regeneration
-    await handleDrawingRequest(fullInput);
-  };
 
   useEffect(() => {
     const loadVoices = () => {
@@ -244,8 +187,6143 @@ const App: React.FC = () => {
     // Handle different output modes
     if (outputMode === 'design') {
       await handleDesignRequest(currentMessage);
-    } else if (outputMode === 'drawing') {
-      await handleDrawingRequest(currentMessage);
+    } else {
+      // Regular discussion mode
+      const newHistory = [...conversationHistory, newMessage];
+      setConversationHistory(newHistory);
+      setCurrentMessage('');
+      setLoadingMessage('Thinking...');
+      setIsAiThinking(true);
+      setError(null);
+
+      try {
+        // Add context from previous steps
+        const contextPrompt = ContextService.generateContextPrompt();
+        let enhancedReferenceText = referenceText + contextPrompt;
+
+        // Add knowledge base context if enabled
+        if (includeKnowledgeBase) {
+          const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+            currentMessage,
+            includeKnowledgeBase
+          );
+          // Use the enhanced prompt for the conversation
+          newHistory[newHistory.length - 1].text = enhancedPrompt;
+        }
+
+        const modelResponse = await continueConversation(newHistory, enhancedReferenceText, outputMode);
+        setConversationHistory(prev => [...prev, { role: 'model', text: modelResponse }]);
+
+        // Extract and save LLM summary
+        const llmSummary = ContextService.extractLLMSummary(modelResponse);
+        ContextService.addStepSummary('discussion', newMessage.text, llmSummary);
+
+        // Add discussion to context
+        ContextService.addDiscussionToContext(newMessage.text, true);
+
+        // Save to thread
+        if (currentThread) {
+          ThreadService.addMessageToThread(currentThread.id, newMessage);
+          ThreadService.addMessageToThread(currentThread.id, { role: 'model', text: modelResponse });
+        } else {
+          const thread = ThreadService.createThread(outputMode, newMessage);
+          ThreadService.addMessageToThread(thread.id, { role: 'model', text: modelResponse });
+          setCurrentThread(thread);
+        }
+
+        if (isTtsEnabled) {
+          speak(modelResponse, speechRate, selectedVoiceURI);
+        }
+      } catch (err: any) {
+        console.error(err);
+        setError(err.message || 'An error occurred while communicating with the AI.');
+      } finally {
+        setIsAiThinking(false);
+        setLoadingMessage('');
+      }
+    }
+
+    setCurrentMessage('');
+  };
+
+  const handleDesignRequest = async (userInput: string) => {
+    setLoadingMessage('Generating component design...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Extract component name from user input or use a default
+      const componentMatch = userInput.match(/design\s+(?:for\s+)?(.+?)(?:\s|$)/i);
+      const componentName = componentMatch ? componentMatch[1].trim() : 'Component';
+
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const designGuidelines = GuidelinesService.getActiveGuidelines('design');
+      const allGuidelines = [...activeGuidelines, ...designGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      const design = await DesignService.generateComponentDesign(
+        componentName,
+        scopeContext,
+        enhancedUserInput,
+        guidelinesText,
+        referenceText
+      );
+
+      loadDesigns();
+      setLoadingMessage('');
+
+      // Add to conversation history for reference
+      setConversationHistory(prev => [
+        ...prev,
+        { role: 'user', text: userInput },
+        { role: 'model', text: `Design generated for ${componentName}. You can view the detailed design in the Design Display section below.` }
+      ]);
+
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'An error occurred while generating the design.');
+    } finally {
+      setIsAiThinking(false);
+      setLoadingMessage('');
+    }
+  };
+
+  const handleDrawingRequest = async (userInput: string) => {
+    setLoadingMessage('🔍 Analyzing your drawing requirements...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Enhanced input validation
+      if (!userInput.trim()) {
+        throw new Error('Please provide specific drawing requirements.');
+      }
+
+      if (userInput.trim().length < 10) {
+        throw new Error('Please provide more detailed drawing requirements (at least 10 characters).');
+      }
+
+      // Smart title extraction with flexible patterns
+      let title = 'Technical Drawing';
+      const titlePatterns = [
+        /(?:drawing|draw|create|generate|design)\s+(?:for\s+|of\s+|a\s+)?(.+?)(?:\s+(?:drawing|plan|view|section|detail)|$)/i,
+        /(?:plan|elevation|section|detail)\s+(?:for\s+|of\s+)?(.+?)(?:\s|$)/i,
+        /(.+?)\s+(?:drawing|plan|elevation|section|detail)/i
+      ];
+      
+      for (const pattern of titlePatterns) {
+        const match = userInput.match(pattern);
+        if (match && match[1].trim().length > 2) {
+          title = match[1].trim();
+          break;
+        }
+      }
+
+      // Gather all available context
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const drawingGuidelines = GuidelinesService.getActiveGuidelines('drawing');
+      const allGuidelines = [...activeGuidelines, ...drawingGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+      const designContext = ThreadService.getAllContextForMode('design');
+      
+      // Get existing designs that might be relevant
+      const existingDesigns = designs.filter(d => d.includeInContext !== false);
+      const designsContext = existingDesigns.length > 0 
+        ? existingDesigns.map(d => `**Design: ${d.componentName}**\n${d.designContent.substring(0, 500)}...`).join('\n\n')
+        : '';
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      // Create flexible, context-aware prompt for the LLM with comprehensive ezdxf knowledge
+      const flexibleDrawingPrompt = `You are a professional construction engineer and technical draftsman with expertise in Python ezdxf library for creating professional DXF files. You need to create a technical drawing based on the user's specific requirements.
+```
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { HsrItem, ChatMessage, KeywordsByItem, OutputMode, UserGuideline, ComponentDesign, ConversationThread } from './types';
+import { continueConversation, generatePlainTextEstimate, generateKeywordsForItems } from './services/geminiService';
+import { searchHSR } from './services/hsrService';
+import { extractHsrNumbersFromText } from './services/keywordService';
+import { speak } from './services/speechService';
+import { GuidelinesService } from './services/guidelinesService';
+import { ThreadService } from './services/threadService';
+import { DesignService } from './services/designService';
+import { ContextService } from './services/contextService';
+import { Spinner } from './components/Spinner';
+import { ResultDisplay } from './components/ResultDisplay';
+import { KeywordsDisplay } from './components/KeywordsDisplay';
+import { HsrItemsDisplay } from './components/HsrItemsDisplay';
+import { VoiceInput } from './components/VoiceInput';
+import { FileUpload } from './components/FileUpload';
+import { GuidelinesManager } from './components/GuidelinesManager';
+import { OutputModeSelector } from './components/OutputModeSelector';
+import { DesignDisplay } from './components/DesignDisplay';
+import { ContextManager } from './components/ContextManager';
+import { LLMProviderSelector } from './components/LLMProviderSelector';
+import { KnowledgeBaseManager } from './components/KnowledgeBaseManager';
+import { KnowledgeBaseDisplay } from './components/KnowledgeBaseDisplay';
+import { LLMService } from './services/llmService';
+import { RAGService } from './services/ragService';
+
+type Step = 'scoping' | 'generatingKeywords' | 'approvingKeywords' | 'approvingHsrItems' | 'approvingRefinedHsrItems' | 'generatingEstimate' | 'reviewingEstimate' | 'done';
+type ReferenceDoc = { file: File; text: string };
+
+const App: React.FC = () => {
+  const [step, setStep] = useState<Step>('scoping');
+  const [conversationHistory, setConversationHistory] = useState<ChatMessage[]>([
+    { role: 'model', text: 'Hello! I am your AI assistant for construction estimation. Please describe the project you want to build, and we can define its scope together.' }
+  ]);
+  const [currentMessage, setCurrentMessage] = useState<string>('');
+  const [finalizedScope, setFinalizedScope] = useState<string>('');
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [keywordsByItem, setKeywordsByItem] = useState<KeywordsByItem>({});
+  const [hsrItems, setHsrItems] = useState<HsrItem[]>([]);
+  const [newlyFoundHsrItems, setNewlyFoundHsrItems] = useState<HsrItem[]>([]);
+  const [finalEstimateText, setFinalEstimateText] = useState<string>('');
+  const [editInstruction, setEditInstruction] = useState<string>('');
+  const [keywordFeedback, setKeywordFeedback] = useState<string>('');
+  const [hsrItemFeedback, setHsrItemFeedback] = useState<string>('');
+  const [refinedHsrItemFeedback, setRefinedHsrItemFeedback] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+  const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
+  const [loadingMessage, setLoadingMessage] = useState<string>('');
+  const [isTtsEnabled, setIsTtsEnabled] = useState<boolean>(false);
+  const [speechRate, setSpeechRate] = useState(1);
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState<string | null>(null);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [apiKey, setApiKey] = useState<string>('');
+  const [apiKeyInput, setApiKeyInput] = useState<string>('');
+
+  const [referenceDocs, setReferenceDocs] = useState<ReferenceDoc[]>([]);
+  const [isFileProcessing, setIsFileProcessing] = useState<boolean>(false);
+
+  // Enhanced state for integrated workflow
+  const [outputMode, setOutputMode] = useState<OutputMode>('discussion');
+  const [currentThread, setCurrentThread] = useState<ConversationThread | null>(null);
+  const [guidelines, setGuidelines] = useState<UserGuideline[]>([]);
+  const [designs, setDesigns] = useState<ComponentDesign[]>([]);
+  const [isGuidelinesOpen, setIsGuidelinesOpen] = useState<boolean>(false);
+  const [isLLMSettingsOpen, setIsLLMSettingsOpen] = useState<boolean>(false);
+  const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState<boolean>(false);
+  const [includeKnowledgeBase, setIncludeKnowledgeBase] = useState<boolean>(false);
+  const [currentProvider, setCurrentProvider] = useState<string>(LLMService.getCurrentProvider());
+  const [currentModel, setCurrentModel] = useState<string>(LLMService.getCurrentModel());
+  const [showProjectData, setShowProjectData] = useState<boolean>(false);
+  const [contextKey, setContextKey] = useState<number>(0); // Force re-render of context
+
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  const referenceText = useMemo(() => 
+    referenceDocs.map(doc => `--- START OF ${doc.file.name} ---\n${doc.text}\n--- END OF ${doc.file.name} ---`).join('\n\n'), 
+  [referenceDocs]);
+
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [conversationHistory]);
+
+  useEffect(() => {
+    const storedApiKey = localStorage.getItem('gemini-api-key');
+    if (storedApiKey) {
+        setApiKey(storedApiKey);
+    }
+
+    // Load guidelines and project data
+    loadGuidelines();
+    loadDesigns();
+
+    // Initialize context if not exists
+    const existingContext = ContextService.getCurrentContext();
+    if (!existingContext && conversationHistory.length > 1) {
+      const projectDescription = conversationHistory.slice(1).map(msg => msg.text).join(' ').substring(0, 200);
+      ContextService.initializeContext(projectDescription);
+    }
+  }, []);
+
+  const loadGuidelines = () => {
+    const loadedGuidelines = GuidelinesService.loadGuidelines();
+    setGuidelines(loadedGuidelines);
+  };
+
+  const loadDesigns = () => {
+    const loadedDesigns = DesignService.loadDesigns();
+    setDesigns(loadedDesigns);
+  };
+
+  const handleContextUpdate = () => {
+    setContextKey(prev => prev + 1); // Force re-render of context components
+  };
+
+  const handleKnowledgeBaseUpdate = () => {
+    // Force re-render when knowledge base is updated
+    setContextKey(prev => prev + 1);
+  };
+
+
+
+  useEffect(() => {
+    const loadVoices = () => {
+        setAvailableVoices(window.speechSynthesis.getVoices());
+    };
+
+    // Load voices initially
+    loadVoices();
+
+    // Update when the voice list changes
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+
+    // Cleanup
+    return () => {
+        window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
+
+  const resetState = () => {
+    setStep('scoping');
+    setConversationHistory([{ role: 'model', text: 'Hello! Please describe the project you want to build.' }]);
+    setCurrentMessage('');
+    setFinalizedScope('');
+    setKeywords([]);
+    setKeywordsByItem({});
+    setHsrItems([]);
+    setFinalEstimateText('');
+    setEditInstruction('');
+    setError(null);
+    setIsAiThinking(false);
+    setLoadingMessage('');
+    setReferenceDocs([]);
+    setIsFileProcessing(false);
+    setOutputMode('discussion');
+    setCurrentThread(null);
+    setShowProjectData(false);
+    // Clear all threads for new project
+    ThreadService.clearAllThreads();
+  };
+  
+  const handleFileUpload = (newFiles: ReferenceDoc[]) => {
+    setReferenceDocs(prevDocs => {
+      const existingFileNames = new Set(prevDocs.map(doc => doc.file.name));
+      const filteredNewFiles = newFiles.filter(newFile => !existingFileNames.has(newFile.file.name));
+      return [...prevDocs, ...filteredNewFiles];
+    });
+  };
+
+  const handleFileRemove = (fileNameToRemove: string) => {
+    setReferenceDocs(prevDocs => prevDocs.filter(doc => doc.file.name !== fileNameToRemove));
+  };
+
+  const handleApiKeySave = () => {
+    localStorage.setItem('gemini-api-key', apiKeyInput);
+    setApiKey(apiKeyInput);
+    setApiKeyInput('');
+  };
+
+  const handleSendMessage = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!currentMessage.trim() || isAiThinking) return;
+
+    const newMessage: ChatMessage = { role: 'user', text: currentMessage };
+
+    // Handle different output modes
+    if (outputMode === 'design') {
+      await handleDesignRequest(currentMessage);
+    } else {
+      // Regular discussion mode
+      const newHistory = [...conversationHistory, newMessage];
+      setConversationHistory(newHistory);
+      setCurrentMessage('');
+      setLoadingMessage('Thinking...');
+      setIsAiThinking(true);
+      setError(null);
+
+      try {
+        // Add context from previous steps
+        const contextPrompt = ContextService.generateContextPrompt();
+        let enhancedReferenceText = referenceText + contextPrompt;
+
+        // Add knowledge base context if enabled
+        if (includeKnowledgeBase) {
+          const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+            currentMessage,
+            includeKnowledgeBase
+          );
+          // Use the enhanced prompt for the conversation
+          newHistory[newHistory.length - 1].text = enhancedPrompt;
+        }
+
+        const modelResponse = await continueConversation(newHistory, enhancedReferenceText, outputMode);
+        setConversationHistory(prev => [...prev, { role: 'model', text: modelResponse }]);
+
+        // Extract and save LLM summary
+        const llmSummary = ContextService.extractLLMSummary(modelResponse);
+        ContextService.addStepSummary('discussion', newMessage.text, llmSummary);
+
+        // Add discussion to context
+        ContextService.addDiscussionToContext(newMessage.text, true);
+
+        // Save to thread
+        if (currentThread) {
+          ThreadService.addMessageToThread(currentThread.id, newMessage);
+          ThreadService.addMessageToThread(currentThread.id, { role: 'model', text: modelResponse });
+        } else {
+          const thread = ThreadService.createThread(outputMode, newMessage);
+          ThreadService.addMessageToThread(thread.id, { role: 'model', text: modelResponse });
+          setCurrentThread(thread);
+        }
+
+        if (isTtsEnabled) {
+          speak(modelResponse, speechRate, selectedVoiceURI);
+        }
+      } catch (err: any) {
+        console.error(err);
+        setError(err.message || 'An error occurred while communicating with the AI.');
+      } finally {
+        setIsAiThinking(false);
+        setLoadingMessage('');
+      }
+    }
+
+    setCurrentMessage('');
+  };
+
+  const handleDesignRequest = async (userInput: string) => {
+    setLoadingMessage('Generating component design...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Extract component name from user input or use a default
+      const componentMatch = userInput.match(/design\s+(?:for\s+)?(.+?)(?:\s|$)/i);
+      const componentName = componentMatch ? componentMatch[1].trim() : 'Component';
+
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const designGuidelines = GuidelinesService.getActiveGuidelines('design');
+      const allGuidelines = [...activeGuidelines, ...designGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      const design = await DesignService.generateComponentDesign(
+        componentName,
+        scopeContext,
+        enhancedUserInput,
+        guidelinesText,
+        referenceText
+      );
+
+      loadDesigns();
+      setLoadingMessage('');
+
+      // Add to conversation history for reference
+      setConversationHistory(prev => [
+        ...prev,
+        { role: 'user', text: userInput },
+        { role: 'model', text: `Design generated for ${componentName}. You can view the detailed design in the Design Display section below.` }
+      ]);
+
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'An error occurred while generating the design.');
+    } finally {
+      setIsAiThinking(false);
+      setLoadingMessage('');
+    }
+  };
+
+  const handleDrawingRequest = async (userInput: string) => {
+    setLoadingMessage('🔍 Analyzing your drawing requirements...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Enhanced input validation
+      if (!userInput.trim()) {
+        throw new Error('Please provide specific drawing requirements.');
+      }
+
+      if (userInput.trim().length < 10) {
+        throw new Error('Please provide more detailed drawing requirements (at least 10 characters).');
+      }
+
+      // Smart title extraction with flexible patterns
+      let title = 'Technical Drawing';
+      const titlePatterns = [
+        /(?:drawing|draw|create|generate|design)\s+(?:for\s+|of\s+|a\s+)?(.+?)(?:\s+(?:drawing|plan|view|section|detail)|$)/i,
+        /(?:plan|elevation|section|detail)\s+(?:for\s+|of\s+)?(.+?)(?:\s|$)/i,
+        /(.+?)\s+(?:drawing|plan|elevation|section|detail)/i
+      ];
+      
+      for (const pattern of titlePatterns) {
+        const match = userInput.match(pattern);
+        if (match && match[1].trim().length > 2) {
+          title = match[1].trim();
+          break;
+        }
+      }
+
+      // Gather all available context
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const drawingGuidelines = GuidelinesService.getActiveGuidelines('drawing');
+      const allGuidelines = [...activeGuidelines, ...drawingGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+      const designContext = ThreadService.getAllContextForMode('design');
+      
+      // Get existing designs that might be relevant
+      const existingDesigns = designs.filter(d => d.includeInContext !== false);
+      const designsContext = existingDesigns.length > 0 
+        ? existingDesigns.map(d => `**Design: ${d.componentName}**\n${d.designContent.substring(0, 500)}...`).join('\n\n')
+        : '';
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      // Create flexible, context-aware prompt for the LLM with comprehensive ezdxf knowledge
+      const flexibleDrawingPrompt = `You are a professional construction engineer and technical draftsman with expertise in Python ezdxf library for creating professional DXF files. You need to create a technical drawing based on the user's specific requirements.
+```
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { HsrItem, ChatMessage, KeywordsByItem, OutputMode, UserGuideline, ComponentDesign, ConversationThread } from './types';
+import { continueConversation, generatePlainTextEstimate, generateKeywordsForItems } from './services/geminiService';
+import { searchHSR } from './services/hsrService';
+import { extractHsrNumbersFromText } from './services/keywordService';
+import { speak } from './services/speechService';
+import { GuidelinesService } from './services/guidelinesService';
+import { ThreadService } from './services/threadService';
+import { DesignService } from './services/designService';
+import { ContextService } from './services/contextService';
+import { Spinner } from './components/Spinner';
+import { ResultDisplay } from './components/ResultDisplay';
+import { KeywordsDisplay } from './components/KeywordsDisplay';
+import { HsrItemsDisplay } from './components/HsrItemsDisplay';
+import { VoiceInput } from './components/VoiceInput';
+import { FileUpload } from './components/FileUpload';
+import { GuidelinesManager } from './components/GuidelinesManager';
+import { OutputModeSelector } from './components/OutputModeSelector';
+import { DesignDisplay } from './components/DesignDisplay';
+import { ContextManager } from './components/ContextManager';
+import { LLMProviderSelector } from './components/LLMProviderSelector';
+import { KnowledgeBaseManager } from './components/KnowledgeBaseManager';
+import { KnowledgeBaseDisplay } from './components/KnowledgeBaseDisplay';
+import { LLMService } from './services/llmService';
+import { RAGService } from './services/ragService';
+
+type Step = 'scoping' | 'generatingKeywords' | 'approvingKeywords' | 'approvingHsrItems' | 'approvingRefinedHsrItems' | 'generatingEstimate' | 'reviewingEstimate' | 'done';
+type ReferenceDoc = { file: File; text: string };
+
+const App: React.FC = () => {
+  const [step, setStep] = useState<Step>('scoping');
+  const [conversationHistory, setConversationHistory] = useState<ChatMessage[]>([
+    { role: 'model', text: 'Hello! I am your AI assistant for construction estimation. Please describe the project you want to build, and we can define its scope together.' }
+  ]);
+  const [currentMessage, setCurrentMessage] = useState<string>('');
+  const [finalizedScope, setFinalizedScope] = useState<string>('');
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [keywordsByItem, setKeywordsByItem] = useState<KeywordsByItem>({});
+  const [hsrItems, setHsrItems] = useState<HsrItem[]>([]);
+  const [newlyFoundHsrItems, setNewlyFoundHsrItems] = useState<HsrItem[]>([]);
+  const [finalEstimateText, setFinalEstimateText] = useState<string>('');
+  const [editInstruction, setEditInstruction] = useState<string>('');
+  const [keywordFeedback, setKeywordFeedback] = useState<string>('');
+  const [hsrItemFeedback, setHsrItemFeedback] = useState<string>('');
+  const [refinedHsrItemFeedback, setRefinedHsrItemFeedback] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+  const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
+  const [loadingMessage, setLoadingMessage] = useState<string>('');
+  const [isTtsEnabled, setIsTtsEnabled] = useState<boolean>(false);
+  const [speechRate, setSpeechRate] = useState(1);
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState<string | null>(null);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [apiKey, setApiKey] = useState<string>('');
+  const [apiKeyInput, setApiKeyInput] = useState<string>('');
+
+  const [referenceDocs, setReferenceDocs] = useState<ReferenceDoc[]>([]);
+  const [isFileProcessing, setIsFileProcessing] = useState<boolean>(false);
+
+  // Enhanced state for integrated workflow
+  const [outputMode, setOutputMode] = useState<OutputMode>('discussion');
+  const [currentThread, setCurrentThread] = useState<ConversationThread | null>(null);
+  const [guidelines, setGuidelines] = useState<UserGuideline[]>([]);
+  const [designs, setDesigns] = useState<ComponentDesign[]>([]);
+  const [isGuidelinesOpen, setIsGuidelinesOpen] = useState<boolean>(false);
+  const [isLLMSettingsOpen, setIsLLMSettingsOpen] = useState<boolean>(false);
+  const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState<boolean>(false);
+  const [includeKnowledgeBase, setIncludeKnowledgeBase] = useState<boolean>(false);
+  const [currentProvider, setCurrentProvider] = useState<string>(LLMService.getCurrentProvider());
+  const [currentModel, setCurrentModel] = useState<string>(LLMService.getCurrentModel());
+  const [showProjectData, setShowProjectData] = useState<boolean>(false);
+  const [contextKey, setContextKey] = useState<number>(0); // Force re-render of context
+
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  const referenceText = useMemo(() => 
+    referenceDocs.map(doc => `--- START OF ${doc.file.name} ---\n${doc.text}\n--- END OF ${doc.file.name} ---`).join('\n\n'), 
+  [referenceDocs]);
+
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [conversationHistory]);
+
+  useEffect(() => {
+    const storedApiKey = localStorage.getItem('gemini-api-key');
+    if (storedApiKey) {
+        setApiKey(storedApiKey);
+    }
+
+    // Load guidelines and project data
+    loadGuidelines();
+    loadDesigns();
+
+    // Initialize context if not exists
+    const existingContext = ContextService.getCurrentContext();
+    if (!existingContext && conversationHistory.length > 1) {
+      const projectDescription = conversationHistory.slice(1).map(msg => msg.text).join(' ').substring(0, 200);
+      ContextService.initializeContext(projectDescription);
+    }
+  }, []);
+
+  const loadGuidelines = () => {
+    const loadedGuidelines = GuidelinesService.loadGuidelines();
+    setGuidelines(loadedGuidelines);
+  };
+
+  const loadDesigns = () => {
+    const loadedDesigns = DesignService.loadDesigns();
+    setDesigns(loadedDesigns);
+  };
+
+  const handleContextUpdate = () => {
+    setContextKey(prev => prev + 1); // Force re-render of context components
+  };
+
+  const handleKnowledgeBaseUpdate = () => {
+    // Force re-render when knowledge base is updated
+    setContextKey(prev => prev + 1);
+  };
+
+
+
+  useEffect(() => {
+    const loadVoices = () => {
+        setAvailableVoices(window.speechSynthesis.getVoices());
+    };
+
+    // Load voices initially
+    loadVoices();
+
+    // Update when the voice list changes
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+
+    // Cleanup
+    return () => {
+        window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
+
+  const resetState = () => {
+    setStep('scoping');
+    setConversationHistory([{ role: 'model', text: 'Hello! Please describe the project you want to build.' }]);
+    setCurrentMessage('');
+    setFinalizedScope('');
+    setKeywords([]);
+    setKeywordsByItem({});
+    setHsrItems([]);
+    setFinalEstimateText('');
+    setEditInstruction('');
+    setError(null);
+    setIsAiThinking(false);
+    setLoadingMessage('');
+    setReferenceDocs([]);
+    setIsFileProcessing(false);
+    setOutputMode('discussion');
+    setCurrentThread(null);
+    setShowProjectData(false);
+    // Clear all threads for new project
+    ThreadService.clearAllThreads();
+  };
+  
+  const handleFileUpload = (newFiles: ReferenceDoc[]) => {
+    setReferenceDocs(prevDocs => {
+      const existingFileNames = new Set(prevDocs.map(doc => doc.file.name));
+      const filteredNewFiles = newFiles.filter(newFile => !existingFileNames.has(newFile.file.name));
+      return [...prevDocs, ...filteredNewFiles];
+    });
+  };
+
+  const handleFileRemove = (fileNameToRemove: string) => {
+    setReferenceDocs(prevDocs => prevDocs.filter(doc => doc.file.name !== fileNameToRemove));
+  };
+
+  const handleApiKeySave = () => {
+    localStorage.setItem('gemini-api-key', apiKeyInput);
+    setApiKey(apiKeyInput);
+    setApiKeyInput('');
+  };
+
+  const handleSendMessage = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!currentMessage.trim() || isAiThinking) return;
+
+    const newMessage: ChatMessage = { role: 'user', text: currentMessage };
+
+    // Handle different output modes
+    if (outputMode === 'design') {
+      await handleDesignRequest(currentMessage);
+    } else {
+      // Regular discussion mode
+      const newHistory = [...conversationHistory, newMessage];
+      setConversationHistory(newHistory);
+      setCurrentMessage('');
+      setLoadingMessage('Thinking...');
+      setIsAiThinking(true);
+      setError(null);
+
+      try {
+        // Add context from previous steps
+        const contextPrompt = ContextService.generateContextPrompt();
+        let enhancedReferenceText = referenceText + contextPrompt;
+
+        // Add knowledge base context if enabled
+        if (includeKnowledgeBase) {
+          const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+            currentMessage,
+            includeKnowledgeBase
+          );
+          // Use the enhanced prompt for the conversation
+          newHistory[newHistory.length - 1].text = enhancedPrompt;
+        }
+
+        const modelResponse = await continueConversation(newHistory, enhancedReferenceText, outputMode);
+        setConversationHistory(prev => [...prev, { role: 'model', text: modelResponse }]);
+
+        // Extract and save LLM summary
+        const llmSummary = ContextService.extractLLMSummary(modelResponse);
+        ContextService.addStepSummary('discussion', newMessage.text, llmSummary);
+
+        // Add discussion to context
+        ContextService.addDiscussionToContext(newMessage.text, true);
+
+        // Save to thread
+        if (currentThread) {
+          ThreadService.addMessageToThread(currentThread.id, newMessage);
+          ThreadService.addMessageToThread(currentThread.id, { role: 'model', text: modelResponse });
+        } else {
+          const thread = ThreadService.createThread(outputMode, newMessage);
+          ThreadService.addMessageToThread(thread.id, { role: 'model', text: modelResponse });
+          setCurrentThread(thread);
+        }
+
+        if (isTtsEnabled) {
+          speak(modelResponse, speechRate, selectedVoiceURI);
+        }
+      } catch (err: any) {
+        console.error(err);
+        setError(err.message || 'An error occurred while communicating with the AI.');
+      } finally {
+        setIsAiThinking(false);
+        setLoadingMessage('');
+      }
+    }
+
+    setCurrentMessage('');
+  };
+
+  const handleDesignRequest = async (userInput: string) => {
+    setLoadingMessage('Generating component design...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Extract component name from user input or use a default
+      const componentMatch = userInput.match(/design\s+(?:for\s+)?(.+?)(?:\s|$)/i);
+      const componentName = componentMatch ? componentMatch[1].trim() : 'Component';
+
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const designGuidelines = GuidelinesService.getActiveGuidelines('design');
+      const allGuidelines = [...activeGuidelines, ...designGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      const design = await DesignService.generateComponentDesign(
+        componentName,
+        scopeContext,
+        enhancedUserInput,
+        guidelinesText,
+        referenceText
+      );
+
+      loadDesigns();
+      setLoadingMessage('');
+
+      // Add to conversation history for reference
+      setConversationHistory(prev => [
+        ...prev,
+        { role: 'user', text: userInput },
+        { role: 'model', text: `Design generated for ${componentName}. You can view the detailed design in the Design Display section below.` }
+      ]);
+
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'An error occurred while generating the design.');
+    } finally {
+      setIsAiThinking(false);
+      setLoadingMessage('');
+    }
+  };
+
+  const handleDrawingRequest = async (userInput: string) => {
+    setLoadingMessage('🔍 Analyzing your drawing requirements...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Enhanced input validation
+      if (!userInput.trim()) {
+        throw new Error('Please provide specific drawing requirements.');
+      }
+
+      if (userInput.trim().length < 10) {
+        throw new Error('Please provide more detailed drawing requirements (at least 10 characters).');
+      }
+
+      // Smart title extraction with flexible patterns
+      let title = 'Technical Drawing';
+      const titlePatterns = [
+        /(?:drawing|draw|create|generate|design)\s+(?:for\s+|of\s+|a\s+)?(.+?)(?:\s+(?:drawing|plan|view|section|detail)|$)/i,
+        /(?:plan|elevation|section|detail)\s+(?:for\s+|of\s+)?(.+?)(?:\s|$)/i,
+        /(.+?)\s+(?:drawing|plan|elevation|section|detail)/i
+      ];
+      
+      for (const pattern of titlePatterns) {
+        const match = userInput.match(pattern);
+        if (match && match[1].trim().length > 2) {
+          title = match[1].trim();
+          break;
+        }
+      }
+
+      // Gather all available context
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const drawingGuidelines = GuidelinesService.getActiveGuidelines('drawing');
+      const allGuidelines = [...activeGuidelines, ...drawingGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+      const designContext = ThreadService.getAllContextForMode('design');
+      
+      // Get existing designs that might be relevant
+      const existingDesigns = designs.filter(d => d.includeInContext !== false);
+      const designsContext = existingDesigns.length > 0 
+        ? existingDesigns.map(d => `**Design: ${d.componentName}**\n${d.designContent.substring(0, 500)}...`).join('\n\n')
+        : '';
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      // Create flexible, context-aware prompt for the LLM with comprehensive ezdxf knowledge
+      const flexibleDrawingPrompt = `You are a professional construction engineer and technical draftsman with expertise in Python ezdxf library for creating professional DXF files. You need to create a technical drawing based on the user's specific requirements.
+```
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { HsrItem, ChatMessage, KeywordsByItem, OutputMode, UserGuideline, ComponentDesign, ConversationThread } from './types';
+import { continueConversation, generatePlainTextEstimate, generateKeywordsForItems } from './services/geminiService';
+import { searchHSR } from './services/hsrService';
+import { extractHsrNumbersFromText } from './services/keywordService';
+import { speak } from './services/speechService';
+import { GuidelinesService } from './services/guidelinesService';
+import { ThreadService } from './services/threadService';
+import { DesignService } from './services/designService';
+import { ContextService } from './services/contextService';
+import { Spinner } from './components/Spinner';
+import { ResultDisplay } from './components/ResultDisplay';
+import { KeywordsDisplay } from './components/KeywordsDisplay';
+import { HsrItemsDisplay } from './components/HsrItemsDisplay';
+import { VoiceInput } from './components/VoiceInput';
+import { FileUpload } from './components/FileUpload';
+import { GuidelinesManager } from './components/GuidelinesManager';
+import { OutputModeSelector } from './components/OutputModeSelector';
+import { DesignDisplay } from './components/DesignDisplay';
+import { ContextManager } from './components/ContextManager';
+import { LLMProviderSelector } from './components/LLMProviderSelector';
+import { KnowledgeBaseManager } from './components/KnowledgeBaseManager';
+import { KnowledgeBaseDisplay } from './components/KnowledgeBaseDisplay';
+import { LLMService } from './services/llmService';
+import { RAGService } from './services/ragService';
+
+type Step = 'scoping' | 'generatingKeywords' | 'approvingKeywords' | 'approvingHsrItems' | 'approvingRefinedHsrItems' | 'generatingEstimate' | 'reviewingEstimate' | 'done';
+type ReferenceDoc = { file: File; text: string };
+
+const App: React.FC = () => {
+  const [step, setStep] = useState<Step>('scoping');
+  const [conversationHistory, setConversationHistory] = useState<ChatMessage[]>([
+    { role: 'model', text: 'Hello! I am your AI assistant for construction estimation. Please describe the project you want to build, and we can define its scope together.' }
+  ]);
+  const [currentMessage, setCurrentMessage] = useState<string>('');
+  const [finalizedScope, setFinalizedScope] = useState<string>('');
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [keywordsByItem, setKeywordsByItem] = useState<KeywordsByItem>({});
+  const [hsrItems, setHsrItems] = useState<HsrItem[]>([]);
+  const [newlyFoundHsrItems, setNewlyFoundHsrItems] = useState<HsrItem[]>([]);
+  const [finalEstimateText, setFinalEstimateText] = useState<string>('');
+  const [editInstruction, setEditInstruction] = useState<string>('');
+  const [keywordFeedback, setKeywordFeedback] = useState<string>('');
+  const [hsrItemFeedback, setHsrItemFeedback] = useState<string>('');
+  const [refinedHsrItemFeedback, setRefinedHsrItemFeedback] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+  const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
+  const [loadingMessage, setLoadingMessage] = useState<string>('');
+  const [isTtsEnabled, setIsTtsEnabled] = useState<boolean>(false);
+  const [speechRate, setSpeechRate] = useState(1);
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState<string | null>(null);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [apiKey, setApiKey] = useState<string>('');
+  const [apiKeyInput, setApiKeyInput] = useState<string>('');
+
+  const [referenceDocs, setReferenceDocs] = useState<ReferenceDoc[]>([]);
+  const [isFileProcessing, setIsFileProcessing] = useState<boolean>(false);
+
+  // Enhanced state for integrated workflow
+  const [outputMode, setOutputMode] = useState<OutputMode>('discussion');
+  const [currentThread, setCurrentThread] = useState<ConversationThread | null>(null);
+  const [guidelines, setGuidelines] = useState<UserGuideline[]>([]);
+  const [designs, setDesigns] = useState<ComponentDesign[]>([]);
+  const [isGuidelinesOpen, setIsGuidelinesOpen] = useState<boolean>(false);
+  const [isLLMSettingsOpen, setIsLLMSettingsOpen] = useState<boolean>(false);
+  const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState<boolean>(false);
+  const [includeKnowledgeBase, setIncludeKnowledgeBase] = useState<boolean>(false);
+  const [currentProvider, setCurrentProvider] = useState<string>(LLMService.getCurrentProvider());
+  const [currentModel, setCurrentModel] = useState<string>(LLMService.getCurrentModel());
+  const [showProjectData, setShowProjectData] = useState<boolean>(false);
+  const [contextKey, setContextKey] = useState<number>(0); // Force re-render of context
+
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  const referenceText = useMemo(() => 
+    referenceDocs.map(doc => `--- START OF ${doc.file.name} ---\n${doc.text}\n--- END OF ${doc.file.name} ---`).join('\n\n'), 
+  [referenceDocs]);
+
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [conversationHistory]);
+
+  useEffect(() => {
+    const storedApiKey = localStorage.getItem('gemini-api-key');
+    if (storedApiKey) {
+        setApiKey(storedApiKey);
+    }
+
+    // Load guidelines and project data
+    loadGuidelines();
+    loadDesigns();
+
+    // Initialize context if not exists
+    const existingContext = ContextService.getCurrentContext();
+    if (!existingContext && conversationHistory.length > 1) {
+      const projectDescription = conversationHistory.slice(1).map(msg => msg.text).join(' ').substring(0, 200);
+      ContextService.initializeContext(projectDescription);
+    }
+  }, []);
+
+  const loadGuidelines = () => {
+    const loadedGuidelines = GuidelinesService.loadGuidelines();
+    setGuidelines(loadedGuidelines);
+  };
+
+  const loadDesigns = () => {
+    const loadedDesigns = DesignService.loadDesigns();
+    setDesigns(loadedDesigns);
+  };
+
+  const handleContextUpdate = () => {
+    setContextKey(prev => prev + 1); // Force re-render of context components
+  };
+
+  const handleKnowledgeBaseUpdate = () => {
+    // Force re-render when knowledge base is updated
+    setContextKey(prev => prev + 1);
+  };
+
+
+
+  useEffect(() => {
+    const loadVoices = () => {
+        setAvailableVoices(window.speechSynthesis.getVoices());
+    };
+
+    // Load voices initially
+    loadVoices();
+
+    // Update when the voice list changes
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+
+    // Cleanup
+    return () => {
+        window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
+
+  const resetState = () => {
+    setStep('scoping');
+    setConversationHistory([{ role: 'model', text: 'Hello! Please describe the project you want to build.' }]);
+    setCurrentMessage('');
+    setFinalizedScope('');
+    setKeywords([]);
+    setKeywordsByItem({});
+    setHsrItems([]);
+    setFinalEstimateText('');
+    setEditInstruction('');
+    setError(null);
+    setIsAiThinking(false);
+    setLoadingMessage('');
+    setReferenceDocs([]);
+    setIsFileProcessing(false);
+    setOutputMode('discussion');
+    setCurrentThread(null);
+    setShowProjectData(false);
+    // Clear all threads for new project
+    ThreadService.clearAllThreads();
+  };
+  
+  const handleFileUpload = (newFiles: ReferenceDoc[]) => {
+    setReferenceDocs(prevDocs => {
+      const existingFileNames = new Set(prevDocs.map(doc => doc.file.name));
+      const filteredNewFiles = newFiles.filter(newFile => !existingFileNames.has(newFile.file.name));
+      return [...prevDocs, ...filteredNewFiles];
+    });
+  };
+
+  const handleFileRemove = (fileNameToRemove: string) => {
+    setReferenceDocs(prevDocs => prevDocs.filter(doc => doc.file.name !== fileNameToRemove));
+  };
+
+  const handleApiKeySave = () => {
+    localStorage.setItem('gemini-api-key', apiKeyInput);
+    setApiKey(apiKeyInput);
+    setApiKeyInput('');
+  };
+
+  const handleSendMessage = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!currentMessage.trim() || isAiThinking) return;
+
+    const newMessage: ChatMessage = { role: 'user', text: currentMessage };
+
+    // Handle different output modes
+    if (outputMode === 'design') {
+      await handleDesignRequest(currentMessage);
+    } else {
+      // Regular discussion mode
+      const newHistory = [...conversationHistory, newMessage];
+      setConversationHistory(newHistory);
+      setCurrentMessage('');
+      setLoadingMessage('Thinking...');
+      setIsAiThinking(true);
+      setError(null);
+
+      try {
+        // Add context from previous steps
+        const contextPrompt = ContextService.generateContextPrompt();
+        let enhancedReferenceText = referenceText + contextPrompt;
+
+        // Add knowledge base context if enabled
+        if (includeKnowledgeBase) {
+          const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+            currentMessage,
+            includeKnowledgeBase
+          );
+          // Use the enhanced prompt for the conversation
+          newHistory[newHistory.length - 1].text = enhancedPrompt;
+        }
+
+        const modelResponse = await continueConversation(newHistory, enhancedReferenceText, outputMode);
+        setConversationHistory(prev => [...prev, { role: 'model', text: modelResponse }]);
+
+        // Extract and save LLM summary
+        const llmSummary = ContextService.extractLLMSummary(modelResponse);
+        ContextService.addStepSummary('discussion', newMessage.text, llmSummary);
+
+        // Add discussion to context
+        ContextService.addDiscussionToContext(newMessage.text, true);
+
+        // Save to thread
+        if (currentThread) {
+          ThreadService.addMessageToThread(currentThread.id, newMessage);
+          ThreadService.addMessageToThread(currentThread.id, { role: 'model', text: modelResponse });
+        } else {
+          const thread = ThreadService.createThread(outputMode, newMessage);
+          ThreadService.addMessageToThread(thread.id, { role: 'model', text: modelResponse });
+          setCurrentThread(thread);
+        }
+
+        if (isTtsEnabled) {
+          speak(modelResponse, speechRate, selectedVoiceURI);
+        }
+      } catch (err: any) {
+        console.error(err);
+        setError(err.message || 'An error occurred while communicating with the AI.');
+      } finally {
+        setIsAiThinking(false);
+        setLoadingMessage('');
+      }
+    }
+
+    setCurrentMessage('');
+  };
+
+  const handleDesignRequest = async (userInput: string) => {
+    setLoadingMessage('Generating component design...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Extract component name from user input or use a default
+      const componentMatch = userInput.match(/design\s+(?:for\s+)?(.+?)(?:\s|$)/i);
+      const componentName = componentMatch ? componentMatch[1].trim() : 'Component';
+
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const designGuidelines = GuidelinesService.getActiveGuidelines('design');
+      const allGuidelines = [...activeGuidelines, ...designGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      const design = await DesignService.generateComponentDesign(
+        componentName,
+        scopeContext,
+        enhancedUserInput,
+        guidelinesText,
+        referenceText
+      );
+
+      loadDesigns();
+      setLoadingMessage('');
+
+      // Add to conversation history for reference
+      setConversationHistory(prev => [
+        ...prev,
+        { role: 'user', text: userInput },
+        { role: 'model', text: `Design generated for ${componentName}. You can view the detailed design in the Design Display section below.` }
+      ]);
+
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'An error occurred while generating the design.');
+    } finally {
+      setIsAiThinking(false);
+      setLoadingMessage('');
+    }
+  };
+
+  const handleDrawingRequest = async (userInput: string) => {
+    setLoadingMessage('🔍 Analyzing your drawing requirements...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Enhanced input validation
+      if (!userInput.trim()) {
+        throw new Error('Please provide specific drawing requirements.');
+      }
+
+      if (userInput.trim().length < 10) {
+        throw new Error('Please provide more detailed drawing requirements (at least 10 characters).');
+      }
+
+      // Smart title extraction with flexible patterns
+      let title = 'Technical Drawing';
+      const titlePatterns = [
+        /(?:drawing|draw|create|generate|design)\s+(?:for\s+|of\s+|a\s+)?(.+?)(?:\s+(?:drawing|plan|view|section|detail)|$)/i,
+        /(?:plan|elevation|section|detail)\s+(?:for\s+|of\s+)?(.+?)(?:\s|$)/i,
+        /(.+?)\s+(?:drawing|plan|elevation|section|detail)/i
+      ];
+      
+      for (const pattern of titlePatterns) {
+        const match = userInput.match(pattern);
+        if (match && match[1].trim().length > 2) {
+          title = match[1].trim();
+          break;
+        }
+      }
+
+      // Gather all available context
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const drawingGuidelines = GuidelinesService.getActiveGuidelines('drawing');
+      const allGuidelines = [...activeGuidelines, ...drawingGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+      const designContext = ThreadService.getAllContextForMode('design');
+      
+      // Get existing designs that might be relevant
+      const existingDesigns = designs.filter(d => d.includeInContext !== false);
+      const designsContext = existingDesigns.length > 0 
+        ? existingDesigns.map(d => `**Design: ${d.componentName}**\n${d.designContent.substring(0, 500)}...`).join('\n\n')
+        : '';
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      // Create flexible, context-aware prompt for the LLM with comprehensive ezdxf knowledge
+      const flexibleDrawingPrompt = `You are a professional construction engineer and technical draftsman with expertise in Python ezdxf library for creating professional DXF files. You need to create a technical drawing based on the user's specific requirements.
+```
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { HsrItem, ChatMessage, KeywordsByItem, OutputMode, UserGuideline, ComponentDesign, ConversationThread } from './types';
+import { continueConversation, generatePlainTextEstimate, generateKeywordsForItems } from './services/geminiService';
+import { searchHSR } from './services/hsrService';
+import { extractHsrNumbersFromText } from './services/keywordService';
+import { speak } from './services/speechService';
+import { GuidelinesService } from './services/guidelinesService';
+import { ThreadService } from './services/threadService';
+import { DesignService } from './services/designService';
+import { ContextService } from './services/contextService';
+import { Spinner } from './components/Spinner';
+import { ResultDisplay } from './components/ResultDisplay';
+import { KeywordsDisplay } from './components/KeywordsDisplay';
+import { HsrItemsDisplay } from './components/HsrItemsDisplay';
+import { VoiceInput } from './components/VoiceInput';
+import { FileUpload } from './components/FileUpload';
+import { GuidelinesManager } from './components/GuidelinesManager';
+import { OutputModeSelector } from './components/OutputModeSelector';
+import { DesignDisplay } from './components/DesignDisplay';
+import { ContextManager } from './components/ContextManager';
+import { LLMProviderSelector } from './components/LLMProviderSelector';
+import { KnowledgeBaseManager } from './components/KnowledgeBaseManager';
+import { KnowledgeBaseDisplay } from './components/KnowledgeBaseDisplay';
+import { LLMService } from './services/llmService';
+import { RAGService } from './services/ragService';
+
+type Step = 'scoping' | 'generatingKeywords' | 'approvingKeywords' | 'approvingHsrItems' | 'approvingRefinedHsrItems' | 'generatingEstimate' | 'reviewingEstimate' | 'done';
+type ReferenceDoc = { file: File; text: string };
+
+const App: React.FC = () => {
+  const [step, setStep] = useState<Step>('scoping');
+  const [conversationHistory, setConversationHistory] = useState<ChatMessage[]>([
+    { role: 'model', text: 'Hello! I am your AI assistant for construction estimation. Please describe the project you want to build, and we can define its scope together.' }
+  ]);
+  const [currentMessage, setCurrentMessage] = useState<string>('');
+  const [finalizedScope, setFinalizedScope] = useState<string>('');
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [keywordsByItem, setKeywordsByItem] = useState<KeywordsByItem>({});
+  const [hsrItems, setHsrItems] = useState<HsrItem[]>([]);
+  const [newlyFoundHsrItems, setNewlyFoundHsrItems] = useState<HsrItem[]>([]);
+  const [finalEstimateText, setFinalEstimateText] = useState<string>('');
+  const [editInstruction, setEditInstruction] = useState<string>('');
+  const [keywordFeedback, setKeywordFeedback] = useState<string>('');
+  const [hsrItemFeedback, setHsrItemFeedback] = useState<string>('');
+  const [refinedHsrItemFeedback, setRefinedHsrItemFeedback] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+  const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
+  const [loadingMessage, setLoadingMessage] = useState<string>('');
+  const [isTtsEnabled, setIsTtsEnabled] = useState<boolean>(false);
+  const [speechRate, setSpeechRate] = useState(1);
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState<string | null>(null);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [apiKey, setApiKey] = useState<string>('');
+  const [apiKeyInput, setApiKeyInput] = useState<string>('');
+
+  const [referenceDocs, setReferenceDocs] = useState<ReferenceDoc[]>([]);
+  const [isFileProcessing, setIsFileProcessing] = useState<boolean>(false);
+
+  // Enhanced state for integrated workflow
+  const [outputMode, setOutputMode] = useState<OutputMode>('discussion');
+  const [currentThread, setCurrentThread] = useState<ConversationThread | null>(null);
+  const [guidelines, setGuidelines] = useState<UserGuideline[]>([]);
+  const [designs, setDesigns] = useState<ComponentDesign[]>([]);
+  const [isGuidelinesOpen, setIsGuidelinesOpen] = useState<boolean>(false);
+  const [isLLMSettingsOpen, setIsLLMSettingsOpen] = useState<boolean>(false);
+  const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState<boolean>(false);
+  const [includeKnowledgeBase, setIncludeKnowledgeBase] = useState<boolean>(false);
+  const [currentProvider, setCurrentProvider] = useState<string>(LLMService.getCurrentProvider());
+  const [currentModel, setCurrentModel] = useState<string>(LLMService.getCurrentModel());
+  const [showProjectData, setShowProjectData] = useState<boolean>(false);
+  const [contextKey, setContextKey] = useState<number>(0); // Force re-render of context
+
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  const referenceText = useMemo(() => 
+    referenceDocs.map(doc => `--- START OF ${doc.file.name} ---\n${doc.text}\n--- END OF ${doc.file.name} ---`).join('\n\n'), 
+  [referenceDocs]);
+
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [conversationHistory]);
+
+  useEffect(() => {
+    const storedApiKey = localStorage.getItem('gemini-api-key');
+    if (storedApiKey) {
+        setApiKey(storedApiKey);
+    }
+
+    // Load guidelines and project data
+    loadGuidelines();
+    loadDesigns();
+
+    // Initialize context if not exists
+    const existingContext = ContextService.getCurrentContext();
+    if (!existingContext && conversationHistory.length > 1) {
+      const projectDescription = conversationHistory.slice(1).map(msg => msg.text).join(' ').substring(0, 200);
+      ContextService.initializeContext(projectDescription);
+    }
+  }, []);
+
+  const loadGuidelines = () => {
+    const loadedGuidelines = GuidelinesService.loadGuidelines();
+    setGuidelines(loadedGuidelines);
+  };
+
+  const loadDesigns = () => {
+    const loadedDesigns = DesignService.loadDesigns();
+    setDesigns(loadedDesigns);
+  };
+
+  const handleContextUpdate = () => {
+    setContextKey(prev => prev + 1); // Force re-render of context components
+  };
+
+  const handleKnowledgeBaseUpdate = () => {
+    // Force re-render when knowledge base is updated
+    setContextKey(prev => prev + 1);
+  };
+
+
+
+  useEffect(() => {
+    const loadVoices = () => {
+        setAvailableVoices(window.speechSynthesis.getVoices());
+    };
+
+    // Load voices initially
+    loadVoices();
+
+    // Update when the voice list changes
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+
+    // Cleanup
+    return () => {
+        window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
+
+  const resetState = () => {
+    setStep('scoping');
+    setConversationHistory([{ role: 'model', text: 'Hello! Please describe the project you want to build.' }]);
+    setCurrentMessage('');
+    setFinalizedScope('');
+    setKeywords([]);
+    setKeywordsByItem({});
+    setHsrItems([]);
+    setFinalEstimateText('');
+    setEditInstruction('');
+    setError(null);
+    setIsAiThinking(false);
+    setLoadingMessage('');
+    setReferenceDocs([]);
+    setIsFileProcessing(false);
+    setOutputMode('discussion');
+    setCurrentThread(null);
+    setShowProjectData(false);
+    // Clear all threads for new project
+    ThreadService.clearAllThreads();
+  };
+  
+  const handleFileUpload = (newFiles: ReferenceDoc[]) => {
+    setReferenceDocs(prevDocs => {
+      const existingFileNames = new Set(prevDocs.map(doc => doc.file.name));
+      const filteredNewFiles = newFiles.filter(newFile => !existingFileNames.has(newFile.file.name));
+      return [...prevDocs, ...filteredNewFiles];
+    });
+  };
+
+  const handleFileRemove = (fileNameToRemove: string) => {
+    setReferenceDocs(prevDocs => prevDocs.filter(doc => doc.file.name !== fileNameToRemove));
+  };
+
+  const handleApiKeySave = () => {
+    localStorage.setItem('gemini-api-key', apiKeyInput);
+    setApiKey(apiKeyInput);
+    setApiKeyInput('');
+  };
+
+  const handleSendMessage = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!currentMessage.trim() || isAiThinking) return;
+
+    const newMessage: ChatMessage = { role: 'user', text: currentMessage };
+
+    // Handle different output modes
+    if (outputMode === 'design') {
+      await handleDesignRequest(currentMessage);
+    } else {
+      // Regular discussion mode
+      const newHistory = [...conversationHistory, newMessage];
+      setConversationHistory(newHistory);
+      setCurrentMessage('');
+      setLoadingMessage('Thinking...');
+      setIsAiThinking(true);
+      setError(null);
+
+      try {
+        // Add context from previous steps
+        const contextPrompt = ContextService.generateContextPrompt();
+        let enhancedReferenceText = referenceText + contextPrompt;
+
+        // Add knowledge base context if enabled
+        if (includeKnowledgeBase) {
+          const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+            currentMessage,
+            includeKnowledgeBase
+          );
+          // Use the enhanced prompt for the conversation
+          newHistory[newHistory.length - 1].text = enhancedPrompt;
+        }
+
+        const modelResponse = await continueConversation(newHistory, enhancedReferenceText, outputMode);
+        setConversationHistory(prev => [...prev, { role: 'model', text: modelResponse }]);
+
+        // Extract and save LLM summary
+        const llmSummary = ContextService.extractLLMSummary(modelResponse);
+        ContextService.addStepSummary('discussion', newMessage.text, llmSummary);
+
+        // Add discussion to context
+        ContextService.addDiscussionToContext(newMessage.text, true);
+
+        // Save to thread
+        if (currentThread) {
+          ThreadService.addMessageToThread(currentThread.id, newMessage);
+          ThreadService.addMessageToThread(currentThread.id, { role: 'model', text: modelResponse });
+        } else {
+          const thread = ThreadService.createThread(outputMode, newMessage);
+          ThreadService.addMessageToThread(thread.id, { role: 'model', text: modelResponse });
+          setCurrentThread(thread);
+        }
+
+        if (isTtsEnabled) {
+          speak(modelResponse, speechRate, selectedVoiceURI);
+        }
+      } catch (err: any) {
+        console.error(err);
+        setError(err.message || 'An error occurred while communicating with the AI.');
+      } finally {
+        setIsAiThinking(false);
+        setLoadingMessage('');
+      }
+    }
+
+    setCurrentMessage('');
+  };
+
+  const handleDesignRequest = async (userInput: string) => {
+    setLoadingMessage('Generating component design...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Extract component name from user input or use a default
+      const componentMatch = userInput.match(/design\s+(?:for\s+)?(.+?)(?:\s|$)/i);
+      const componentName = componentMatch ? componentMatch[1].trim() : 'Component';
+
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const designGuidelines = GuidelinesService.getActiveGuidelines('design');
+      const allGuidelines = [...activeGuidelines, ...designGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      const design = await DesignService.generateComponentDesign(
+        componentName,
+        scopeContext,
+        enhancedUserInput,
+        guidelinesText,
+        referenceText
+      );
+
+      loadDesigns();
+      setLoadingMessage('');
+
+      // Add to conversation history for reference
+      setConversationHistory(prev => [
+        ...prev,
+        { role: 'user', text: userInput },
+        { role: 'model', text: `Design generated for ${componentName}. You can view the detailed design in the Design Display section below.` }
+      ]);
+
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'An error occurred while generating the design.');
+    } finally {
+      setIsAiThinking(false);
+      setLoadingMessage('');
+    }
+  };
+
+  const handleDrawingRequest = async (userInput: string) => {
+    setLoadingMessage('🔍 Analyzing your drawing requirements...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Enhanced input validation
+      if (!userInput.trim()) {
+        throw new Error('Please provide specific drawing requirements.');
+      }
+
+      if (userInput.trim().length < 10) {
+        throw new Error('Please provide more detailed drawing requirements (at least 10 characters).');
+      }
+
+      // Smart title extraction with flexible patterns
+      let title = 'Technical Drawing';
+      const titlePatterns = [
+        /(?:drawing|draw|create|generate|design)\s+(?:for\s+|of\s+|a\s+)?(.+?)(?:\s+(?:drawing|plan|view|section|detail)|$)/i,
+        /(?:plan|elevation|section|detail)\s+(?:for\s+|of\s+)?(.+?)(?:\s|$)/i,
+        /(.+?)\s+(?:drawing|plan|elevation|section|detail)/i
+      ];
+      
+      for (const pattern of titlePatterns) {
+        const match = userInput.match(pattern);
+        if (match && match[1].trim().length > 2) {
+          title = match[1].trim();
+          break;
+        }
+      }
+
+      // Gather all available context
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const drawingGuidelines = GuidelinesService.getActiveGuidelines('drawing');
+      const allGuidelines = [...activeGuidelines, ...drawingGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+      const designContext = ThreadService.getAllContextForMode('design');
+      
+      // Get existing designs that might be relevant
+      const existingDesigns = designs.filter(d => d.includeInContext !== false);
+      const designsContext = existingDesigns.length > 0 
+        ? existingDesigns.map(d => `**Design: ${d.componentName}**\n${d.designContent.substring(0, 500)}...`).join('\n\n')
+        : '';
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      // Create flexible, context-aware prompt for the LLM with comprehensive ezdxf knowledge
+      const flexibleDrawingPrompt = `You are a professional construction engineer and technical draftsman with expertise in Python ezdxf library for creating professional DXF files. You need to create a technical drawing based on the user's specific requirements.
+```
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { HsrItem, ChatMessage, KeywordsByItem, OutputMode, UserGuideline, ComponentDesign, ConversationThread } from './types';
+import { continueConversation, generatePlainTextEstimate, generateKeywordsForItems } from './services/geminiService';
+import { searchHSR } from './services/hsrService';
+import { extractHsrNumbersFromText } from './services/keywordService';
+import { speak } from './services/speechService';
+import { GuidelinesService } from './services/guidelinesService';
+import { ThreadService } from './services/threadService';
+import { DesignService } from './services/designService';
+import { ContextService } from './services/contextService';
+import { Spinner } from './components/Spinner';
+import { ResultDisplay } from './components/ResultDisplay';
+import { KeywordsDisplay } from './components/KeywordsDisplay';
+import { HsrItemsDisplay } from './components/HsrItemsDisplay';
+import { VoiceInput } from './components/VoiceInput';
+import { FileUpload } from './components/FileUpload';
+import { GuidelinesManager } from './components/GuidelinesManager';
+import { OutputModeSelector } from './components/OutputModeSelector';
+import { DesignDisplay } from './components/DesignDisplay';
+import { ContextManager } from './components/ContextManager';
+import { LLMProviderSelector } from './components/LLMProviderSelector';
+import { KnowledgeBaseManager } from './components/KnowledgeBaseManager';
+import { KnowledgeBaseDisplay } from './components/KnowledgeBaseDisplay';
+import { LLMService } from './services/llmService';
+import { RAGService } from './services/ragService';
+
+type Step = 'scoping' | 'generatingKeywords' | 'approvingKeywords' | 'approvingHsrItems' | 'approvingRefinedHsrItems' | 'generatingEstimate' | 'reviewingEstimate' | 'done';
+type ReferenceDoc = { file: File; text: string };
+
+const App: React.FC = () => {
+  const [step, setStep] = useState<Step>('scoping');
+  const [conversationHistory, setConversationHistory] = useState<ChatMessage[]>([
+    { role: 'model', text: 'Hello! I am your AI assistant for construction estimation. Please describe the project you want to build, and we can define its scope together.' }
+  ]);
+  const [currentMessage, setCurrentMessage] = useState<string>('');
+  const [finalizedScope, setFinalizedScope] = useState<string>('');
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [keywordsByItem, setKeywordsByItem] = useState<KeywordsByItem>({});
+  const [hsrItems, setHsrItems] = useState<HsrItem[]>([]);
+  const [newlyFoundHsrItems, setNewlyFoundHsrItems] = useState<HsrItem[]>([]);
+  const [finalEstimateText, setFinalEstimateText] = useState<string>('');
+  const [editInstruction, setEditInstruction] = useState<string>('');
+  const [keywordFeedback, setKeywordFeedback] = useState<string>('');
+  const [hsrItemFeedback, setHsrItemFeedback] = useState<string>('');
+  const [refinedHsrItemFeedback, setRefinedHsrItemFeedback] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+  const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
+  const [loadingMessage, setLoadingMessage] = useState<string>('');
+  const [isTtsEnabled, setIsTtsEnabled] = useState<boolean>(false);
+  const [speechRate, setSpeechRate] = useState(1);
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState<string | null>(null);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [apiKey, setApiKey] = useState<string>('');
+  const [apiKeyInput, setApiKeyInput] = useState<string>('');
+
+  const [referenceDocs, setReferenceDocs] = useState<ReferenceDoc[]>([]);
+  const [isFileProcessing, setIsFileProcessing] = useState<boolean>(false);
+
+  // Enhanced state for integrated workflow
+  const [outputMode, setOutputMode] = useState<OutputMode>('discussion');
+  const [currentThread, setCurrentThread] = useState<ConversationThread | null>(null);
+  const [guidelines, setGuidelines] = useState<UserGuideline[]>([]);
+  const [designs, setDesigns] = useState<ComponentDesign[]>([]);
+  const [isGuidelinesOpen, setIsGuidelinesOpen] = useState<boolean>(false);
+  const [isLLMSettingsOpen, setIsLLMSettingsOpen] = useState<boolean>(false);
+  const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState<boolean>(false);
+  const [includeKnowledgeBase, setIncludeKnowledgeBase] = useState<boolean>(false);
+  const [currentProvider, setCurrentProvider] = useState<string>(LLMService.getCurrentProvider());
+  const [currentModel, setCurrentModel] = useState<string>(LLMService.getCurrentModel());
+  const [showProjectData, setShowProjectData] = useState<boolean>(false);
+  const [contextKey, setContextKey] = useState<number>(0); // Force re-render of context
+
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  const referenceText = useMemo(() => 
+    referenceDocs.map(doc => `--- START OF ${doc.file.name} ---\n${doc.text}\n--- END OF ${doc.file.name} ---`).join('\n\n'), 
+  [referenceDocs]);
+
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [conversationHistory]);
+
+  useEffect(() => {
+    const storedApiKey = localStorage.getItem('gemini-api-key');
+    if (storedApiKey) {
+        setApiKey(storedApiKey);
+    }
+
+    // Load guidelines and project data
+    loadGuidelines();
+    loadDesigns();
+
+    // Initialize context if not exists
+    const existingContext = ContextService.getCurrentContext();
+    if (!existingContext && conversationHistory.length > 1) {
+      const projectDescription = conversationHistory.slice(1).map(msg => msg.text).join(' ').substring(0, 200);
+      ContextService.initializeContext(projectDescription);
+    }
+  }, []);
+
+  const loadGuidelines = () => {
+    const loadedGuidelines = GuidelinesService.loadGuidelines();
+    setGuidelines(loadedGuidelines);
+  };
+
+  const loadDesigns = () => {
+    const loadedDesigns = DesignService.loadDesigns();
+    setDesigns(loadedDesigns);
+  };
+
+  const handleContextUpdate = () => {
+    setContextKey(prev => prev + 1); // Force re-render of context components
+  };
+
+  const handleKnowledgeBaseUpdate = () => {
+    // Force re-render when knowledge base is updated
+    setContextKey(prev => prev + 1);
+  };
+
+
+
+  useEffect(() => {
+    const loadVoices = () => {
+        setAvailableVoices(window.speechSynthesis.getVoices());
+    };
+
+    // Load voices initially
+    loadVoices();
+
+    // Update when the voice list changes
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+
+    // Cleanup
+    return () => {
+        window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
+
+  const resetState = () => {
+    setStep('scoping');
+    setConversationHistory([{ role: 'model', text: 'Hello! Please describe the project you want to build.' }]);
+    setCurrentMessage('');
+    setFinalizedScope('');
+    setKeywords([]);
+    setKeywordsByItem({});
+    setHsrItems([]);
+    setFinalEstimateText('');
+    setEditInstruction('');
+    setError(null);
+    setIsAiThinking(false);
+    setLoadingMessage('');
+    setReferenceDocs([]);
+    setIsFileProcessing(false);
+    setOutputMode('discussion');
+    setCurrentThread(null);
+    setShowProjectData(false);
+    // Clear all threads for new project
+    ThreadService.clearAllThreads();
+  };
+  
+  const handleFileUpload = (newFiles: ReferenceDoc[]) => {
+    setReferenceDocs(prevDocs => {
+      const existingFileNames = new Set(prevDocs.map(doc => doc.file.name));
+      const filteredNewFiles = newFiles.filter(newFile => !existingFileNames.has(newFile.file.name));
+      return [...prevDocs, ...filteredNewFiles];
+    });
+  };
+
+  const handleFileRemove = (fileNameToRemove: string) => {
+    setReferenceDocs(prevDocs => prevDocs.filter(doc => doc.file.name !== fileNameToRemove));
+  };
+
+  const handleApiKeySave = () => {
+    localStorage.setItem('gemini-api-key', apiKeyInput);
+    setApiKey(apiKeyInput);
+    setApiKeyInput('');
+  };
+
+  const handleSendMessage = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!currentMessage.trim() || isAiThinking) return;
+
+    const newMessage: ChatMessage = { role: 'user', text: currentMessage };
+
+    // Handle different output modes
+    if (outputMode === 'design') {
+      await handleDesignRequest(currentMessage);
+    } else {
+      // Regular discussion mode
+      const newHistory = [...conversationHistory, newMessage];
+      setConversationHistory(newHistory);
+      setCurrentMessage('');
+      setLoadingMessage('Thinking...');
+      setIsAiThinking(true);
+      setError(null);
+
+      try {
+        // Add context from previous steps
+        const contextPrompt = ContextService.generateContextPrompt();
+        let enhancedReferenceText = referenceText + contextPrompt;
+
+        // Add knowledge base context if enabled
+        if (includeKnowledgeBase) {
+          const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+            currentMessage,
+            includeKnowledgeBase
+          );
+          // Use the enhanced prompt for the conversation
+          newHistory[newHistory.length - 1].text = enhancedPrompt;
+        }
+
+        const modelResponse = await continueConversation(newHistory, enhancedReferenceText, outputMode);
+        setConversationHistory(prev => [...prev, { role: 'model', text: modelResponse }]);
+
+        // Extract and save LLM summary
+        const llmSummary = ContextService.extractLLMSummary(modelResponse);
+        ContextService.addStepSummary('discussion', newMessage.text, llmSummary);
+
+        // Add discussion to context
+        ContextService.addDiscussionToContext(newMessage.text, true);
+
+        // Save to thread
+        if (currentThread) {
+          ThreadService.addMessageToThread(currentThread.id, newMessage);
+          ThreadService.addMessageToThread(currentThread.id, { role: 'model', text: modelResponse });
+        } else {
+          const thread = ThreadService.createThread(outputMode, newMessage);
+          ThreadService.addMessageToThread(thread.id, { role: 'model', text: modelResponse });
+          setCurrentThread(thread);
+        }
+
+        if (isTtsEnabled) {
+          speak(modelResponse, speechRate, selectedVoiceURI);
+        }
+      } catch (err: any) {
+        console.error(err);
+        setError(err.message || 'An error occurred while communicating with the AI.');
+      } finally {
+        setIsAiThinking(false);
+        setLoadingMessage('');
+      }
+    }
+
+    setCurrentMessage('');
+  };
+
+  const handleDesignRequest = async (userInput: string) => {
+    setLoadingMessage('Generating component design...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Extract component name from user input or use a default
+      const componentMatch = userInput.match(/design\s+(?:for\s+)?(.+?)(?:\s|$)/i);
+      const componentName = componentMatch ? componentMatch[1].trim() : 'Component';
+
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const designGuidelines = GuidelinesService.getActiveGuidelines('design');
+      const allGuidelines = [...activeGuidelines, ...designGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      const design = await DesignService.generateComponentDesign(
+        componentName,
+        scopeContext,
+        enhancedUserInput,
+        guidelinesText,
+        referenceText
+      );
+
+      loadDesigns();
+      setLoadingMessage('');
+
+      // Add to conversation history for reference
+      setConversationHistory(prev => [
+        ...prev,
+        { role: 'user', text: userInput },
+        { role: 'model', text: `Design generated for ${componentName}. You can view the detailed design in the Design Display section below.` }
+      ]);
+
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'An error occurred while generating the design.');
+    } finally {
+      setIsAiThinking(false);
+      setLoadingMessage('');
+    }
+  };
+
+  const handleDrawingRequest = async (userInput: string) => {
+    setLoadingMessage('🔍 Analyzing your drawing requirements...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Enhanced input validation
+      if (!userInput.trim()) {
+        throw new Error('Please provide specific drawing requirements.');
+      }
+
+      if (userInput.trim().length < 10) {
+        throw new Error('Please provide more detailed drawing requirements (at least 10 characters).');
+      }
+
+      // Smart title extraction with flexible patterns
+      let title = 'Technical Drawing';
+      const titlePatterns = [
+        /(?:drawing|draw|create|generate|design)\s+(?:for\s+|of\s+|a\s+)?(.+?)(?:\s+(?:drawing|plan|view|section|detail)|$)/i,
+        /(?:plan|elevation|section|detail)\s+(?:for\s+|of\s+)?(.+?)(?:\s|$)/i,
+        /(.+?)\s+(?:drawing|plan|elevation|section|detail)/i
+      ];
+      
+      for (const pattern of titlePatterns) {
+        const match = userInput.match(pattern);
+        if (match && match[1].trim().length > 2) {
+          title = match[1].trim();
+          break;
+        }
+      }
+
+      // Gather all available context
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const drawingGuidelines = GuidelinesService.getActiveGuidelines('drawing');
+      const allGuidelines = [...activeGuidelines, ...drawingGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+      const designContext = ThreadService.getAllContextForMode('design');
+      
+      // Get existing designs that might be relevant
+      const existingDesigns = designs.filter(d => d.includeInContext !== false);
+      const designsContext = existingDesigns.length > 0 
+        ? existingDesigns.map(d => `**Design: ${d.componentName}**\n${d.designContent.substring(0, 500)}...`).join('\n\n')
+        : '';
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      // Create flexible, context-aware prompt for the LLM with comprehensive ezdxf knowledge
+      const flexibleDrawingPrompt = `You are a professional construction engineer and technical draftsman with expertise in Python ezdxf library for creating professional DXF files. You need to create a technical drawing based on the user's specific requirements.
+```
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { HsrItem, ChatMessage, KeywordsByItem, OutputMode, UserGuideline, ComponentDesign, ConversationThread } from './types';
+import { continueConversation, generatePlainTextEstimate, generateKeywordsForItems } from './services/geminiService';
+import { searchHSR } from './services/hsrService';
+import { extractHsrNumbersFromText } from './services/keywordService';
+import { speak } from './services/speechService';
+import { GuidelinesService } from './services/guidelinesService';
+import { ThreadService } from './services/threadService';
+import { DesignService } from './services/designService';
+import { ContextService } from './services/contextService';
+import { Spinner } from './components/Spinner';
+import { ResultDisplay } from './components/ResultDisplay';
+import { KeywordsDisplay } from './components/KeywordsDisplay';
+import { HsrItemsDisplay } from './components/HsrItemsDisplay';
+import { VoiceInput } from './components/VoiceInput';
+import { FileUpload } from './components/FileUpload';
+import { GuidelinesManager } from './components/GuidelinesManager';
+import { OutputModeSelector } from './components/OutputModeSelector';
+import { DesignDisplay } from './components/DesignDisplay';
+import { ContextManager } from './components/ContextManager';
+import { LLMProviderSelector } from './components/LLMProviderSelector';
+import { KnowledgeBaseManager } from './components/KnowledgeBaseManager';
+import { KnowledgeBaseDisplay } from './components/KnowledgeBaseDisplay';
+import { LLMService } from './services/llmService';
+import { RAGService } from './services/ragService';
+
+type Step = 'scoping' | 'generatingKeywords' | 'approvingKeywords' | 'approvingHsrItems' | 'approvingRefinedHsrItems' | 'generatingEstimate' | 'reviewingEstimate' | 'done';
+type ReferenceDoc = { file: File; text: string };
+
+const App: React.FC = () => {
+  const [step, setStep] = useState<Step>('scoping');
+  const [conversationHistory, setConversationHistory] = useState<ChatMessage[]>([
+    { role: 'model', text: 'Hello! I am your AI assistant for construction estimation. Please describe the project you want to build, and we can define its scope together.' }
+  ]);
+  const [currentMessage, setCurrentMessage] = useState<string>('');
+  const [finalizedScope, setFinalizedScope] = useState<string>('');
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [keywordsByItem, setKeywordsByItem] = useState<KeywordsByItem>({});
+  const [hsrItems, setHsrItems] = useState<HsrItem[]>([]);
+  const [newlyFoundHsrItems, setNewlyFoundHsrItems] = useState<HsrItem[]>([]);
+  const [finalEstimateText, setFinalEstimateText] = useState<string>('');
+  const [editInstruction, setEditInstruction] = useState<string>('');
+  const [keywordFeedback, setKeywordFeedback] = useState<string>('');
+  const [hsrItemFeedback, setHsrItemFeedback] = useState<string>('');
+  const [refinedHsrItemFeedback, setRefinedHsrItemFeedback] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+  const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
+  const [loadingMessage, setLoadingMessage] = useState<string>('');
+  const [isTtsEnabled, setIsTtsEnabled] = useState<boolean>(false);
+  const [speechRate, setSpeechRate] = useState(1);
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState<string | null>(null);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [apiKey, setApiKey] = useState<string>('');
+  const [apiKeyInput, setApiKeyInput] = useState<string>('');
+
+  const [referenceDocs, setReferenceDocs] = useState<ReferenceDoc[]>([]);
+  const [isFileProcessing, setIsFileProcessing] = useState<boolean>(false);
+
+  // Enhanced state for integrated workflow
+  const [outputMode, setOutputMode] = useState<OutputMode>('discussion');
+  const [currentThread, setCurrentThread] = useState<ConversationThread | null>(null);
+  const [guidelines, setGuidelines] = useState<UserGuideline[]>([]);
+  const [designs, setDesigns] = useState<ComponentDesign[]>([]);
+  const [isGuidelinesOpen, setIsGuidelinesOpen] = useState<boolean>(false);
+  const [isLLMSettingsOpen, setIsLLMSettingsOpen] = useState<boolean>(false);
+  const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState<boolean>(false);
+  const [includeKnowledgeBase, setIncludeKnowledgeBase] = useState<boolean>(false);
+  const [currentProvider, setCurrentProvider] = useState<string>(LLMService.getCurrentProvider());
+  const [currentModel, setCurrentModel] = useState<string>(LLMService.getCurrentModel());
+  const [showProjectData, setShowProjectData] = useState<boolean>(false);
+  const [contextKey, setContextKey] = useState<number>(0); // Force re-render of context
+
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  const referenceText = useMemo(() => 
+    referenceDocs.map(doc => `--- START OF ${doc.file.name} ---\n${doc.text}\n--- END OF ${doc.file.name} ---`).join('\n\n'), 
+  [referenceDocs]);
+
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [conversationHistory]);
+
+  useEffect(() => {
+    const storedApiKey = localStorage.getItem('gemini-api-key');
+    if (storedApiKey) {
+        setApiKey(storedApiKey);
+    }
+
+    // Load guidelines and project data
+    loadGuidelines();
+    loadDesigns();
+
+    // Initialize context if not exists
+    const existingContext = ContextService.getCurrentContext();
+    if (!existingContext && conversationHistory.length > 1) {
+      const projectDescription = conversationHistory.slice(1).map(msg => msg.text).join(' ').substring(0, 200);
+      ContextService.initializeContext(projectDescription);
+    }
+  }, []);
+
+  const loadGuidelines = () => {
+    const loadedGuidelines = GuidelinesService.loadGuidelines();
+    setGuidelines(loadedGuidelines);
+  };
+
+  const loadDesigns = () => {
+    const loadedDesigns = DesignService.loadDesigns();
+    setDesigns(loadedDesigns);
+  };
+
+  const handleContextUpdate = () => {
+    setContextKey(prev => prev + 1); // Force re-render of context components
+  };
+
+  const handleKnowledgeBaseUpdate = () => {
+    // Force re-render when knowledge base is updated
+    setContextKey(prev => prev + 1);
+  };
+
+
+
+  useEffect(() => {
+    const loadVoices = () => {
+        setAvailableVoices(window.speechSynthesis.getVoices());
+    };
+
+    // Load voices initially
+    loadVoices();
+
+    // Update when the voice list changes
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+
+    // Cleanup
+    return () => {
+        window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
+
+  const resetState = () => {
+    setStep('scoping');
+    setConversationHistory([{ role: 'model', text: 'Hello! Please describe the project you want to build.' }]);
+    setCurrentMessage('');
+    setFinalizedScope('');
+    setKeywords([]);
+    setKeywordsByItem({});
+    setHsrItems([]);
+    setFinalEstimateText('');
+    setEditInstruction('');
+    setError(null);
+    setIsAiThinking(false);
+    setLoadingMessage('');
+    setReferenceDocs([]);
+    setIsFileProcessing(false);
+    setOutputMode('discussion');
+    setCurrentThread(null);
+    setShowProjectData(false);
+    // Clear all threads for new project
+    ThreadService.clearAllThreads();
+  };
+  
+  const handleFileUpload = (newFiles: ReferenceDoc[]) => {
+    setReferenceDocs(prevDocs => {
+      const existingFileNames = new Set(prevDocs.map(doc => doc.file.name));
+      const filteredNewFiles = newFiles.filter(newFile => !existingFileNames.has(newFile.file.name));
+      return [...prevDocs, ...filteredNewFiles];
+    });
+  };
+
+  const handleFileRemove = (fileNameToRemove: string) => {
+    setReferenceDocs(prevDocs => prevDocs.filter(doc => doc.file.name !== fileNameToRemove));
+  };
+
+  const handleApiKeySave = () => {
+    localStorage.setItem('gemini-api-key', apiKeyInput);
+    setApiKey(apiKeyInput);
+    setApiKeyInput('');
+  };
+
+  const handleSendMessage = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!currentMessage.trim() || isAiThinking) return;
+
+    const newMessage: ChatMessage = { role: 'user', text: currentMessage };
+
+    // Handle different output modes
+    if (outputMode === 'design') {
+      await handleDesignRequest(currentMessage);
+    } else {
+      // Regular discussion mode
+      const newHistory = [...conversationHistory, newMessage];
+      setConversationHistory(newHistory);
+      setCurrentMessage('');
+      setLoadingMessage('Thinking...');
+      setIsAiThinking(true);
+      setError(null);
+
+      try {
+        // Add context from previous steps
+        const contextPrompt = ContextService.generateContextPrompt();
+        let enhancedReferenceText = referenceText + contextPrompt;
+
+        // Add knowledge base context if enabled
+        if (includeKnowledgeBase) {
+          const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+            currentMessage,
+            includeKnowledgeBase
+          );
+          // Use the enhanced prompt for the conversation
+          newHistory[newHistory.length - 1].text = enhancedPrompt;
+        }
+
+        const modelResponse = await continueConversation(newHistory, enhancedReferenceText, outputMode);
+        setConversationHistory(prev => [...prev, { role: 'model', text: modelResponse }]);
+
+        // Extract and save LLM summary
+        const llmSummary = ContextService.extractLLMSummary(modelResponse);
+        ContextService.addStepSummary('discussion', newMessage.text, llmSummary);
+
+        // Add discussion to context
+        ContextService.addDiscussionToContext(newMessage.text, true);
+
+        // Save to thread
+        if (currentThread) {
+          ThreadService.addMessageToThread(currentThread.id, newMessage);
+          ThreadService.addMessageToThread(currentThread.id, { role: 'model', text: modelResponse });
+        } else {
+          const thread = ThreadService.createThread(outputMode, newMessage);
+          ThreadService.addMessageToThread(thread.id, { role: 'model', text: modelResponse });
+          setCurrentThread(thread);
+        }
+
+        if (isTtsEnabled) {
+          speak(modelResponse, speechRate, selectedVoiceURI);
+        }
+      } catch (err: any) {
+        console.error(err);
+        setError(err.message || 'An error occurred while communicating with the AI.');
+      } finally {
+        setIsAiThinking(false);
+        setLoadingMessage('');
+      }
+    }
+
+    setCurrentMessage('');
+  };
+
+  const handleDesignRequest = async (userInput: string) => {
+    setLoadingMessage('Generating component design...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Extract component name from user input or use a default
+      const componentMatch = userInput.match(/design\s+(?:for\s+)?(.+?)(?:\s|$)/i);
+      const componentName = componentMatch ? componentMatch[1].trim() : 'Component';
+
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const designGuidelines = GuidelinesService.getActiveGuidelines('design');
+      const allGuidelines = [...activeGuidelines, ...designGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      const design = await DesignService.generateComponentDesign(
+        componentName,
+        scopeContext,
+        enhancedUserInput,
+        guidelinesText,
+        referenceText
+      );
+
+      loadDesigns();
+      setLoadingMessage('');
+
+      // Add to conversation history for reference
+      setConversationHistory(prev => [
+        ...prev,
+        { role: 'user', text: userInput },
+        { role: 'model', text: `Design generated for ${componentName}. You can view the detailed design in the Design Display section below.` }
+      ]);
+
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'An error occurred while generating the design.');
+    } finally {
+      setIsAiThinking(false);
+      setLoadingMessage('');
+    }
+  };
+
+  const handleDrawingRequest = async (userInput: string) => {
+    setLoadingMessage('🔍 Analyzing your drawing requirements...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Enhanced input validation
+      if (!userInput.trim()) {
+        throw new Error('Please provide specific drawing requirements.');
+      }
+
+      if (userInput.trim().length < 10) {
+        throw new Error('Please provide more detailed drawing requirements (at least 10 characters).');
+      }
+
+      // Smart title extraction with flexible patterns
+      let title = 'Technical Drawing';
+      const titlePatterns = [
+        /(?:drawing|draw|create|generate|design)\s+(?:for\s+|of\s+|a\s+)?(.+?)(?:\s+(?:drawing|plan|view|section|detail)|$)/i,
+        /(?:plan|elevation|section|detail)\s+(?:for\s+|of\s+)?(.+?)(?:\s|$)/i,
+        /(.+?)\s+(?:drawing|plan|elevation|section|detail)/i
+      ];
+      
+      for (const pattern of titlePatterns) {
+        const match = userInput.match(pattern);
+        if (match && match[1].trim().length > 2) {
+          title = match[1].trim();
+          break;
+        }
+      }
+
+      // Gather all available context
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const drawingGuidelines = GuidelinesService.getActiveGuidelines('drawing');
+      const allGuidelines = [...activeGuidelines, ...drawingGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+      const designContext = ThreadService.getAllContextForMode('design');
+      
+      // Get existing designs that might be relevant
+      const existingDesigns = designs.filter(d => d.includeInContext !== false);
+      const designsContext = existingDesigns.length > 0 
+        ? existingDesigns.map(d => `**Design: ${d.componentName}**\n${d.designContent.substring(0, 500)}...`).join('\n\n')
+        : '';
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      // Create flexible, context-aware prompt for the LLM with comprehensive ezdxf knowledge
+      const flexibleDrawingPrompt = `You are a professional construction engineer and technical draftsman with expertise in Python ezdxf library for creating professional DXF files. You need to create a technical drawing based on the user's specific requirements.
+```
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { HsrItem, ChatMessage, KeywordsByItem, OutputMode, UserGuideline, ComponentDesign, ConversationThread } from './types';
+import { continueConversation, generatePlainTextEstimate, generateKeywordsForItems } from './services/geminiService';
+import { searchHSR } from './services/hsrService';
+import { extractHsrNumbersFromText } from './services/keywordService';
+import { speak } from './services/speechService';
+import { GuidelinesService } from './services/guidelinesService';
+import { ThreadService } from './services/threadService';
+import { DesignService } from './services/designService';
+import { ContextService } from './services/contextService';
+import { Spinner } from './components/Spinner';
+import { ResultDisplay } from './components/ResultDisplay';
+import { KeywordsDisplay } from './components/KeywordsDisplay';
+import { HsrItemsDisplay } from './components/HsrItemsDisplay';
+import { VoiceInput } from './components/VoiceInput';
+import { FileUpload } from './components/FileUpload';
+import { GuidelinesManager } from './components/GuidelinesManager';
+import { OutputModeSelector } from './components/OutputModeSelector';
+import { DesignDisplay } from './components/DesignDisplay';
+import { ContextManager } from './components/ContextManager';
+import { LLMProviderSelector } from './components/LLMProviderSelector';
+import { KnowledgeBaseManager } from './components/KnowledgeBaseManager';
+import { KnowledgeBaseDisplay } from './components/KnowledgeBaseDisplay';
+import { LLMService } from './services/llmService';
+import { RAGService } from './services/ragService';
+
+type Step = 'scoping' | 'generatingKeywords' | 'approvingKeywords' | 'approvingHsrItems' | 'approvingRefinedHsrItems' | 'generatingEstimate' | 'reviewingEstimate' | 'done';
+type ReferenceDoc = { file: File; text: string };
+
+const App: React.FC = () => {
+  const [step, setStep] = useState<Step>('scoping');
+  const [conversationHistory, setConversationHistory] = useState<ChatMessage[]>([
+    { role: 'model', text: 'Hello! I am your AI assistant for construction estimation. Please describe the project you want to build, and we can define its scope together.' }
+  ]);
+  const [currentMessage, setCurrentMessage] = useState<string>('');
+  const [finalizedScope, setFinalizedScope] = useState<string>('');
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [keywordsByItem, setKeywordsByItem] = useState<KeywordsByItem>({});
+  const [hsrItems, setHsrItems] = useState<HsrItem[]>([]);
+  const [newlyFoundHsrItems, setNewlyFoundHsrItems] = useState<HsrItem[]>([]);
+  const [finalEstimateText, setFinalEstimateText] = useState<string>('');
+  const [editInstruction, setEditInstruction] = useState<string>('');
+  const [keywordFeedback, setKeywordFeedback] = useState<string>('');
+  const [hsrItemFeedback, setHsrItemFeedback] = useState<string>('');
+  const [refinedHsrItemFeedback, setRefinedHsrItemFeedback] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+  const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
+  const [loadingMessage, setLoadingMessage] = useState<string>('');
+  const [isTtsEnabled, setIsTtsEnabled] = useState<boolean>(false);
+  const [speechRate, setSpeechRate] = useState(1);
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState<string | null>(null);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [apiKey, setApiKey] = useState<string>('');
+  const [apiKeyInput, setApiKeyInput] = useState<string>('');
+
+  const [referenceDocs, setReferenceDocs] = useState<ReferenceDoc[]>([]);
+  const [isFileProcessing, setIsFileProcessing] = useState<boolean>(false);
+
+  // Enhanced state for integrated workflow
+  const [outputMode, setOutputMode] = useState<OutputMode>('discussion');
+  const [currentThread, setCurrentThread] = useState<ConversationThread | null>(null);
+  const [guidelines, setGuidelines] = useState<UserGuideline[]>([]);
+  const [designs, setDesigns] = useState<ComponentDesign[]>([]);
+  const [isGuidelinesOpen, setIsGuidelinesOpen] = useState<boolean>(false);
+  const [isLLMSettingsOpen, setIsLLMSettingsOpen] = useState<boolean>(false);
+  const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState<boolean>(false);
+  const [includeKnowledgeBase, setIncludeKnowledgeBase] = useState<boolean>(false);
+  const [currentProvider, setCurrentProvider] = useState<string>(LLMService.getCurrentProvider());
+  const [currentModel, setCurrentModel] = useState<string>(LLMService.getCurrentModel());
+  const [showProjectData, setShowProjectData] = useState<boolean>(false);
+  const [contextKey, setContextKey] = useState<number>(0); // Force re-render of context
+
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  const referenceText = useMemo(() => 
+    referenceDocs.map(doc => `--- START OF ${doc.file.name} ---\n${doc.text}\n--- END OF ${doc.file.name} ---`).join('\n\n'), 
+  [referenceDocs]);
+
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [conversationHistory]);
+
+  useEffect(() => {
+    const storedApiKey = localStorage.getItem('gemini-api-key');
+    if (storedApiKey) {
+        setApiKey(storedApiKey);
+    }
+
+    // Load guidelines and project data
+    loadGuidelines();
+    loadDesigns();
+
+    // Initialize context if not exists
+    const existingContext = ContextService.getCurrentContext();
+    if (!existingContext && conversationHistory.length > 1) {
+      const projectDescription = conversationHistory.slice(1).map(msg => msg.text).join(' ').substring(0, 200);
+      ContextService.initializeContext(projectDescription);
+    }
+  }, []);
+
+  const loadGuidelines = () => {
+    const loadedGuidelines = GuidelinesService.loadGuidelines();
+    setGuidelines(loadedGuidelines);
+  };
+
+  const loadDesigns = () => {
+    const loadedDesigns = DesignService.loadDesigns();
+    setDesigns(loadedDesigns);
+  };
+
+  const handleContextUpdate = () => {
+    setContextKey(prev => prev + 1); // Force re-render of context components
+  };
+
+  const handleKnowledgeBaseUpdate = () => {
+    // Force re-render when knowledge base is updated
+    setContextKey(prev => prev + 1);
+  };
+
+
+
+  useEffect(() => {
+    const loadVoices = () => {
+        setAvailableVoices(window.speechSynthesis.getVoices());
+    };
+
+    // Load voices initially
+    loadVoices();
+
+    // Update when the voice list changes
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+
+    // Cleanup
+    return () => {
+        window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
+
+  const resetState = () => {
+    setStep('scoping');
+    setConversationHistory([{ role: 'model', text: 'Hello! Please describe the project you want to build.' }]);
+    setCurrentMessage('');
+    setFinalizedScope('');
+    setKeywords([]);
+    setKeywordsByItem({});
+    setHsrItems([]);
+    setFinalEstimateText('');
+    setEditInstruction('');
+    setError(null);
+    setIsAiThinking(false);
+    setLoadingMessage('');
+    setReferenceDocs([]);
+    setIsFileProcessing(false);
+    setOutputMode('discussion');
+    setCurrentThread(null);
+    setShowProjectData(false);
+    // Clear all threads for new project
+    ThreadService.clearAllThreads();
+  };
+  
+  const handleFileUpload = (newFiles: ReferenceDoc[]) => {
+    setReferenceDocs(prevDocs => {
+      const existingFileNames = new Set(prevDocs.map(doc => doc.file.name));
+      const filteredNewFiles = newFiles.filter(newFile => !existingFileNames.has(newFile.file.name));
+      return [...prevDocs, ...filteredNewFiles];
+    });
+  };
+
+  const handleFileRemove = (fileNameToRemove: string) => {
+    setReferenceDocs(prevDocs => prevDocs.filter(doc => doc.file.name !== fileNameToRemove));
+  };
+
+  const handleApiKeySave = () => {
+    localStorage.setItem('gemini-api-key', apiKeyInput);
+    setApiKey(apiKeyInput);
+    setApiKeyInput('');
+  };
+
+  const handleSendMessage = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!currentMessage.trim() || isAiThinking) return;
+
+    const newMessage: ChatMessage = { role: 'user', text: currentMessage };
+
+    // Handle different output modes
+    if (outputMode === 'design') {
+      await handleDesignRequest(currentMessage);
+    } else {
+      // Regular discussion mode
+      const newHistory = [...conversationHistory, newMessage];
+      setConversationHistory(newHistory);
+      setCurrentMessage('');
+      setLoadingMessage('Thinking...');
+      setIsAiThinking(true);
+      setError(null);
+
+      try {
+        // Add context from previous steps
+        const contextPrompt = ContextService.generateContextPrompt();
+        let enhancedReferenceText = referenceText + contextPrompt;
+
+        // Add knowledge base context if enabled
+        if (includeKnowledgeBase) {
+          const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+            currentMessage,
+            includeKnowledgeBase
+          );
+          // Use the enhanced prompt for the conversation
+          newHistory[newHistory.length - 1].text = enhancedPrompt;
+        }
+
+        const modelResponse = await continueConversation(newHistory, enhancedReferenceText, outputMode);
+        setConversationHistory(prev => [...prev, { role: 'model', text: modelResponse }]);
+
+        // Extract and save LLM summary
+        const llmSummary = ContextService.extractLLMSummary(modelResponse);
+        ContextService.addStepSummary('discussion', newMessage.text, llmSummary);
+
+        // Add discussion to context
+        ContextService.addDiscussionToContext(newMessage.text, true);
+
+        // Save to thread
+        if (currentThread) {
+          ThreadService.addMessageToThread(currentThread.id, newMessage);
+          ThreadService.addMessageToThread(currentThread.id, { role: 'model', text: modelResponse });
+        } else {
+          const thread = ThreadService.createThread(outputMode, newMessage);
+          ThreadService.addMessageToThread(thread.id, { role: 'model', text: modelResponse });
+          setCurrentThread(thread);
+        }
+
+        if (isTtsEnabled) {
+          speak(modelResponse, speechRate, selectedVoiceURI);
+        }
+      } catch (err: any) {
+        console.error(err);
+        setError(err.message || 'An error occurred while communicating with the AI.');
+      } finally {
+        setIsAiThinking(false);
+        setLoadingMessage('');
+      }
+    }
+
+    setCurrentMessage('');
+  };
+
+  const handleDesignRequest = async (userInput: string) => {
+    setLoadingMessage('Generating component design...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Extract component name from user input or use a default
+      const componentMatch = userInput.match(/design\s+(?:for\s+)?(.+?)(?:\s|$)/i);
+      const componentName = componentMatch ? componentMatch[1].trim() : 'Component';
+
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const designGuidelines = GuidelinesService.getActiveGuidelines('design');
+      const allGuidelines = [...activeGuidelines, ...designGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      const design = await DesignService.generateComponentDesign(
+        componentName,
+        scopeContext,
+        enhancedUserInput,
+        guidelinesText,
+        referenceText
+      );
+
+      loadDesigns();
+      setLoadingMessage('');
+
+      // Add to conversation history for reference
+      setConversationHistory(prev => [
+        ...prev,
+        { role: 'user', text: userInput },
+        { role: 'model', text: `Design generated for ${componentName}. You can view the detailed design in the Design Display section below.` }
+      ]);
+
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'An error occurred while generating the design.');
+    } finally {
+      setIsAiThinking(false);
+      setLoadingMessage('');
+    }
+  };
+
+  const handleDrawingRequest = async (userInput: string) => {
+    setLoadingMessage('🔍 Analyzing your drawing requirements...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Enhanced input validation
+      if (!userInput.trim()) {
+        throw new Error('Please provide specific drawing requirements.');
+      }
+
+      if (userInput.trim().length < 10) {
+        throw new Error('Please provide more detailed drawing requirements (at least 10 characters).');
+      }
+
+      // Smart title extraction with flexible patterns
+      let title = 'Technical Drawing';
+      const titlePatterns = [
+        /(?:drawing|draw|create|generate|design)\s+(?:for\s+|of\s+|a\s+)?(.+?)(?:\s+(?:drawing|plan|view|section|detail)|$)/i,
+        /(?:plan|elevation|section|detail)\s+(?:for\s+|of\s+)?(.+?)(?:\s|$)/i,
+        /(.+?)\s+(?:drawing|plan|elevation|section|detail)/i
+      ];
+      
+      for (const pattern of titlePatterns) {
+        const match = userInput.match(pattern);
+        if (match && match[1].trim().length > 2) {
+          title = match[1].trim();
+          break;
+        }
+      }
+
+      // Gather all available context
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const drawingGuidelines = GuidelinesService.getActiveGuidelines('drawing');
+      const allGuidelines = [...activeGuidelines, ...drawingGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+      const designContext = ThreadService.getAllContextForMode('design');
+      
+      // Get existing designs that might be relevant
+      const existingDesigns = designs.filter(d => d.includeInContext !== false);
+      const designsContext = existingDesigns.length > 0 
+        ? existingDesigns.map(d => `**Design: ${d.componentName}**\n${d.designContent.substring(0, 500)}...`).join('\n\n')
+        : '';
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      // Create flexible, context-aware prompt for the LLM with comprehensive ezdxf knowledge
+      const flexibleDrawingPrompt = `You are a professional construction engineer and technical draftsman with expertise in Python ezdxf library for creating professional DXF files. You need to create a technical drawing based on the user's specific requirements.
+```
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { HsrItem, ChatMessage, KeywordsByItem, OutputMode, UserGuideline, ComponentDesign, ConversationThread } from './types';
+import { continueConversation, generatePlainTextEstimate, generateKeywordsForItems } from './services/geminiService';
+import { searchHSR } from './services/hsrService';
+import { extractHsrNumbersFromText } from './services/keywordService';
+import { speak } from './services/speechService';
+import { GuidelinesService } from './services/guidelinesService';
+import { ThreadService } from './services/threadService';
+import { DesignService } from './services/designService';
+import { ContextService } from './services/contextService';
+import { Spinner } from './components/Spinner';
+import { ResultDisplay } from './components/ResultDisplay';
+import { KeywordsDisplay } from './components/KeywordsDisplay';
+import { HsrItemsDisplay } from './components/HsrItemsDisplay';
+import { VoiceInput } from './components/VoiceInput';
+import { FileUpload } from './components/FileUpload';
+import { GuidelinesManager } from './components/GuidelinesManager';
+import { OutputModeSelector } from './components/OutputModeSelector';
+import { DesignDisplay } from './components/DesignDisplay';
+import { ContextManager } from './components/ContextManager';
+import { LLMProviderSelector } from './components/LLMProviderSelector';
+import { KnowledgeBaseManager } from './components/KnowledgeBaseManager';
+import { KnowledgeBaseDisplay } from './components/KnowledgeBaseDisplay';
+import { LLMService } from './services/llmService';
+import { RAGService } from './services/ragService';
+
+type Step = 'scoping' | 'generatingKeywords' | 'approvingKeywords' | 'approvingHsrItems' | 'approvingRefinedHsrItems' | 'generatingEstimate' | 'reviewingEstimate' | 'done';
+type ReferenceDoc = { file: File; text: string };
+
+const App: React.FC = () => {
+  const [step, setStep] = useState<Step>('scoping');
+  const [conversationHistory, setConversationHistory] = useState<ChatMessage[]>([
+    { role: 'model', text: 'Hello! I am your AI assistant for construction estimation. Please describe the project you want to build, and we can define its scope together.' }
+  ]);
+  const [currentMessage, setCurrentMessage] = useState<string>('');
+  const [finalizedScope, setFinalizedScope] = useState<string>('');
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [keywordsByItem, setKeywordsByItem] = useState<KeywordsByItem>({});
+  const [hsrItems, setHsrItems] = useState<HsrItem[]>([]);
+  const [newlyFoundHsrItems, setNewlyFoundHsrItems] = useState<HsrItem[]>([]);
+  const [finalEstimateText, setFinalEstimateText] = useState<string>('');
+  const [editInstruction, setEditInstruction] = useState<string>('');
+  const [keywordFeedback, setKeywordFeedback] = useState<string>('');
+  const [hsrItemFeedback, setHsrItemFeedback] = useState<string>('');
+  const [refinedHsrItemFeedback, setRefinedHsrItemFeedback] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+  const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
+  const [loadingMessage, setLoadingMessage] = useState<string>('');
+  const [isTtsEnabled, setIsTtsEnabled] = useState<boolean>(false);
+  const [speechRate, setSpeechRate] = useState(1);
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState<string | null>(null);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [apiKey, setApiKey] = useState<string>('');
+  const [apiKeyInput, setApiKeyInput] = useState<string>('');
+
+  const [referenceDocs, setReferenceDocs] = useState<ReferenceDoc[]>([]);
+  const [isFileProcessing, setIsFileProcessing] = useState<boolean>(false);
+
+  // Enhanced state for integrated workflow
+  const [outputMode, setOutputMode] = useState<OutputMode>('discussion');
+  const [currentThread, setCurrentThread] = useState<ConversationThread | null>(null);
+  const [guidelines, setGuidelines] = useState<UserGuideline[]>([]);
+  const [designs, setDesigns] = useState<ComponentDesign[]>([]);
+  const [isGuidelinesOpen, setIsGuidelinesOpen] = useState<boolean>(false);
+  const [isLLMSettingsOpen, setIsLLMSettingsOpen] = useState<boolean>(false);
+  const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState<boolean>(false);
+  const [includeKnowledgeBase, setIncludeKnowledgeBase] = useState<boolean>(false);
+  const [currentProvider, setCurrentProvider] = useState<string>(LLMService.getCurrentProvider());
+  const [currentModel, setCurrentModel] = useState<string>(LLMService.getCurrentModel());
+  const [showProjectData, setShowProjectData] = useState<boolean>(false);
+  const [contextKey, setContextKey] = useState<number>(0); // Force re-render of context
+
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  const referenceText = useMemo(() => 
+    referenceDocs.map(doc => `--- START OF ${doc.file.name} ---\n${doc.text}\n--- END OF ${doc.file.name} ---`).join('\n\n'), 
+  [referenceDocs]);
+
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [conversationHistory]);
+
+  useEffect(() => {
+    const storedApiKey = localStorage.getItem('gemini-api-key');
+    if (storedApiKey) {
+        setApiKey(storedApiKey);
+    }
+
+    // Load guidelines and project data
+    loadGuidelines();
+    loadDesigns();
+
+    // Initialize context if not exists
+    const existingContext = ContextService.getCurrentContext();
+    if (!existingContext && conversationHistory.length > 1) {
+      const projectDescription = conversationHistory.slice(1).map(msg => msg.text).join(' ').substring(0, 200);
+      ContextService.initializeContext(projectDescription);
+    }
+  }, []);
+
+  const loadGuidelines = () => {
+    const loadedGuidelines = GuidelinesService.loadGuidelines();
+    setGuidelines(loadedGuidelines);
+  };
+
+  const loadDesigns = () => {
+    const loadedDesigns = DesignService.loadDesigns();
+    setDesigns(loadedDesigns);
+  };
+
+  const handleContextUpdate = () => {
+    setContextKey(prev => prev + 1); // Force re-render of context components
+  };
+
+  const handleKnowledgeBaseUpdate = () => {
+    // Force re-render when knowledge base is updated
+    setContextKey(prev => prev + 1);
+  };
+
+
+
+  useEffect(() => {
+    const loadVoices = () => {
+        setAvailableVoices(window.speechSynthesis.getVoices());
+    };
+
+    // Load voices initially
+    loadVoices();
+
+    // Update when the voice list changes
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+
+    // Cleanup
+    return () => {
+        window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
+
+  const resetState = () => {
+    setStep('scoping');
+    setConversationHistory([{ role: 'model', text: 'Hello! Please describe the project you want to build.' }]);
+    setCurrentMessage('');
+    setFinalizedScope('');
+    setKeywords([]);
+    setKeywordsByItem({});
+    setHsrItems([]);
+    setFinalEstimateText('');
+    setEditInstruction('');
+    setError(null);
+    setIsAiThinking(false);
+    setLoadingMessage('');
+    setReferenceDocs([]);
+    setIsFileProcessing(false);
+    setOutputMode('discussion');
+    setCurrentThread(null);
+    setShowProjectData(false);
+    // Clear all threads for new project
+    ThreadService.clearAllThreads();
+  };
+  
+  const handleFileUpload = (newFiles: ReferenceDoc[]) => {
+    setReferenceDocs(prevDocs => {
+      const existingFileNames = new Set(prevDocs.map(doc => doc.file.name));
+      const filteredNewFiles = newFiles.filter(newFile => !existingFileNames.has(newFile.file.name));
+      return [...prevDocs, ...filteredNewFiles];
+    });
+  };
+
+  const handleFileRemove = (fileNameToRemove: string) => {
+    setReferenceDocs(prevDocs => prevDocs.filter(doc => doc.file.name !== fileNameToRemove));
+  };
+
+  const handleApiKeySave = () => {
+    localStorage.setItem('gemini-api-key', apiKeyInput);
+    setApiKey(apiKeyInput);
+    setApiKeyInput('');
+  };
+
+  const handleSendMessage = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!currentMessage.trim() || isAiThinking) return;
+
+    const newMessage: ChatMessage = { role: 'user', text: currentMessage };
+
+    // Handle different output modes
+    if (outputMode === 'design') {
+      await handleDesignRequest(currentMessage);
+    } else {
+      // Regular discussion mode
+      const newHistory = [...conversationHistory, newMessage];
+      setConversationHistory(newHistory);
+      setCurrentMessage('');
+      setLoadingMessage('Thinking...');
+      setIsAiThinking(true);
+      setError(null);
+
+      try {
+        // Add context from previous steps
+        const contextPrompt = ContextService.generateContextPrompt();
+        let enhancedReferenceText = referenceText + contextPrompt;
+
+        // Add knowledge base context if enabled
+        if (includeKnowledgeBase) {
+          const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+            currentMessage,
+            includeKnowledgeBase
+          );
+          // Use the enhanced prompt for the conversation
+          newHistory[newHistory.length - 1].text = enhancedPrompt;
+        }
+
+        const modelResponse = await continueConversation(newHistory, enhancedReferenceText, outputMode);
+        setConversationHistory(prev => [...prev, { role: 'model', text: modelResponse }]);
+
+        // Extract and save LLM summary
+        const llmSummary = ContextService.extractLLMSummary(modelResponse);
+        ContextService.addStepSummary('discussion', newMessage.text, llmSummary);
+
+        // Add discussion to context
+        ContextService.addDiscussionToContext(newMessage.text, true);
+
+        // Save to thread
+        if (currentThread) {
+          ThreadService.addMessageToThread(currentThread.id, newMessage);
+          ThreadService.addMessageToThread(currentThread.id, { role: 'model', text: modelResponse });
+        } else {
+          const thread = ThreadService.createThread(outputMode, newMessage);
+          ThreadService.addMessageToThread(thread.id, { role: 'model', text: modelResponse });
+          setCurrentThread(thread);
+        }
+
+        if (isTtsEnabled) {
+          speak(modelResponse, speechRate, selectedVoiceURI);
+        }
+      } catch (err: any) {
+        console.error(err);
+        setError(err.message || 'An error occurred while communicating with the AI.');
+      } finally {
+        setIsAiThinking(false);
+        setLoadingMessage('');
+      }
+    }
+
+    setCurrentMessage('');
+  };
+
+  const handleDesignRequest = async (userInput: string) => {
+    setLoadingMessage('Generating component design...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Extract component name from user input or use a default
+      const componentMatch = userInput.match(/design\s+(?:for\s+)?(.+?)(?:\s|$)/i);
+      const componentName = componentMatch ? componentMatch[1].trim() : 'Component';
+
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const designGuidelines = GuidelinesService.getActiveGuidelines('design');
+      const allGuidelines = [...activeGuidelines, ...designGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      const design = await DesignService.generateComponentDesign(
+        componentName,
+        scopeContext,
+        enhancedUserInput,
+        guidelinesText,
+        referenceText
+      );
+
+      loadDesigns();
+      setLoadingMessage('');
+
+      // Add to conversation history for reference
+      setConversationHistory(prev => [
+        ...prev,
+        { role: 'user', text: userInput },
+        { role: 'model', text: `Design generated for ${componentName}. You can view the detailed design in the Design Display section below.` }
+      ]);
+
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'An error occurred while generating the design.');
+    } finally {
+      setIsAiThinking(false);
+      setLoadingMessage('');
+    }
+  };
+
+  const handleDrawingRequest = async (userInput: string) => {
+    setLoadingMessage('🔍 Analyzing your drawing requirements...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Enhanced input validation
+      if (!userInput.trim()) {
+        throw new Error('Please provide specific drawing requirements.');
+      }
+
+      if (userInput.trim().length < 10) {
+        throw new Error('Please provide more detailed drawing requirements (at least 10 characters).');
+      }
+
+      // Smart title extraction with flexible patterns
+      let title = 'Technical Drawing';
+      const titlePatterns = [
+        /(?:drawing|draw|create|generate|design)\s+(?:for\s+|of\s+|a\s+)?(.+?)(?:\s+(?:drawing|plan|view|section|detail)|$)/i,
+        /(?:plan|elevation|section|detail)\s+(?:for\s+|of\s+)?(.+?)(?:\s|$)/i,
+        /(.+?)\s+(?:drawing|plan|elevation|section|detail)/i
+      ];
+      
+      for (const pattern of titlePatterns) {
+        const match = userInput.match(pattern);
+        if (match && match[1].trim().length > 2) {
+          title = match[1].trim();
+          break;
+        }
+      }
+
+      // Gather all available context
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const drawingGuidelines = GuidelinesService.getActiveGuidelines('drawing');
+      const allGuidelines = [...activeGuidelines, ...drawingGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+      const designContext = ThreadService.getAllContextForMode('design');
+      
+      // Get existing designs that might be relevant
+      const existingDesigns = designs.filter(d => d.includeInContext !== false);
+      const designsContext = existingDesigns.length > 0 
+        ? existingDesigns.map(d => `**Design: ${d.componentName}**\n${d.designContent.substring(0, 500)}...`).join('\n\n')
+        : '';
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      // Create flexible, context-aware prompt for the LLM with comprehensive ezdxf knowledge
+      const flexibleDrawingPrompt = `You are a professional construction engineer and technical draftsman with expertise in Python ezdxf library for creating professional DXF files. You need to create a technical drawing based on the user's specific requirements.
+```
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { HsrItem, ChatMessage, KeywordsByItem, OutputMode, UserGuideline, ComponentDesign, ConversationThread } from './types';
+import { continueConversation, generatePlainTextEstimate, generateKeywordsForItems } from './services/geminiService';
+import { searchHSR } from './services/hsrService';
+import { extractHsrNumbersFromText } from './services/keywordService';
+import { speak } from './services/speechService';
+import { GuidelinesService } from './services/guidelinesService';
+import { ThreadService } from './services/threadService';
+import { DesignService } from './services/designService';
+import { ContextService } from './services/contextService';
+import { Spinner } from './components/Spinner';
+import { ResultDisplay } from './components/ResultDisplay';
+import { KeywordsDisplay } from './components/KeywordsDisplay';
+import { HsrItemsDisplay } from './components/HsrItemsDisplay';
+import { VoiceInput } from './components/VoiceInput';
+import { FileUpload } from './components/FileUpload';
+import { GuidelinesManager } from './components/GuidelinesManager';
+import { OutputModeSelector } from './components/OutputModeSelector';
+import { DesignDisplay } from './components/DesignDisplay';
+import { ContextManager } from './components/ContextManager';
+import { LLMProviderSelector } from './components/LLMProviderSelector';
+import { KnowledgeBaseManager } from './components/KnowledgeBaseManager';
+import { KnowledgeBaseDisplay } from './components/KnowledgeBaseDisplay';
+import { LLMService } from './services/llmService';
+import { RAGService } from './services/ragService';
+
+type Step = 'scoping' | 'generatingKeywords' | 'approvingKeywords' | 'approvingHsrItems' | 'approvingRefinedHsrItems' | 'generatingEstimate' | 'reviewingEstimate' | 'done';
+type ReferenceDoc = { file: File; text: string };
+
+const App: React.FC = () => {
+  const [step, setStep] = useState<Step>('scoping');
+  const [conversationHistory, setConversationHistory] = useState<ChatMessage[]>([
+    { role: 'model', text: 'Hello! I am your AI assistant for construction estimation. Please describe the project you want to build, and we can define its scope together.' }
+  ]);
+  const [currentMessage, setCurrentMessage] = useState<string>('');
+  const [finalizedScope, setFinalizedScope] = useState<string>('');
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [keywordsByItem, setKeywordsByItem] = useState<KeywordsByItem>({});
+  const [hsrItems, setHsrItems] = useState<HsrItem[]>([]);
+  const [newlyFoundHsrItems, setNewlyFoundHsrItems] = useState<HsrItem[]>([]);
+  const [finalEstimateText, setFinalEstimateText] = useState<string>('');
+  const [editInstruction, setEditInstruction] = useState<string>('');
+  const [keywordFeedback, setKeywordFeedback] = useState<string>('');
+  const [hsrItemFeedback, setHsrItemFeedback] = useState<string>('');
+  const [refinedHsrItemFeedback, setRefinedHsrItemFeedback] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+  const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
+  const [loadingMessage, setLoadingMessage] = useState<string>('');
+  const [isTtsEnabled, setIsTtsEnabled] = useState<boolean>(false);
+  const [speechRate, setSpeechRate] = useState(1);
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState<string | null>(null);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [apiKey, setApiKey] = useState<string>('');
+  const [apiKeyInput, setApiKeyInput] = useState<string>('');
+
+  const [referenceDocs, setReferenceDocs] = useState<ReferenceDoc[]>([]);
+  const [isFileProcessing, setIsFileProcessing] = useState<boolean>(false);
+
+  // Enhanced state for integrated workflow
+  const [outputMode, setOutputMode] = useState<OutputMode>('discussion');
+  const [currentThread, setCurrentThread] = useState<ConversationThread | null>(null);
+  const [guidelines, setGuidelines] = useState<UserGuideline[]>([]);
+  const [designs, setDesigns] = useState<ComponentDesign[]>([]);
+  const [isGuidelinesOpen, setIsGuidelinesOpen] = useState<boolean>(false);
+  const [isLLMSettingsOpen, setIsLLMSettingsOpen] = useState<boolean>(false);
+  const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState<boolean>(false);
+  const [includeKnowledgeBase, setIncludeKnowledgeBase] = useState<boolean>(false);
+  const [currentProvider, setCurrentProvider] = useState<string>(LLMService.getCurrentProvider());
+  const [currentModel, setCurrentModel] = useState<string>(LLMService.getCurrentModel());
+  const [showProjectData, setShowProjectData] = useState<boolean>(false);
+  const [contextKey, setContextKey] = useState<number>(0); // Force re-render of context
+
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  const referenceText = useMemo(() => 
+    referenceDocs.map(doc => `--- START OF ${doc.file.name} ---\n${doc.text}\n--- END OF ${doc.file.name} ---`).join('\n\n'), 
+  [referenceDocs]);
+
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [conversationHistory]);
+
+  useEffect(() => {
+    const storedApiKey = localStorage.getItem('gemini-api-key');
+    if (storedApiKey) {
+        setApiKey(storedApiKey);
+    }
+
+    // Load guidelines and project data
+    loadGuidelines();
+    loadDesigns();
+
+    // Initialize context if not exists
+    const existingContext = ContextService.getCurrentContext();
+    if (!existingContext && conversationHistory.length > 1) {
+      const projectDescription = conversationHistory.slice(1).map(msg => msg.text).join(' ').substring(0, 200);
+      ContextService.initializeContext(projectDescription);
+    }
+  }, []);
+
+  const loadGuidelines = () => {
+    const loadedGuidelines = GuidelinesService.loadGuidelines();
+    setGuidelines(loadedGuidelines);
+  };
+
+  const loadDesigns = () => {
+    const loadedDesigns = DesignService.loadDesigns();
+    setDesigns(loadedDesigns);
+  };
+
+  const handleContextUpdate = () => {
+    setContextKey(prev => prev + 1); // Force re-render of context components
+  };
+
+  const handleKnowledgeBaseUpdate = () => {
+    // Force re-render when knowledge base is updated
+    setContextKey(prev => prev + 1);
+  };
+
+
+
+  useEffect(() => {
+    const loadVoices = () => {
+        setAvailableVoices(window.speechSynthesis.getVoices());
+    };
+
+    // Load voices initially
+    loadVoices();
+
+    // Update when the voice list changes
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+
+    // Cleanup
+    return () => {
+        window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
+
+  const resetState = () => {
+    setStep('scoping');
+    setConversationHistory([{ role: 'model', text: 'Hello! Please describe the project you want to build.' }]);
+    setCurrentMessage('');
+    setFinalizedScope('');
+    setKeywords([]);
+    setKeywordsByItem({});
+    setHsrItems([]);
+    setFinalEstimateText('');
+    setEditInstruction('');
+    setError(null);
+    setIsAiThinking(false);
+    setLoadingMessage('');
+    setReferenceDocs([]);
+    setIsFileProcessing(false);
+    setOutputMode('discussion');
+    setCurrentThread(null);
+    setShowProjectData(false);
+    // Clear all threads for new project
+    ThreadService.clearAllThreads();
+  };
+  
+  const handleFileUpload = (newFiles: ReferenceDoc[]) => {
+    setReferenceDocs(prevDocs => {
+      const existingFileNames = new Set(prevDocs.map(doc => doc.file.name));
+      const filteredNewFiles = newFiles.filter(newFile => !existingFileNames.has(newFile.file.name));
+      return [...prevDocs, ...filteredNewFiles];
+    });
+  };
+
+  const handleFileRemove = (fileNameToRemove: string) => {
+    setReferenceDocs(prevDocs => prevDocs.filter(doc => doc.file.name !== fileNameToRemove));
+  };
+
+  const handleApiKeySave = () => {
+    localStorage.setItem('gemini-api-key', apiKeyInput);
+    setApiKey(apiKeyInput);
+    setApiKeyInput('');
+  };
+
+  const handleSendMessage = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!currentMessage.trim() || isAiThinking) return;
+
+    const newMessage: ChatMessage = { role: 'user', text: currentMessage };
+
+    // Handle different output modes
+    if (outputMode === 'design') {
+      await handleDesignRequest(currentMessage);
+    } else {
+      // Regular discussion mode
+      const newHistory = [...conversationHistory, newMessage];
+      setConversationHistory(newHistory);
+      setCurrentMessage('');
+      setLoadingMessage('Thinking...');
+      setIsAiThinking(true);
+      setError(null);
+
+      try {
+        // Add context from previous steps
+        const contextPrompt = ContextService.generateContextPrompt();
+        let enhancedReferenceText = referenceText + contextPrompt;
+
+        // Add knowledge base context if enabled
+        if (includeKnowledgeBase) {
+          const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+            currentMessage,
+            includeKnowledgeBase
+          );
+          // Use the enhanced prompt for the conversation
+          newHistory[newHistory.length - 1].text = enhancedPrompt;
+        }
+
+        const modelResponse = await continueConversation(newHistory, enhancedReferenceText, outputMode);
+        setConversationHistory(prev => [...prev, { role: 'model', text: modelResponse }]);
+
+        // Extract and save LLM summary
+        const llmSummary = ContextService.extractLLMSummary(modelResponse);
+        ContextService.addStepSummary('discussion', newMessage.text, llmSummary);
+
+        // Add discussion to context
+        ContextService.addDiscussionToContext(newMessage.text, true);
+
+        // Save to thread
+        if (currentThread) {
+          ThreadService.addMessageToThread(currentThread.id, newMessage);
+          ThreadService.addMessageToThread(currentThread.id, { role: 'model', text: modelResponse });
+        } else {
+          const thread = ThreadService.createThread(outputMode, newMessage);
+          ThreadService.addMessageToThread(thread.id, { role: 'model', text: modelResponse });
+          setCurrentThread(thread);
+        }
+
+        if (isTtsEnabled) {
+          speak(modelResponse, speechRate, selectedVoiceURI);
+        }
+      } catch (err: any) {
+        console.error(err);
+        setError(err.message || 'An error occurred while communicating with the AI.');
+      } finally {
+        setIsAiThinking(false);
+        setLoadingMessage('');
+      }
+    }
+
+    setCurrentMessage('');
+  };
+
+  const handleDesignRequest = async (userInput: string) => {
+    setLoadingMessage('Generating component design...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Extract component name from user input or use a default
+      const componentMatch = userInput.match(/design\s+(?:for\s+)?(.+?)(?:\s|$)/i);
+      const componentName = componentMatch ? componentMatch[1].trim() : 'Component';
+
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const designGuidelines = GuidelinesService.getActiveGuidelines('design');
+      const allGuidelines = [...activeGuidelines, ...designGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      const design = await DesignService.generateComponentDesign(
+        componentName,
+        scopeContext,
+        enhancedUserInput,
+        guidelinesText,
+        referenceText
+      );
+
+      loadDesigns();
+      setLoadingMessage('');
+
+      // Add to conversation history for reference
+      setConversationHistory(prev => [
+        ...prev,
+        { role: 'user', text: userInput },
+        { role: 'model', text: `Design generated for ${componentName}. You can view the detailed design in the Design Display section below.` }
+      ]);
+
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'An error occurred while generating the design.');
+    } finally {
+      setIsAiThinking(false);
+      setLoadingMessage('');
+    }
+  };
+
+  const handleDrawingRequest = async (userInput: string) => {
+    setLoadingMessage('🔍 Analyzing your drawing requirements...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Enhanced input validation
+      if (!userInput.trim()) {
+        throw new Error('Please provide specific drawing requirements.');
+      }
+
+      if (userInput.trim().length < 10) {
+        throw new Error('Please provide more detailed drawing requirements (at least 10 characters).');
+      }
+
+      // Smart title extraction with flexible patterns
+      let title = 'Technical Drawing';
+      const titlePatterns = [
+        /(?:drawing|draw|create|generate|design)\s+(?:for\s+|of\s+|a\s+)?(.+?)(?:\s+(?:drawing|plan|view|section|detail)|$)/i,
+        /(?:plan|elevation|section|detail)\s+(?:for\s+|of\s+)?(.+?)(?:\s|$)/i,
+        /(.+?)\s+(?:drawing|plan|elevation|section|detail)/i
+      ];
+      
+      for (const pattern of titlePatterns) {
+        const match = userInput.match(pattern);
+        if (match && match[1].trim().length > 2) {
+          title = match[1].trim();
+          break;
+        }
+      }
+
+      // Gather all available context
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const drawingGuidelines = GuidelinesService.getActiveGuidelines('drawing');
+      const allGuidelines = [...activeGuidelines, ...drawingGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+      const designContext = ThreadService.getAllContextForMode('design');
+      
+      // Get existing designs that might be relevant
+      const existingDesigns = designs.filter(d => d.includeInContext !== false);
+      const designsContext = existingDesigns.length > 0 
+        ? existingDesigns.map(d => `**Design: ${d.componentName}**\n${d.designContent.substring(0, 500)}...`).join('\n\n')
+        : '';
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      // Create flexible, context-aware prompt for the LLM with comprehensive ezdxf knowledge
+      const flexibleDrawingPrompt = `You are a professional construction engineer and technical draftsman with expertise in Python ezdxf library for creating professional DXF files. You need to create a technical drawing based on the user's specific requirements.
+```
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { HsrItem, ChatMessage, KeywordsByItem, OutputMode, UserGuideline, ComponentDesign, ConversationThread } from './types';
+import { continueConversation, generatePlainTextEstimate, generateKeywordsForItems } from './services/geminiService';
+import { searchHSR } from './services/hsrService';
+import { extractHsrNumbersFromText } from './services/keywordService';
+import { speak } from './services/speechService';
+import { GuidelinesService } from './services/guidelinesService';
+import { ThreadService } from './services/threadService';
+import { DesignService } from './services/designService';
+import { ContextService } from './services/contextService';
+import { Spinner } from './components/Spinner';
+import { ResultDisplay } from './components/ResultDisplay';
+import { KeywordsDisplay } from './components/KeywordsDisplay';
+import { HsrItemsDisplay } from './components/HsrItemsDisplay';
+import { VoiceInput } from './components/VoiceInput';
+import { FileUpload } from './components/FileUpload';
+import { GuidelinesManager } from './components/GuidelinesManager';
+import { OutputModeSelector } from './components/OutputModeSelector';
+import { DesignDisplay } from './components/DesignDisplay';
+import { ContextManager } from './components/ContextManager';
+import { LLMProviderSelector } from './components/LLMProviderSelector';
+import { KnowledgeBaseManager } from './components/KnowledgeBaseManager';
+import { KnowledgeBaseDisplay } from './components/KnowledgeBaseDisplay';
+import { LLMService } from './services/llmService';
+import { RAGService } from './services/ragService';
+
+type Step = 'scoping' | 'generatingKeywords' | 'approvingKeywords' | 'approvingHsrItems' | 'approvingRefinedHsrItems' | 'generatingEstimate' | 'reviewingEstimate' | 'done';
+type ReferenceDoc = { file: File; text: string };
+
+const App: React.FC = () => {
+  const [step, setStep] = useState<Step>('scoping');
+  const [conversationHistory, setConversationHistory] = useState<ChatMessage[]>([
+    { role: 'model', text: 'Hello! I am your AI assistant for construction estimation. Please describe the project you want to build, and we can define its scope together.' }
+  ]);
+  const [currentMessage, setCurrentMessage] = useState<string>('');
+  const [finalizedScope, setFinalizedScope] = useState<string>('');
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [keywordsByItem, setKeywordsByItem] = useState<KeywordsByItem>({});
+  const [hsrItems, setHsrItems] = useState<HsrItem[]>([]);
+  const [newlyFoundHsrItems, setNewlyFoundHsrItems] = useState<HsrItem[]>([]);
+  const [finalEstimateText, setFinalEstimateText] = useState<string>('');
+  const [editInstruction, setEditInstruction] = useState<string>('');
+  const [keywordFeedback, setKeywordFeedback] = useState<string>('');
+  const [hsrItemFeedback, setHsrItemFeedback] = useState<string>('');
+  const [refinedHsrItemFeedback, setRefinedHsrItemFeedback] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+  const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
+  const [loadingMessage, setLoadingMessage] = useState<string>('');
+  const [isTtsEnabled, setIsTtsEnabled] = useState<boolean>(false);
+  const [speechRate, setSpeechRate] = useState(1);
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState<string | null>(null);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [apiKey, setApiKey] = useState<string>('');
+  const [apiKeyInput, setApiKeyInput] = useState<string>('');
+
+  const [referenceDocs, setReferenceDocs] = useState<ReferenceDoc[]>([]);
+  const [isFileProcessing, setIsFileProcessing] = useState<boolean>(false);
+
+  // Enhanced state for integrated workflow
+  const [outputMode, setOutputMode] = useState<OutputMode>('discussion');
+  const [currentThread, setCurrentThread] = useState<ConversationThread | null>(null);
+  const [guidelines, setGuidelines] = useState<UserGuideline[]>([]);
+  const [designs, setDesigns] = useState<ComponentDesign[]>([]);
+  const [isGuidelinesOpen, setIsGuidelinesOpen] = useState<boolean>(false);
+  const [isLLMSettingsOpen, setIsLLMSettingsOpen] = useState<boolean>(false);
+  const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState<boolean>(false);
+  const [includeKnowledgeBase, setIncludeKnowledgeBase] = useState<boolean>(false);
+  const [currentProvider, setCurrentProvider] = useState<string>(LLMService.getCurrentProvider());
+  const [currentModel, setCurrentModel] = useState<string>(LLMService.getCurrentModel());
+  const [showProjectData, setShowProjectData] = useState<boolean>(false);
+  const [contextKey, setContextKey] = useState<number>(0); // Force re-render of context
+
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  const referenceText = useMemo(() => 
+    referenceDocs.map(doc => `--- START OF ${doc.file.name} ---\n${doc.text}\n--- END OF ${doc.file.name} ---`).join('\n\n'), 
+  [referenceDocs]);
+
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [conversationHistory]);
+
+  useEffect(() => {
+    const storedApiKey = localStorage.getItem('gemini-api-key');
+    if (storedApiKey) {
+        setApiKey(storedApiKey);
+    }
+
+    // Load guidelines and project data
+    loadGuidelines();
+    loadDesigns();
+
+    // Initialize context if not exists
+    const existingContext = ContextService.getCurrentContext();
+    if (!existingContext && conversationHistory.length > 1) {
+      const projectDescription = conversationHistory.slice(1).map(msg => msg.text).join(' ').substring(0, 200);
+      ContextService.initializeContext(projectDescription);
+    }
+  }, []);
+
+  const loadGuidelines = () => {
+    const loadedGuidelines = GuidelinesService.loadGuidelines();
+    setGuidelines(loadedGuidelines);
+  };
+
+  const loadDesigns = () => {
+    const loadedDesigns = DesignService.loadDesigns();
+    setDesigns(loadedDesigns);
+  };
+
+  const handleContextUpdate = () => {
+    setContextKey(prev => prev + 1); // Force re-render of context components
+  };
+
+  const handleKnowledgeBaseUpdate = () => {
+    // Force re-render when knowledge base is updated
+    setContextKey(prev => prev + 1);
+  };
+
+
+
+  useEffect(() => {
+    const loadVoices = () => {
+        setAvailableVoices(window.speechSynthesis.getVoices());
+    };
+
+    // Load voices initially
+    loadVoices();
+
+    // Update when the voice list changes
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+
+    // Cleanup
+    return () => {
+        window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
+
+  const resetState = () => {
+    setStep('scoping');
+    setConversationHistory([{ role: 'model', text: 'Hello! Please describe the project you want to build.' }]);
+    setCurrentMessage('');
+    setFinalizedScope('');
+    setKeywords([]);
+    setKeywordsByItem({});
+    setHsrItems([]);
+    setFinalEstimateText('');
+    setEditInstruction('');
+    setError(null);
+    setIsAiThinking(false);
+    setLoadingMessage('');
+    setReferenceDocs([]);
+    setIsFileProcessing(false);
+    setOutputMode('discussion');
+    setCurrentThread(null);
+    setShowProjectData(false);
+    // Clear all threads for new project
+    ThreadService.clearAllThreads();
+  };
+  
+  const handleFileUpload = (newFiles: ReferenceDoc[]) => {
+    setReferenceDocs(prevDocs => {
+      const existingFileNames = new Set(prevDocs.map(doc => doc.file.name));
+      const filteredNewFiles = newFiles.filter(newFile => !existingFileNames.has(newFile.file.name));
+      return [...prevDocs, ...filteredNewFiles];
+    });
+  };
+
+  const handleFileRemove = (fileNameToRemove: string) => {
+    setReferenceDocs(prevDocs => prevDocs.filter(doc => doc.file.name !== fileNameToRemove));
+  };
+
+  const handleApiKeySave = () => {
+    localStorage.setItem('gemini-api-key', apiKeyInput);
+    setApiKey(apiKeyInput);
+    setApiKeyInput('');
+  };
+
+  const handleSendMessage = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!currentMessage.trim() || isAiThinking) return;
+
+    const newMessage: ChatMessage = { role: 'user', text: currentMessage };
+
+    // Handle different output modes
+    if (outputMode === 'design') {
+      await handleDesignRequest(currentMessage);
+    } else {
+      // Regular discussion mode
+      const newHistory = [...conversationHistory, newMessage];
+      setConversationHistory(newHistory);
+      setCurrentMessage('');
+      setLoadingMessage('Thinking...');
+      setIsAiThinking(true);
+      setError(null);
+
+      try {
+        // Add context from previous steps
+        const contextPrompt = ContextService.generateContextPrompt();
+        let enhancedReferenceText = referenceText + contextPrompt;
+
+        // Add knowledge base context if enabled
+        if (includeKnowledgeBase) {
+          const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+            currentMessage,
+            includeKnowledgeBase
+          );
+          // Use the enhanced prompt for the conversation
+          newHistory[newHistory.length - 1].text = enhancedPrompt;
+        }
+
+        const modelResponse = await continueConversation(newHistory, enhancedReferenceText, outputMode);
+        setConversationHistory(prev => [...prev, { role: 'model', text: modelResponse }]);
+
+        // Extract and save LLM summary
+        const llmSummary = ContextService.extractLLMSummary(modelResponse);
+        ContextService.addStepSummary('discussion', newMessage.text, llmSummary);
+
+        // Add discussion to context
+        ContextService.addDiscussionToContext(newMessage.text, true);
+
+        // Save to thread
+        if (currentThread) {
+          ThreadService.addMessageToThread(currentThread.id, newMessage);
+          ThreadService.addMessageToThread(currentThread.id, { role: 'model', text: modelResponse });
+        } else {
+          const thread = ThreadService.createThread(outputMode, newMessage);
+          ThreadService.addMessageToThread(thread.id, { role: 'model', text: modelResponse });
+          setCurrentThread(thread);
+        }
+
+        if (isTtsEnabled) {
+          speak(modelResponse, speechRate, selectedVoiceURI);
+        }
+      } catch (err: any) {
+        console.error(err);
+        setError(err.message || 'An error occurred while communicating with the AI.');
+      } finally {
+        setIsAiThinking(false);
+        setLoadingMessage('');
+      }
+    }
+
+    setCurrentMessage('');
+  };
+
+  const handleDesignRequest = async (userInput: string) => {
+    setLoadingMessage('Generating component design...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Extract component name from user input or use a default
+      const componentMatch = userInput.match(/design\s+(?:for\s+)?(.+?)(?:\s|$)/i);
+      const componentName = componentMatch ? componentMatch[1].trim() : 'Component';
+
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const designGuidelines = GuidelinesService.getActiveGuidelines('design');
+      const allGuidelines = [...activeGuidelines, ...designGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      const design = await DesignService.generateComponentDesign(
+        componentName,
+        scopeContext,
+        enhancedUserInput,
+        guidelinesText,
+        referenceText
+      );
+
+      loadDesigns();
+      setLoadingMessage('');
+
+      // Add to conversation history for reference
+      setConversationHistory(prev => [
+        ...prev,
+        { role: 'user', text: userInput },
+        { role: 'model', text: `Design generated for ${componentName}. You can view the detailed design in the Design Display section below.` }
+      ]);
+
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'An error occurred while generating the design.');
+    } finally {
+      setIsAiThinking(false);
+      setLoadingMessage('');
+    }
+  };
+
+  const handleDrawingRequest = async (userInput: string) => {
+    setLoadingMessage('🔍 Analyzing your drawing requirements...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Enhanced input validation
+      if (!userInput.trim()) {
+        throw new Error('Please provide specific drawing requirements.');
+      }
+
+      if (userInput.trim().length < 10) {
+        throw new Error('Please provide more detailed drawing requirements (at least 10 characters).');
+      }
+
+      // Smart title extraction with flexible patterns
+      let title = 'Technical Drawing';
+      const titlePatterns = [
+        /(?:drawing|draw|create|generate|design)\s+(?:for\s+|of\s+|a\s+)?(.+?)(?:\s+(?:drawing|plan|view|section|detail)|$)/i,
+        /(?:plan|elevation|section|detail)\s+(?:for\s+|of\s+)?(.+?)(?:\s|$)/i,
+        /(.+?)\s+(?:drawing|plan|elevation|section|detail)/i
+      ];
+      
+      for (const pattern of titlePatterns) {
+        const match = userInput.match(pattern);
+        if (match && match[1].trim().length > 2) {
+          title = match[1].trim();
+          break;
+        }
+      }
+
+      // Gather all available context
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const drawingGuidelines = GuidelinesService.getActiveGuidelines('drawing');
+      const allGuidelines = [...activeGuidelines, ...drawingGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+      const designContext = ThreadService.getAllContextForMode('design');
+      
+      // Get existing designs that might be relevant
+      const existingDesigns = designs.filter(d => d.includeInContext !== false);
+      const designsContext = existingDesigns.length > 0 
+        ? existingDesigns.map(d => `**Design: ${d.componentName}**\n${d.designContent.substring(0, 500)}...`).join('\n\n')
+        : '';
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      // Create flexible, context-aware prompt for the LLM with comprehensive ezdxf knowledge
+      const flexibleDrawingPrompt = `You are a professional construction engineer and technical draftsman with expertise in Python ezdxf library for creating professional DXF files. You need to create a technical drawing based on the user's specific requirements.
+```
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { HsrItem, ChatMessage, KeywordsByItem, OutputMode, UserGuideline, ComponentDesign, ConversationThread } from './types';
+import { continueConversation, generatePlainTextEstimate, generateKeywordsForItems } from './services/geminiService';
+import { searchHSR } from './services/hsrService';
+import { extractHsrNumbersFromText } from './services/keywordService';
+import { speak } from './services/speechService';
+import { GuidelinesService } from './services/guidelinesService';
+import { ThreadService } from './services/threadService';
+import { DesignService } from './services/designService';
+import { ContextService } from './services/contextService';
+import { Spinner } from './components/Spinner';
+import { ResultDisplay } from './components/ResultDisplay';
+import { KeywordsDisplay } from './components/KeywordsDisplay';
+import { HsrItemsDisplay } from './components/HsrItemsDisplay';
+import { VoiceInput } from './components/VoiceInput';
+import { FileUpload } from './components/FileUpload';
+import { GuidelinesManager } from './components/GuidelinesManager';
+import { OutputModeSelector } from './components/OutputModeSelector';
+import { DesignDisplay } from './components/DesignDisplay';
+import { ContextManager } from './components/ContextManager';
+import { LLMProviderSelector } from './components/LLMProviderSelector';
+import { KnowledgeBaseManager } from './components/KnowledgeBaseManager';
+import { KnowledgeBaseDisplay } from './components/KnowledgeBaseDisplay';
+import { LLMService } from './services/llmService';
+import { RAGService } from './services/ragService';
+
+type Step = 'scoping' | 'generatingKeywords' | 'approvingKeywords' | 'approvingHsrItems' | 'approvingRefinedHsrItems' | 'generatingEstimate' | 'reviewingEstimate' | 'done';
+type ReferenceDoc = { file: File; text: string };
+
+const App: React.FC = () => {
+  const [step, setStep] = useState<Step>('scoping');
+  const [conversationHistory, setConversationHistory] = useState<ChatMessage[]>([
+    { role: 'model', text: 'Hello! I am your AI assistant for construction estimation. Please describe the project you want to build, and we can define its scope together.' }
+  ]);
+  const [currentMessage, setCurrentMessage] = useState<string>('');
+  const [finalizedScope, setFinalizedScope] = useState<string>('');
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [keywordsByItem, setKeywordsByItem] = useState<KeywordsByItem>({});
+  const [hsrItems, setHsrItems] = useState<HsrItem[]>([]);
+  const [newlyFoundHsrItems, setNewlyFoundHsrItems] = useState<HsrItem[]>([]);
+  const [finalEstimateText, setFinalEstimateText] = useState<string>('');
+  const [editInstruction, setEditInstruction] = useState<string>('');
+  const [keywordFeedback, setKeywordFeedback] = useState<string>('');
+  const [hsrItemFeedback, setHsrItemFeedback] = useState<string>('');
+  const [refinedHsrItemFeedback, setRefinedHsrItemFeedback] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+  const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
+  const [loadingMessage, setLoadingMessage] = useState<string>('');
+  const [isTtsEnabled, setIsTtsEnabled] = useState<boolean>(false);
+  const [speechRate, setSpeechRate] = useState(1);
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState<string | null>(null);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [apiKey, setApiKey] = useState<string>('');
+  const [apiKeyInput, setApiKeyInput] = useState<string>('');
+
+  const [referenceDocs, setReferenceDocs] = useState<ReferenceDoc[]>([]);
+  const [isFileProcessing, setIsFileProcessing] = useState<boolean>(false);
+
+  // Enhanced state for integrated workflow
+  const [outputMode, setOutputMode] = useState<OutputMode>('discussion');
+  const [currentThread, setCurrentThread] = useState<ConversationThread | null>(null);
+  const [guidelines, setGuidelines] = useState<UserGuideline[]>([]);
+  const [designs, setDesigns] = useState<ComponentDesign[]>([]);
+  const [isGuidelinesOpen, setIsGuidelinesOpen] = useState<boolean>(false);
+  const [isLLMSettingsOpen, setIsLLMSettingsOpen] = useState<boolean>(false);
+  const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState<boolean>(false);
+  const [includeKnowledgeBase, setIncludeKnowledgeBase] = useState<boolean>(false);
+  const [currentProvider, setCurrentProvider] = useState<string>(LLMService.getCurrentProvider());
+  const [currentModel, setCurrentModel] = useState<string>(LLMService.getCurrentModel());
+  const [showProjectData, setShowProjectData] = useState<boolean>(false);
+  const [contextKey, setContextKey] = useState<number>(0); // Force re-render of context
+
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  const referenceText = useMemo(() => 
+    referenceDocs.map(doc => `--- START OF ${doc.file.name} ---\n${doc.text}\n--- END OF ${doc.file.name} ---`).join('\n\n'), 
+  [referenceDocs]);
+
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [conversationHistory]);
+
+  useEffect(() => {
+    const storedApiKey = localStorage.getItem('gemini-api-key');
+    if (storedApiKey) {
+        setApiKey(storedApiKey);
+    }
+
+    // Load guidelines and project data
+    loadGuidelines();
+    loadDesigns();
+
+    // Initialize context if not exists
+    const existingContext = ContextService.getCurrentContext();
+    if (!existingContext && conversationHistory.length > 1) {
+      const projectDescription = conversationHistory.slice(1).map(msg => msg.text).join(' ').substring(0, 200);
+      ContextService.initializeContext(projectDescription);
+    }
+  }, []);
+
+  const loadGuidelines = () => {
+    const loadedGuidelines = GuidelinesService.loadGuidelines();
+    setGuidelines(loadedGuidelines);
+  };
+
+  const loadDesigns = () => {
+    const loadedDesigns = DesignService.loadDesigns();
+    setDesigns(loadedDesigns);
+  };
+
+  const handleContextUpdate = () => {
+    setContextKey(prev => prev + 1); // Force re-render of context components
+  };
+
+  const handleKnowledgeBaseUpdate = () => {
+    // Force re-render when knowledge base is updated
+    setContextKey(prev => prev + 1);
+  };
+
+
+
+  useEffect(() => {
+    const loadVoices = () => {
+        setAvailableVoices(window.speechSynthesis.getVoices());
+    };
+
+    // Load voices initially
+    loadVoices();
+
+    // Update when the voice list changes
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+
+    // Cleanup
+    return () => {
+        window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
+
+  const resetState = () => {
+    setStep('scoping');
+    setConversationHistory([{ role: 'model', text: 'Hello! Please describe the project you want to build.' }]);
+    setCurrentMessage('');
+    setFinalizedScope('');
+    setKeywords([]);
+    setKeywordsByItem({});
+    setHsrItems([]);
+    setFinalEstimateText('');
+    setEditInstruction('');
+    setError(null);
+    setIsAiThinking(false);
+    setLoadingMessage('');
+    setReferenceDocs([]);
+    setIsFileProcessing(false);
+    setOutputMode('discussion');
+    setCurrentThread(null);
+    setShowProjectData(false);
+    // Clear all threads for new project
+    ThreadService.clearAllThreads();
+  };
+  
+  const handleFileUpload = (newFiles: ReferenceDoc[]) => {
+    setReferenceDocs(prevDocs => {
+      const existingFileNames = new Set(prevDocs.map(doc => doc.file.name));
+      const filteredNewFiles = newFiles.filter(newFile => !existingFileNames.has(newFile.file.name));
+      return [...prevDocs, ...filteredNewFiles];
+    });
+  };
+
+  const handleFileRemove = (fileNameToRemove: string) => {
+    setReferenceDocs(prevDocs => prevDocs.filter(doc => doc.file.name !== fileNameToRemove));
+  };
+
+  const handleApiKeySave = () => {
+    localStorage.setItem('gemini-api-key', apiKeyInput);
+    setApiKey(apiKeyInput);
+    setApiKeyInput('');
+  };
+
+  const handleSendMessage = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!currentMessage.trim() || isAiThinking) return;
+
+    const newMessage: ChatMessage = { role: 'user', text: currentMessage };
+
+    // Handle different output modes
+    if (outputMode === 'design') {
+      await handleDesignRequest(currentMessage);
+    } else {
+      // Regular discussion mode
+      const newHistory = [...conversationHistory, newMessage];
+      setConversationHistory(newHistory);
+      setCurrentMessage('');
+      setLoadingMessage('Thinking...');
+      setIsAiThinking(true);
+      setError(null);
+
+      try {
+        // Add context from previous steps
+        const contextPrompt = ContextService.generateContextPrompt();
+        let enhancedReferenceText = referenceText + contextPrompt;
+
+        // Add knowledge base context if enabled
+        if (includeKnowledgeBase) {
+          const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+            currentMessage,
+            includeKnowledgeBase
+          );
+          // Use the enhanced prompt for the conversation
+          newHistory[newHistory.length - 1].text = enhancedPrompt;
+        }
+
+        const modelResponse = await continueConversation(newHistory, enhancedReferenceText, outputMode);
+        setConversationHistory(prev => [...prev, { role: 'model', text: modelResponse }]);
+
+        // Extract and save LLM summary
+        const llmSummary = ContextService.extractLLMSummary(modelResponse);
+        ContextService.addStepSummary('discussion', newMessage.text, llmSummary);
+
+        // Add discussion to context
+        ContextService.addDiscussionToContext(newMessage.text, true);
+
+        // Save to thread
+        if (currentThread) {
+          ThreadService.addMessageToThread(currentThread.id, newMessage);
+          ThreadService.addMessageToThread(currentThread.id, { role: 'model', text: modelResponse });
+        } else {
+          const thread = ThreadService.createThread(outputMode, newMessage);
+          ThreadService.addMessageToThread(thread.id, { role: 'model', text: modelResponse });
+          setCurrentThread(thread);
+        }
+
+        if (isTtsEnabled) {
+          speak(modelResponse, speechRate, selectedVoiceURI);
+        }
+      } catch (err: any) {
+        console.error(err);
+        setError(err.message || 'An error occurred while communicating with the AI.');
+      } finally {
+        setIsAiThinking(false);
+        setLoadingMessage('');
+      }
+    }
+
+    setCurrentMessage('');
+  };
+
+  const handleDesignRequest = async (userInput: string) => {
+    setLoadingMessage('Generating component design...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Extract component name from user input or use a default
+      const componentMatch = userInput.match(/design\s+(?:for\s+)?(.+?)(?:\s|$)/i);
+      const componentName = componentMatch ? componentMatch[1].trim() : 'Component';
+
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const designGuidelines = GuidelinesService.getActiveGuidelines('design');
+      const allGuidelines = [...activeGuidelines, ...designGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      const design = await DesignService.generateComponentDesign(
+        componentName,
+        scopeContext,
+        enhancedUserInput,
+        guidelinesText,
+        referenceText
+      );
+
+      loadDesigns();
+      setLoadingMessage('');
+
+      // Add to conversation history for reference
+      setConversationHistory(prev => [
+        ...prev,
+        { role: 'user', text: userInput },
+        { role: 'model', text: `Design generated for ${componentName}. You can view the detailed design in the Design Display section below.` }
+      ]);
+
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'An error occurred while generating the design.');
+    } finally {
+      setIsAiThinking(false);
+      setLoadingMessage('');
+    }
+  };
+
+  const handleDrawingRequest = async (userInput: string) => {
+    setLoadingMessage('🔍 Analyzing your drawing requirements...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Enhanced input validation
+      if (!userInput.trim()) {
+        throw new Error('Please provide specific drawing requirements.');
+      }
+
+      if (userInput.trim().length < 10) {
+        throw new Error('Please provide more detailed drawing requirements (at least 10 characters).');
+      }
+
+      // Smart title extraction with flexible patterns
+      let title = 'Technical Drawing';
+      const titlePatterns = [
+        /(?:drawing|draw|create|generate|design)\s+(?:for\s+|of\s+|a\s+)?(.+?)(?:\s+(?:drawing|plan|view|section|detail)|$)/i,
+        /(?:plan|elevation|section|detail)\s+(?:for\s+|of\s+)?(.+?)(?:\s|$)/i,
+        /(.+?)\s+(?:drawing|plan|elevation|section|detail)/i
+      ];
+      
+      for (const pattern of titlePatterns) {
+        const match = userInput.match(pattern);
+        if (match && match[1].trim().length > 2) {
+          title = match[1].trim();
+          break;
+        }
+      }
+
+      // Gather all available context
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const drawingGuidelines = GuidelinesService.getActiveGuidelines('drawing');
+      const allGuidelines = [...activeGuidelines, ...drawingGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+      const designContext = ThreadService.getAllContextForMode('design');
+      
+      // Get existing designs that might be relevant
+      const existingDesigns = designs.filter(d => d.includeInContext !== false);
+      const designsContext = existingDesigns.length > 0 
+        ? existingDesigns.map(d => `**Design: ${d.componentName}**\n${d.designContent.substring(0, 500)}...`).join('\n\n')
+        : '';
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      // Create flexible, context-aware prompt for the LLM with comprehensive ezdxf knowledge
+      const flexibleDrawingPrompt = `You are a professional construction engineer and technical draftsman with expertise in Python ezdxf library for creating professional DXF files. You need to create a technical drawing based on the user's specific requirements.
+```
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { HsrItem, ChatMessage, KeywordsByItem, OutputMode, UserGuideline, ComponentDesign, ConversationThread } from './types';
+import { continueConversation, generatePlainTextEstimate, generateKeywordsForItems } from './services/geminiService';
+import { searchHSR } from './services/hsrService';
+import { extractHsrNumbersFromText } from './services/keywordService';
+import { speak } from './services/speechService';
+import { GuidelinesService } from './services/guidelinesService';
+import { ThreadService } from './services/threadService';
+import { DesignService } from './services/designService';
+import { ContextService } from './services/contextService';
+import { Spinner } from './components/Spinner';
+import { ResultDisplay } from './components/ResultDisplay';
+import { KeywordsDisplay } from './components/KeywordsDisplay';
+import { HsrItemsDisplay } from './components/HsrItemsDisplay';
+import { VoiceInput } from './components/VoiceInput';
+import { FileUpload } from './components/FileUpload';
+import { GuidelinesManager } from './components/GuidelinesManager';
+import { OutputModeSelector } from './components/OutputModeSelector';
+import { DesignDisplay } from './components/DesignDisplay';
+import { ContextManager } from './components/ContextManager';
+import { LLMProviderSelector } from './components/LLMProviderSelector';
+import { KnowledgeBaseManager } from './components/KnowledgeBaseManager';
+import { KnowledgeBaseDisplay } from './components/KnowledgeBaseDisplay';
+import { LLMService } from './services/llmService';
+import { RAGService } from './services/ragService';
+
+type Step = 'scoping' | 'generatingKeywords' | 'approvingKeywords' | 'approvingHsrItems' | 'approvingRefinedHsrItems' | 'generatingEstimate' | 'reviewingEstimate' | 'done';
+type ReferenceDoc = { file: File; text: string };
+
+const App: React.FC = () => {
+  const [step, setStep] = useState<Step>('scoping');
+  const [conversationHistory, setConversationHistory] = useState<ChatMessage[]>([
+    { role: 'model', text: 'Hello! I am your AI assistant for construction estimation. Please describe the project you want to build, and we can define its scope together.' }
+  ]);
+  const [currentMessage, setCurrentMessage] = useState<string>('');
+  const [finalizedScope, setFinalizedScope] = useState<string>('');
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [keywordsByItem, setKeywordsByItem] = useState<KeywordsByItem>({});
+  const [hsrItems, setHsrItems] = useState<HsrItem[]>([]);
+  const [newlyFoundHsrItems, setNewlyFoundHsrItems] = useState<HsrItem[]>([]);
+  const [finalEstimateText, setFinalEstimateText] = useState<string>('');
+  const [editInstruction, setEditInstruction] = useState<string>('');
+  const [keywordFeedback, setKeywordFeedback] = useState<string>('');
+  const [hsrItemFeedback, setHsrItemFeedback] = useState<string>('');
+  const [refinedHsrItemFeedback, setRefinedHsrItemFeedback] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+  const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
+  const [loadingMessage, setLoadingMessage] = useState<string>('');
+  const [isTtsEnabled, setIsTtsEnabled] = useState<boolean>(false);
+  const [speechRate, setSpeechRate] = useState(1);
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState<string | null>(null);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [apiKey, setApiKey] = useState<string>('');
+  const [apiKeyInput, setApiKeyInput] = useState<string>('');
+
+  const [referenceDocs, setReferenceDocs] = useState<ReferenceDoc[]>([]);
+  const [isFileProcessing, setIsFileProcessing] = useState<boolean>(false);
+
+  // Enhanced state for integrated workflow
+  const [outputMode, setOutputMode] = useState<OutputMode>('discussion');
+  const [currentThread, setCurrentThread] = useState<ConversationThread | null>(null);
+  const [guidelines, setGuidelines] = useState<UserGuideline[]>([]);
+  const [designs, setDesigns] = useState<ComponentDesign[]>([]);
+  const [isGuidelinesOpen, setIsGuidelinesOpen] = useState<boolean>(false);
+  const [isLLMSettingsOpen, setIsLLMSettingsOpen] = useState<boolean>(false);
+  const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState<boolean>(false);
+  const [includeKnowledgeBase, setIncludeKnowledgeBase] = useState<boolean>(false);
+  const [currentProvider, setCurrentProvider] = useState<string>(LLMService.getCurrentProvider());
+  const [currentModel, setCurrentModel] = useState<string>(LLMService.getCurrentModel());
+  const [showProjectData, setShowProjectData] = useState<boolean>(false);
+  const [contextKey, setContextKey] = useState<number>(0); // Force re-render of context
+
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  const referenceText = useMemo(() => 
+    referenceDocs.map(doc => `--- START OF ${doc.file.name} ---\n${doc.text}\n--- END OF ${doc.file.name} ---`).join('\n\n'), 
+  [referenceDocs]);
+
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [conversationHistory]);
+
+  useEffect(() => {
+    const storedApiKey = localStorage.getItem('gemini-api-key');
+    if (storedApiKey) {
+        setApiKey(storedApiKey);
+    }
+
+    // Load guidelines and project data
+    loadGuidelines();
+    loadDesigns();
+
+    // Initialize context if not exists
+    const existingContext = ContextService.getCurrentContext();
+    if (!existingContext && conversationHistory.length > 1) {
+      const projectDescription = conversationHistory.slice(1).map(msg => msg.text).join(' ').substring(0, 200);
+      ContextService.initializeContext(projectDescription);
+    }
+  }, []);
+
+  const loadGuidelines = () => {
+    const loadedGuidelines = GuidelinesService.loadGuidelines();
+    setGuidelines(loadedGuidelines);
+  };
+
+  const loadDesigns = () => {
+    const loadedDesigns = DesignService.loadDesigns();
+    setDesigns(loadedDesigns);
+  };
+
+  const handleContextUpdate = () => {
+    setContextKey(prev => prev + 1); // Force re-render of context components
+  };
+
+  const handleKnowledgeBaseUpdate = () => {
+    // Force re-render when knowledge base is updated
+    setContextKey(prev => prev + 1);
+  };
+
+
+
+  useEffect(() => {
+    const loadVoices = () => {
+        setAvailableVoices(window.speechSynthesis.getVoices());
+    };
+
+    // Load voices initially
+    loadVoices();
+
+    // Update when the voice list changes
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+
+    // Cleanup
+    return () => {
+        window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
+
+  const resetState = () => {
+    setStep('scoping');
+    setConversationHistory([{ role: 'model', text: 'Hello! Please describe the project you want to build.' }]);
+    setCurrentMessage('');
+    setFinalizedScope('');
+    setKeywords([]);
+    setKeywordsByItem({});
+    setHsrItems([]);
+    setFinalEstimateText('');
+    setEditInstruction('');
+    setError(null);
+    setIsAiThinking(false);
+    setLoadingMessage('');
+    setReferenceDocs([]);
+    setIsFileProcessing(false);
+    setOutputMode('discussion');
+    setCurrentThread(null);
+    setShowProjectData(false);
+    // Clear all threads for new project
+    ThreadService.clearAllThreads();
+  };
+  
+  const handleFileUpload = (newFiles: ReferenceDoc[]) => {
+    setReferenceDocs(prevDocs => {
+      const existingFileNames = new Set(prevDocs.map(doc => doc.file.name));
+      const filteredNewFiles = newFiles.filter(newFile => !existingFileNames.has(newFile.file.name));
+      return [...prevDocs, ...filteredNewFiles];
+    });
+  };
+
+  const handleFileRemove = (fileNameToRemove: string) => {
+    setReferenceDocs(prevDocs => prevDocs.filter(doc => doc.file.name !== fileNameToRemove));
+  };
+
+  const handleApiKeySave = () => {
+    localStorage.setItem('gemini-api-key', apiKeyInput);
+    setApiKey(apiKeyInput);
+    setApiKeyInput('');
+  };
+
+  const handleSendMessage = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!currentMessage.trim() || isAiThinking) return;
+
+    const newMessage: ChatMessage = { role: 'user', text: currentMessage };
+
+    // Handle different output modes
+    if (outputMode === 'design') {
+      await handleDesignRequest(currentMessage);
+    } else {
+      // Regular discussion mode
+      const newHistory = [...conversationHistory, newMessage];
+      setConversationHistory(newHistory);
+      setCurrentMessage('');
+      setLoadingMessage('Thinking...');
+      setIsAiThinking(true);
+      setError(null);
+
+      try {
+        // Add context from previous steps
+        const contextPrompt = ContextService.generateContextPrompt();
+        let enhancedReferenceText = referenceText + contextPrompt;
+
+        // Add knowledge base context if enabled
+        if (includeKnowledgeBase) {
+          const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+            currentMessage,
+            includeKnowledgeBase
+          );
+          // Use the enhanced prompt for the conversation
+          newHistory[newHistory.length - 1].text = enhancedPrompt;
+        }
+
+        const modelResponse = await continueConversation(newHistory, enhancedReferenceText, outputMode);
+        setConversationHistory(prev => [...prev, { role: 'model', text: modelResponse }]);
+
+        // Extract and save LLM summary
+        const llmSummary = ContextService.extractLLMSummary(modelResponse);
+        ContextService.addStepSummary('discussion', newMessage.text, llmSummary);
+
+        // Add discussion to context
+        ContextService.addDiscussionToContext(newMessage.text, true);
+
+        // Save to thread
+        if (currentThread) {
+          ThreadService.addMessageToThread(currentThread.id, newMessage);
+          ThreadService.addMessageToThread(currentThread.id, { role: 'model', text: modelResponse });
+        } else {
+          const thread = ThreadService.createThread(outputMode, newMessage);
+          ThreadService.addMessageToThread(thread.id, { role: 'model', text: modelResponse });
+          setCurrentThread(thread);
+        }
+
+        if (isTtsEnabled) {
+          speak(modelResponse, speechRate, selectedVoiceURI);
+        }
+      } catch (err: any) {
+        console.error(err);
+        setError(err.message || 'An error occurred while communicating with the AI.');
+      } finally {
+        setIsAiThinking(false);
+        setLoadingMessage('');
+      }
+    }
+
+    setCurrentMessage('');
+  };
+
+  const handleDesignRequest = async (userInput: string) => {
+    setLoadingMessage('Generating component design...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Extract component name from user input or use a default
+      const componentMatch = userInput.match(/design\s+(?:for\s+)?(.+?)(?:\s|$)/i);
+      const componentName = componentMatch ? componentMatch[1].trim() : 'Component';
+
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const designGuidelines = GuidelinesService.getActiveGuidelines('design');
+      const allGuidelines = [...activeGuidelines, ...designGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      const design = await DesignService.generateComponentDesign(
+        componentName,
+        scopeContext,
+        enhancedUserInput,
+        guidelinesText,
+        referenceText
+      );
+
+      loadDesigns();
+      setLoadingMessage('');
+
+      // Add to conversation history for reference
+      setConversationHistory(prev => [
+        ...prev,
+        { role: 'user', text: userInput },
+        { role: 'model', text: `Design generated for ${componentName}. You can view the detailed design in the Design Display section below.` }
+      ]);
+
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'An error occurred while generating the design.');
+    } finally {
+      setIsAiThinking(false);
+      setLoadingMessage('');
+    }
+  };
+
+  const handleDrawingRequest = async (userInput: string) => {
+    setLoadingMessage('🔍 Analyzing your drawing requirements...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Enhanced input validation
+      if (!userInput.trim()) {
+        throw new Error('Please provide specific drawing requirements.');
+      }
+
+      if (userInput.trim().length < 10) {
+        throw new Error('Please provide more detailed drawing requirements (at least 10 characters).');
+      }
+
+      // Smart title extraction with flexible patterns
+      let title = 'Technical Drawing';
+      const titlePatterns = [
+        /(?:drawing|draw|create|generate|design)\s+(?:for\s+|of\s+|a\s+)?(.+?)(?:\s+(?:drawing|plan|view|section|detail)|$)/i,
+        /(?:plan|elevation|section|detail)\s+(?:for\s+|of\s+)?(.+?)(?:\s|$)/i,
+        /(.+?)\s+(?:drawing|plan|elevation|section|detail)/i
+      ];
+      
+      for (const pattern of titlePatterns) {
+        const match = userInput.match(pattern);
+        if (match && match[1].trim().length > 2) {
+          title = match[1].trim();
+          break;
+        }
+      }
+
+      // Gather all available context
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const drawingGuidelines = GuidelinesService.getActiveGuidelines('drawing');
+      const allGuidelines = [...activeGuidelines, ...drawingGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+      const designContext = ThreadService.getAllContextForMode('design');
+      
+      // Get existing designs that might be relevant
+      const existingDesigns = designs.filter(d => d.includeInContext !== false);
+      const designsContext = existingDesigns.length > 0 
+        ? existingDesigns.map(d => `**Design: ${d.componentName}**\n${d.designContent.substring(0, 500)}...`).join('\n\n')
+        : '';
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      // Create flexible, context-aware prompt for the LLM with comprehensive ezdxf knowledge
+      const flexibleDrawingPrompt = `You are a professional construction engineer and technical draftsman with expertise in Python ezdxf library for creating professional DXF files. You need to create a technical drawing based on the user's specific requirements.
+```
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { HsrItem, ChatMessage, KeywordsByItem, OutputMode, UserGuideline, ComponentDesign, ConversationThread } from './types';
+import { continueConversation, generatePlainTextEstimate, generateKeywordsForItems } from './services/geminiService';
+import { searchHSR } from './services/hsrService';
+import { extractHsrNumbersFromText } from './services/keywordService';
+import { speak } from './services/speechService';
+import { GuidelinesService } from './services/guidelinesService';
+import { ThreadService } from './services/threadService';
+import { DesignService } from './services/designService';
+import { ContextService } from './services/contextService';
+import { Spinner } from './components/Spinner';
+import { ResultDisplay } from './components/ResultDisplay';
+import { KeywordsDisplay } from './components/KeywordsDisplay';
+import { HsrItemsDisplay } from './components/HsrItemsDisplay';
+import { VoiceInput } from './components/VoiceInput';
+import { FileUpload } from './components/FileUpload';
+import { GuidelinesManager } from './components/GuidelinesManager';
+import { OutputModeSelector } from './components/OutputModeSelector';
+import { DesignDisplay } from './components/DesignDisplay';
+import { ContextManager } from './components/ContextManager';
+import { LLMProviderSelector } from './components/LLMProviderSelector';
+import { KnowledgeBaseManager } from './components/KnowledgeBaseManager';
+import { KnowledgeBaseDisplay } from './components/KnowledgeBaseDisplay';
+import { LLMService } from './services/llmService';
+import { RAGService } from './services/ragService';
+
+type Step = 'scoping' | 'generatingKeywords' | 'approvingKeywords' | 'approvingHsrItems' | 'approvingRefinedHsrItems' | 'generatingEstimate' | 'reviewingEstimate' | 'done';
+type ReferenceDoc = { file: File; text: string };
+
+const App: React.FC = () => {
+  const [step, setStep] = useState<Step>('scoping');
+  const [conversationHistory, setConversationHistory] = useState<ChatMessage[]>([
+    { role: 'model', text: 'Hello! I am your AI assistant for construction estimation. Please describe the project you want to build, and we can define its scope together.' }
+  ]);
+  const [currentMessage, setCurrentMessage] = useState<string>('');
+  const [finalizedScope, setFinalizedScope] = useState<string>('');
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [keywordsByItem, setKeywordsByItem] = useState<KeywordsByItem>({});
+  const [hsrItems, setHsrItems] = useState<HsrItem[]>([]);
+  const [newlyFoundHsrItems, setNewlyFoundHsrItems] = useState<HsrItem[]>([]);
+  const [finalEstimateText, setFinalEstimateText] = useState<string>('');
+  const [editInstruction, setEditInstruction] = useState<string>('');
+  const [keywordFeedback, setKeywordFeedback] = useState<string>('');
+  const [hsrItemFeedback, setHsrItemFeedback] = useState<string>('');
+  const [refinedHsrItemFeedback, setRefinedHsrItemFeedback] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+  const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
+  const [loadingMessage, setLoadingMessage] = useState<string>('');
+  const [isTtsEnabled, setIsTtsEnabled] = useState<boolean>(false);
+  const [speechRate, setSpeechRate] = useState(1);
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState<string | null>(null);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [apiKey, setApiKey] = useState<string>('');
+  const [apiKeyInput, setApiKeyInput] = useState<string>('');
+
+  const [referenceDocs, setReferenceDocs] = useState<ReferenceDoc[]>([]);
+  const [isFileProcessing, setIsFileProcessing] = useState<boolean>(false);
+
+  // Enhanced state for integrated workflow
+  const [outputMode, setOutputMode] = useState<OutputMode>('discussion');
+  const [currentThread, setCurrentThread] = useState<ConversationThread | null>(null);
+  const [guidelines, setGuidelines] = useState<UserGuideline[]>([]);
+  const [designs, setDesigns] = useState<ComponentDesign[]>([]);
+  const [isGuidelinesOpen, setIsGuidelinesOpen] = useState<boolean>(false);
+  const [isLLMSettingsOpen, setIsLLMSettingsOpen] = useState<boolean>(false);
+  const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState<boolean>(false);
+  const [includeKnowledgeBase, setIncludeKnowledgeBase] = useState<boolean>(false);
+  const [currentProvider, setCurrentProvider] = useState<string>(LLMService.getCurrentProvider());
+  const [currentModel, setCurrentModel] = useState<string>(LLMService.getCurrentModel());
+  const [showProjectData, setShowProjectData] = useState<boolean>(false);
+  const [contextKey, setContextKey] = useState<number>(0); // Force re-render of context
+
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  const referenceText = useMemo(() => 
+    referenceDocs.map(doc => `--- START OF ${doc.file.name} ---\n${doc.text}\n--- END OF ${doc.file.name} ---`).join('\n\n'), 
+  [referenceDocs]);
+
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [conversationHistory]);
+
+  useEffect(() => {
+    const storedApiKey = localStorage.getItem('gemini-api-key');
+    if (storedApiKey) {
+        setApiKey(storedApiKey);
+    }
+
+    // Load guidelines and project data
+    loadGuidelines();
+    loadDesigns();
+
+    // Initialize context if not exists
+    const existingContext = ContextService.getCurrentContext();
+    if (!existingContext && conversationHistory.length > 1) {
+      const projectDescription = conversationHistory.slice(1).map(msg => msg.text).join(' ').substring(0, 200);
+      ContextService.initializeContext(projectDescription);
+    }
+  }, []);
+
+  const loadGuidelines = () => {
+    const loadedGuidelines = GuidelinesService.loadGuidelines();
+    setGuidelines(loadedGuidelines);
+  };
+
+  const loadDesigns = () => {
+    const loadedDesigns = DesignService.loadDesigns();
+    setDesigns(loadedDesigns);
+  };
+
+  const handleContextUpdate = () => {
+    setContextKey(prev => prev + 1); // Force re-render of context components
+  };
+
+  const handleKnowledgeBaseUpdate = () => {
+    // Force re-render when knowledge base is updated
+    setContextKey(prev => prev + 1);
+  };
+
+
+
+  useEffect(() => {
+    const loadVoices = () => {
+        setAvailableVoices(window.speechSynthesis.getVoices());
+    };
+
+    // Load voices initially
+    loadVoices();
+
+    // Update when the voice list changes
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+
+    // Cleanup
+    return () => {
+        window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
+
+  const resetState = () => {
+    setStep('scoping');
+    setConversationHistory([{ role: 'model', text: 'Hello! Please describe the project you want to build.' }]);
+    setCurrentMessage('');
+    setFinalizedScope('');
+    setKeywords([]);
+    setKeywordsByItem({});
+    setHsrItems([]);
+    setFinalEstimateText('');
+    setEditInstruction('');
+    setError(null);
+    setIsAiThinking(false);
+    setLoadingMessage('');
+    setReferenceDocs([]);
+    setIsFileProcessing(false);
+    setOutputMode('discussion');
+    setCurrentThread(null);
+    setShowProjectData(false);
+    // Clear all threads for new project
+    ThreadService.clearAllThreads();
+  };
+  
+  const handleFileUpload = (newFiles: ReferenceDoc[]) => {
+    setReferenceDocs(prevDocs => {
+      const existingFileNames = new Set(prevDocs.map(doc => doc.file.name));
+      const filteredNewFiles = newFiles.filter(newFile => !existingFileNames.has(newFile.file.name));
+      return [...prevDocs, ...filteredNewFiles];
+    });
+  };
+
+  const handleFileRemove = (fileNameToRemove: string) => {
+    setReferenceDocs(prevDocs => prevDocs.filter(doc => doc.file.name !== fileNameToRemove));
+  };
+
+  const handleApiKeySave = () => {
+    localStorage.setItem('gemini-api-key', apiKeyInput);
+    setApiKey(apiKeyInput);
+    setApiKeyInput('');
+  };
+
+  const handleSendMessage = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!currentMessage.trim() || isAiThinking) return;
+
+    const newMessage: ChatMessage = { role: 'user', text: currentMessage };
+
+    // Handle different output modes
+    if (outputMode === 'design') {
+      await handleDesignRequest(currentMessage);
+    } else {
+      // Regular discussion mode
+      const newHistory = [...conversationHistory, newMessage];
+      setConversationHistory(newHistory);
+      setCurrentMessage('');
+      setLoadingMessage('Thinking...');
+      setIsAiThinking(true);
+      setError(null);
+
+      try {
+        // Add context from previous steps
+        const contextPrompt = ContextService.generateContextPrompt();
+        let enhancedReferenceText = referenceText + contextPrompt;
+
+        // Add knowledge base context if enabled
+        if (includeKnowledgeBase) {
+          const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+            currentMessage,
+            includeKnowledgeBase
+          );
+          // Use the enhanced prompt for the conversation
+          newHistory[newHistory.length - 1].text = enhancedPrompt;
+        }
+
+        const modelResponse = await continueConversation(newHistory, enhancedReferenceText, outputMode);
+        setConversationHistory(prev => [...prev, { role: 'model', text: modelResponse }]);
+
+        // Extract and save LLM summary
+        const llmSummary = ContextService.extractLLMSummary(modelResponse);
+        ContextService.addStepSummary('discussion', newMessage.text, llmSummary);
+
+        // Add discussion to context
+        ContextService.addDiscussionToContext(newMessage.text, true);
+
+        // Save to thread
+        if (currentThread) {
+          ThreadService.addMessageToThread(currentThread.id, newMessage);
+          ThreadService.addMessageToThread(currentThread.id, { role: 'model', text: modelResponse });
+        } else {
+          const thread = ThreadService.createThread(outputMode, newMessage);
+          ThreadService.addMessageToThread(thread.id, { role: 'model', text: modelResponse });
+          setCurrentThread(thread);
+        }
+
+        if (isTtsEnabled) {
+          speak(modelResponse, speechRate, selectedVoiceURI);
+        }
+      } catch (err: any) {
+        console.error(err);
+        setError(err.message || 'An error occurred while communicating with the AI.');
+      } finally {
+        setIsAiThinking(false);
+        setLoadingMessage('');
+      }
+    }
+
+    setCurrentMessage('');
+  };
+
+  const handleDesignRequest = async (userInput: string) => {
+    setLoadingMessage('Generating component design...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Extract component name from user input or use a default
+      const componentMatch = userInput.match(/design\s+(?:for\s+)?(.+?)(?:\s|$)/i);
+      const componentName = componentMatch ? componentMatch[1].trim() : 'Component';
+
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const designGuidelines = GuidelinesService.getActiveGuidelines('design');
+      const allGuidelines = [...activeGuidelines, ...designGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      const design = await DesignService.generateComponentDesign(
+        componentName,
+        scopeContext,
+        enhancedUserInput,
+        guidelinesText,
+        referenceText
+      );
+
+      loadDesigns();
+      setLoadingMessage('');
+
+      // Add to conversation history for reference
+      setConversationHistory(prev => [
+        ...prev,
+        { role: 'user', text: userInput },
+        { role: 'model', text: `Design generated for ${componentName}. You can view the detailed design in the Design Display section below.` }
+      ]);
+
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'An error occurred while generating the design.');
+    } finally {
+      setIsAiThinking(false);
+      setLoadingMessage('');
+    }
+  };
+
+  const handleDrawingRequest = async (userInput: string) => {
+    setLoadingMessage('🔍 Analyzing your drawing requirements...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Enhanced input validation
+      if (!userInput.trim()) {
+        throw new Error('Please provide specific drawing requirements.');
+      }
+
+      if (userInput.trim().length < 10) {
+        throw new Error('Please provide more detailed drawing requirements (at least 10 characters).');
+      }
+
+      // Smart title extraction with flexible patterns
+      let title = 'Technical Drawing';
+      const titlePatterns = [
+        /(?:drawing|draw|create|generate|design)\s+(?:for\s+|of\s+|a\s+)?(.+?)(?:\s+(?:drawing|plan|view|section|detail)|$)/i,
+        /(?:plan|elevation|section|detail)\s+(?:for\s+|of\s+)?(.+?)(?:\s|$)/i,
+        /(.+?)\s+(?:drawing|plan|elevation|section|detail)/i
+      ];
+      
+      for (const pattern of titlePatterns) {
+        const match = userInput.match(pattern);
+        if (match && match[1].trim().length > 2) {
+          title = match[1].trim();
+          break;
+        }
+      }
+
+      // Gather all available context
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const drawingGuidelines = GuidelinesService.getActiveGuidelines('drawing');
+      const allGuidelines = [...activeGuidelines, ...drawingGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+      const designContext = ThreadService.getAllContextForMode('design');
+      
+      // Get existing designs that might be relevant
+      const existingDesigns = designs.filter(d => d.includeInContext !== false);
+      const designsContext = existingDesigns.length > 0 
+        ? existingDesigns.map(d => `**Design: ${d.componentName}**\n${d.designContent.substring(0, 500)}...`).join('\n\n')
+        : '';
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      // Create flexible, context-aware prompt for the LLM with comprehensive ezdxf knowledge
+      const flexibleDrawingPrompt = `You are a professional construction engineer and technical draftsman with expertise in Python ezdxf library for creating professional DXF files. You need to create a technical drawing based on the user's specific requirements.
+```
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { HsrItem, ChatMessage, KeywordsByItem, OutputMode, UserGuideline, ComponentDesign, ConversationThread } from './types';
+import { continueConversation, generatePlainTextEstimate, generateKeywordsForItems } from './services/geminiService';
+import { searchHSR } from './services/hsrService';
+import { extractHsrNumbersFromText } from './services/keywordService';
+import { speak } from './services/speechService';
+import { GuidelinesService } from './services/guidelinesService';
+import { ThreadService } from './services/threadService';
+import { DesignService } from './services/designService';
+import { ContextService } from './services/contextService';
+import { Spinner } from './components/Spinner';
+import { ResultDisplay } from './components/ResultDisplay';
+import { KeywordsDisplay } from './components/KeywordsDisplay';
+import { HsrItemsDisplay } from './components/HsrItemsDisplay';
+import { VoiceInput } from './components/VoiceInput';
+import { FileUpload } from './components/FileUpload';
+import { GuidelinesManager } from './components/GuidelinesManager';
+import { OutputModeSelector } from './components/OutputModeSelector';
+import { DesignDisplay } from './components/DesignDisplay';
+import { ContextManager } from './components/ContextManager';
+import { LLMProviderSelector } from './components/LLMProviderSelector';
+import { KnowledgeBaseManager } from './components/KnowledgeBaseManager';
+import { KnowledgeBaseDisplay } from './components/KnowledgeBaseDisplay';
+import { LLMService } from './services/llmService';
+import { RAGService } from './services/ragService';
+
+type Step = 'scoping' | 'generatingKeywords' | 'approvingKeywords' | 'approvingHsrItems' | 'approvingRefinedHsrItems' | 'generatingEstimate' | 'reviewingEstimate' | 'done';
+type ReferenceDoc = { file: File; text: string };
+
+const App: React.FC = () => {
+  const [step, setStep] = useState<Step>('scoping');
+  const [conversationHistory, setConversationHistory] = useState<ChatMessage[]>([
+    { role: 'model', text: 'Hello! I am your AI assistant for construction estimation. Please describe the project you want to build, and we can define its scope together.' }
+  ]);
+  const [currentMessage, setCurrentMessage] = useState<string>('');
+  const [finalizedScope, setFinalizedScope] = useState<string>('');
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [keywordsByItem, setKeywordsByItem] = useState<KeywordsByItem>({});
+  const [hsrItems, setHsrItems] = useState<HsrItem[]>([]);
+  const [newlyFoundHsrItems, setNewlyFoundHsrItems] = useState<HsrItem[]>([]);
+  const [finalEstimateText, setFinalEstimateText] = useState<string>('');
+  const [editInstruction, setEditInstruction] = useState<string>('');
+  const [keywordFeedback, setKeywordFeedback] = useState<string>('');
+  const [hsrItemFeedback, setHsrItemFeedback] = useState<string>('');
+  const [refinedHsrItemFeedback, setRefinedHsrItemFeedback] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+  const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
+  const [loadingMessage, setLoadingMessage] = useState<string>('');
+  const [isTtsEnabled, setIsTtsEnabled] = useState<boolean>(false);
+  const [speechRate, setSpeechRate] = useState(1);
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState<string | null>(null);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [apiKey, setApiKey] = useState<string>('');
+  const [apiKeyInput, setApiKeyInput] = useState<string>('');
+
+  const [referenceDocs, setReferenceDocs] = useState<ReferenceDoc[]>([]);
+  const [isFileProcessing, setIsFileProcessing] = useState<boolean>(false);
+
+  // Enhanced state for integrated workflow
+  const [outputMode, setOutputMode] = useState<OutputMode>('discussion');
+  const [currentThread, setCurrentThread] = useState<ConversationThread | null>(null);
+  const [guidelines, setGuidelines] = useState<UserGuideline[]>([]);
+  const [designs, setDesigns] = useState<ComponentDesign[]>([]);
+  const [isGuidelinesOpen, setIsGuidelinesOpen] = useState<boolean>(false);
+  const [isLLMSettingsOpen, setIsLLMSettingsOpen] = useState<boolean>(false);
+  const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState<boolean>(false);
+  const [includeKnowledgeBase, setIncludeKnowledgeBase] = useState<boolean>(false);
+  const [currentProvider, setCurrentProvider] = useState<string>(LLMService.getCurrentProvider());
+  const [currentModel, setCurrentModel] = useState<string>(LLMService.getCurrentModel());
+  const [showProjectData, setShowProjectData] = useState<boolean>(false);
+  const [contextKey, setContextKey] = useState<number>(0); // Force re-render of context
+
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  const referenceText = useMemo(() => 
+    referenceDocs.map(doc => `--- START OF ${doc.file.name} ---\n${doc.text}\n--- END OF ${doc.file.name} ---`).join('\n\n'), 
+  [referenceDocs]);
+
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [conversationHistory]);
+
+  useEffect(() => {
+    const storedApiKey = localStorage.getItem('gemini-api-key');
+    if (storedApiKey) {
+        setApiKey(storedApiKey);
+    }
+
+    // Load guidelines and project data
+    loadGuidelines();
+    loadDesigns();
+
+    // Initialize context if not exists
+    const existingContext = ContextService.getCurrentContext();
+    if (!existingContext && conversationHistory.length > 1) {
+      const projectDescription = conversationHistory.slice(1).map(msg => msg.text).join(' ').substring(0, 200);
+      ContextService.initializeContext(projectDescription);
+    }
+  }, []);
+
+  const loadGuidelines = () => {
+    const loadedGuidelines = GuidelinesService.loadGuidelines();
+    setGuidelines(loadedGuidelines);
+  };
+
+  const loadDesigns = () => {
+    const loadedDesigns = DesignService.loadDesigns();
+    setDesigns(loadedDesigns);
+  };
+
+  const handleContextUpdate = () => {
+    setContextKey(prev => prev + 1); // Force re-render of context components
+  };
+
+  const handleKnowledgeBaseUpdate = () => {
+    // Force re-render when knowledge base is updated
+    setContextKey(prev => prev + 1);
+  };
+
+
+
+  useEffect(() => {
+    const loadVoices = () => {
+        setAvailableVoices(window.speechSynthesis.getVoices());
+    };
+
+    // Load voices initially
+    loadVoices();
+
+    // Update when the voice list changes
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+
+    // Cleanup
+    return () => {
+        window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
+
+  const resetState = () => {
+    setStep('scoping');
+    setConversationHistory([{ role: 'model', text: 'Hello! Please describe the project you want to build.' }]);
+    setCurrentMessage('');
+    setFinalizedScope('');
+    setKeywords([]);
+    setKeywordsByItem({});
+    setHsrItems([]);
+    setFinalEstimateText('');
+    setEditInstruction('');
+    setError(null);
+    setIsAiThinking(false);
+    setLoadingMessage('');
+    setReferenceDocs([]);
+    setIsFileProcessing(false);
+    setOutputMode('discussion');
+    setCurrentThread(null);
+    setShowProjectData(false);
+    // Clear all threads for new project
+    ThreadService.clearAllThreads();
+  };
+  
+  const handleFileUpload = (newFiles: ReferenceDoc[]) => {
+    setReferenceDocs(prevDocs => {
+      const existingFileNames = new Set(prevDocs.map(doc => doc.file.name));
+      const filteredNewFiles = newFiles.filter(newFile => !existingFileNames.has(newFile.file.name));
+      return [...prevDocs, ...filteredNewFiles];
+    });
+  };
+
+  const handleFileRemove = (fileNameToRemove: string) => {
+    setReferenceDocs(prevDocs => prevDocs.filter(doc => doc.file.name !== fileNameToRemove));
+  };
+
+  const handleApiKeySave = () => {
+    localStorage.setItem('gemini-api-key', apiKeyInput);
+    setApiKey(apiKeyInput);
+    setApiKeyInput('');
+  };
+
+  const handleSendMessage = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!currentMessage.trim() || isAiThinking) return;
+
+    const newMessage: ChatMessage = { role: 'user', text: currentMessage };
+
+    // Handle different output modes
+    if (outputMode === 'design') {
+      await handleDesignRequest(currentMessage);
+    } else {
+      // Regular discussion mode
+      const newHistory = [...conversationHistory, newMessage];
+      setConversationHistory(newHistory);
+      setCurrentMessage('');
+      setLoadingMessage('Thinking...');
+      setIsAiThinking(true);
+      setError(null);
+
+      try {
+        // Add context from previous steps
+        const contextPrompt = ContextService.generateContextPrompt();
+        let enhancedReferenceText = referenceText + contextPrompt;
+
+        // Add knowledge base context if enabled
+        if (includeKnowledgeBase) {
+          const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+            currentMessage,
+            includeKnowledgeBase
+          );
+          // Use the enhanced prompt for the conversation
+          newHistory[newHistory.length - 1].text = enhancedPrompt;
+        }
+
+        const modelResponse = await continueConversation(newHistory, enhancedReferenceText, outputMode);
+        setConversationHistory(prev => [...prev, { role: 'model', text: modelResponse }]);
+
+        // Extract and save LLM summary
+        const llmSummary = ContextService.extractLLMSummary(modelResponse);
+        ContextService.addStepSummary('discussion', newMessage.text, llmSummary);
+
+        // Add discussion to context
+        ContextService.addDiscussionToContext(newMessage.text, true);
+
+        // Save to thread
+        if (currentThread) {
+          ThreadService.addMessageToThread(currentThread.id, newMessage);
+          ThreadService.addMessageToThread(currentThread.id, { role: 'model', text: modelResponse });
+        } else {
+          const thread = ThreadService.createThread(outputMode, newMessage);
+          ThreadService.addMessageToThread(thread.id, { role: 'model', text: modelResponse });
+          setCurrentThread(thread);
+        }
+
+        if (isTtsEnabled) {
+          speak(modelResponse, speechRate, selectedVoiceURI);
+        }
+      } catch (err: any) {
+        console.error(err);
+        setError(err.message || 'An error occurred while communicating with the AI.');
+      } finally {
+        setIsAiThinking(false);
+        setLoadingMessage('');
+      }
+    }
+
+    setCurrentMessage('');
+  };
+
+  const handleDesignRequest = async (userInput: string) => {
+    setLoadingMessage('Generating component design...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Extract component name from user input or use a default
+      const componentMatch = userInput.match(/design\s+(?:for\s+)?(.+?)(?:\s|$)/i);
+      const componentName = componentMatch ? componentMatch[1].trim() : 'Component';
+
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const designGuidelines = GuidelinesService.getActiveGuidelines('design');
+      const allGuidelines = [...activeGuidelines, ...designGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      const design = await DesignService.generateComponentDesign(
+        componentName,
+        scopeContext,
+        enhancedUserInput,
+        guidelinesText,
+        referenceText
+      );
+
+      loadDesigns();
+      setLoadingMessage('');
+
+      // Add to conversation history for reference
+      setConversationHistory(prev => [
+        ...prev,
+        { role: 'user', text: userInput },
+        { role: 'model', text: `Design generated for ${componentName}. You can view the detailed design in the Design Display section below.` }
+      ]);
+
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'An error occurred while generating the design.');
+    } finally {
+      setIsAiThinking(false);
+      setLoadingMessage('');
+    }
+  };
+
+  const handleDrawingRequest = async (userInput: string) => {
+    setLoadingMessage('🔍 Analyzing your drawing requirements...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Enhanced input validation
+      if (!userInput.trim()) {
+        throw new Error('Please provide specific drawing requirements.');
+      }
+
+      if (userInput.trim().length < 10) {
+        throw new Error('Please provide more detailed drawing requirements (at least 10 characters).');
+      }
+
+      // Smart title extraction with flexible patterns
+      let title = 'Technical Drawing';
+      const titlePatterns = [
+        /(?:drawing|draw|create|generate|design)\s+(?:for\s+|of\s+|a\s+)?(.+?)(?:\s+(?:drawing|plan|view|section|detail)|$)/i,
+        /(?:plan|elevation|section|detail)\s+(?:for\s+|of\s+)?(.+?)(?:\s|$)/i,
+        /(.+?)\s+(?:drawing|plan|elevation|section|detail)/i
+      ];
+      
+      for (const pattern of titlePatterns) {
+        const match = userInput.match(pattern);
+        if (match && match[1].trim().length > 2) {
+          title = match[1].trim();
+          break;
+        }
+      }
+
+      // Gather all available context
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const drawingGuidelines = GuidelinesService.getActiveGuidelines('drawing');
+      const allGuidelines = [...activeGuidelines, ...drawingGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+      const designContext = ThreadService.getAllContextForMode('design');
+      
+      // Get existing designs that might be relevant
+      const existingDesigns = designs.filter(d => d.includeInContext !== false);
+      const designsContext = existingDesigns.length > 0 
+        ? existingDesigns.map(d => `**Design: ${d.componentName}**\n${d.designContent.substring(0, 500)}...`).join('\n\n')
+        : '';
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      // Create flexible, context-aware prompt for the LLM with comprehensive ezdxf knowledge
+      const flexibleDrawingPrompt = `You are a professional construction engineer and technical draftsman with expertise in Python ezdxf library for creating professional DXF files. You need to create a technical drawing based on the user's specific requirements.
+```
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { HsrItem, ChatMessage, KeywordsByItem, OutputMode, UserGuideline, ComponentDesign, ConversationThread } from './types';
+import { continueConversation, generatePlainTextEstimate, generateKeywordsForItems } from './services/geminiService';
+import { searchHSR } from './services/hsrService';
+import { extractHsrNumbersFromText } from './services/keywordService';
+import { speak } from './services/speechService';
+import { GuidelinesService } from './services/guidelinesService';
+import { ThreadService } from './services/threadService';
+import { DesignService } from './services/designService';
+import { ContextService } from './services/contextService';
+import { Spinner } from './components/Spinner';
+import { ResultDisplay } from './components/ResultDisplay';
+import { KeywordsDisplay } from './components/KeywordsDisplay';
+import { HsrItemsDisplay } from './components/HsrItemsDisplay';
+import { VoiceInput } from './components/VoiceInput';
+import { FileUpload } from './components/FileUpload';
+import { GuidelinesManager } from './components/GuidelinesManager';
+import { OutputModeSelector } from './components/OutputModeSelector';
+import { DesignDisplay } from './components/DesignDisplay';
+import { ContextManager } from './components/ContextManager';
+import { LLMProviderSelector } from './components/LLMProviderSelector';
+import { KnowledgeBaseManager } from './components/KnowledgeBaseManager';
+import { KnowledgeBaseDisplay } from './components/KnowledgeBaseDisplay';
+import { LLMService } from './services/llmService';
+import { RAGService } from './services/ragService';
+
+type Step = 'scoping' | 'generatingKeywords' | 'approvingKeywords' | 'approvingHsrItems' | 'approvingRefinedHsrItems' | 'generatingEstimate' | 'reviewingEstimate' | 'done';
+type ReferenceDoc = { file: File; text: string };
+
+const App: React.FC = () => {
+  const [step, setStep] = useState<Step>('scoping');
+  const [conversationHistory, setConversationHistory] = useState<ChatMessage[]>([
+    { role: 'model', text: 'Hello! I am your AI assistant for construction estimation. Please describe the project you want to build, and we can define its scope together.' }
+  ]);
+  const [currentMessage, setCurrentMessage] = useState<string>('');
+  const [finalizedScope, setFinalizedScope] = useState<string>('');
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [keywordsByItem, setKeywordsByItem] = useState<KeywordsByItem>({});
+  const [hsrItems, setHsrItems] = useState<HsrItem[]>([]);
+  const [newlyFoundHsrItems, setNewlyFoundHsrItems] = useState<HsrItem[]>([]);
+  const [finalEstimateText, setFinalEstimateText] = useState<string>('');
+  const [editInstruction, setEditInstruction] = useState<string>('');
+  const [keywordFeedback, setKeywordFeedback] = useState<string>('');
+  const [hsrItemFeedback, setHsrItemFeedback] = useState<string>('');
+  const [refinedHsrItemFeedback, setRefinedHsrItemFeedback] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+  const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
+  const [loadingMessage, setLoadingMessage] = useState<string>('');
+  const [isTtsEnabled, setIsTtsEnabled] = useState<boolean>(false);
+  const [speechRate, setSpeechRate] = useState(1);
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState<string | null>(null);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [apiKey, setApiKey] = useState<string>('');
+  const [apiKeyInput, setApiKeyInput] = useState<string>('');
+
+  const [referenceDocs, setReferenceDocs] = useState<ReferenceDoc[]>([]);
+  const [isFileProcessing, setIsFileProcessing] = useState<boolean>(false);
+
+  // Enhanced state for integrated workflow
+  const [outputMode, setOutputMode] = useState<OutputMode>('discussion');
+  const [currentThread, setCurrentThread] = useState<ConversationThread | null>(null);
+  const [guidelines, setGuidelines] = useState<UserGuideline[]>([]);
+  const [designs, setDesigns] = useState<ComponentDesign[]>([]);
+  const [isGuidelinesOpen, setIsGuidelinesOpen] = useState<boolean>(false);
+  const [isLLMSettingsOpen, setIsLLMSettingsOpen] = useState<boolean>(false);
+  const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState<boolean>(false);
+  const [includeKnowledgeBase, setIncludeKnowledgeBase] = useState<boolean>(false);
+  const [currentProvider, setCurrentProvider] = useState<string>(LLMService.getCurrentProvider());
+  const [currentModel, setCurrentModel] = useState<string>(LLMService.getCurrentModel());
+  const [showProjectData, setShowProjectData] = useState<boolean>(false);
+  const [contextKey, setContextKey] = useState<number>(0); // Force re-render of context
+
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  const referenceText = useMemo(() => 
+    referenceDocs.map(doc => `--- START OF ${doc.file.name} ---\n${doc.text}\n--- END OF ${doc.file.name} ---`).join('\n\n'), 
+  [referenceDocs]);
+
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [conversationHistory]);
+
+  useEffect(() => {
+    const storedApiKey = localStorage.getItem('gemini-api-key');
+    if (storedApiKey) {
+        setApiKey(storedApiKey);
+    }
+
+    // Load guidelines and project data
+    loadGuidelines();
+    loadDesigns();
+
+    // Initialize context if not exists
+    const existingContext = ContextService.getCurrentContext();
+    if (!existingContext && conversationHistory.length > 1) {
+      const projectDescription = conversationHistory.slice(1).map(msg => msg.text).join(' ').substring(0, 200);
+      ContextService.initializeContext(projectDescription);
+    }
+  }, []);
+
+  const loadGuidelines = () => {
+    const loadedGuidelines = GuidelinesService.loadGuidelines();
+    setGuidelines(loadedGuidelines);
+  };
+
+  const loadDesigns = () => {
+    const loadedDesigns = DesignService.loadDesigns();
+    setDesigns(loadedDesigns);
+  };
+
+  const handleContextUpdate = () => {
+    setContextKey(prev => prev + 1); // Force re-render of context components
+  };
+
+  const handleKnowledgeBaseUpdate = () => {
+    // Force re-render when knowledge base is updated
+    setContextKey(prev => prev + 1);
+  };
+
+
+
+  useEffect(() => {
+    const loadVoices = () => {
+        setAvailableVoices(window.speechSynthesis.getVoices());
+    };
+
+    // Load voices initially
+    loadVoices();
+
+    // Update when the voice list changes
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+
+    // Cleanup
+    return () => {
+        window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
+
+  const resetState = () => {
+    setStep('scoping');
+    setConversationHistory([{ role: 'model', text: 'Hello! Please describe the project you want to build.' }]);
+    setCurrentMessage('');
+    setFinalizedScope('');
+    setKeywords([]);
+    setKeywordsByItem({});
+    setHsrItems([]);
+    setFinalEstimateText('');
+    setEditInstruction('');
+    setError(null);
+    setIsAiThinking(false);
+    setLoadingMessage('');
+    setReferenceDocs([]);
+    setIsFileProcessing(false);
+    setOutputMode('discussion');
+    setCurrentThread(null);
+    setShowProjectData(false);
+    // Clear all threads for new project
+    ThreadService.clearAllThreads();
+  };
+  
+  const handleFileUpload = (newFiles: ReferenceDoc[]) => {
+    setReferenceDocs(prevDocs => {
+      const existingFileNames = new Set(prevDocs.map(doc => doc.file.name));
+      const filteredNewFiles = newFiles.filter(newFile => !existingFileNames.has(newFile.file.name));
+      return [...prevDocs, ...filteredNewFiles];
+    });
+  };
+
+  const handleFileRemove = (fileNameToRemove: string) => {
+    setReferenceDocs(prevDocs => prevDocs.filter(doc => doc.file.name !== fileNameToRemove));
+  };
+
+  const handleApiKeySave = () => {
+    localStorage.setItem('gemini-api-key', apiKeyInput);
+    setApiKey(apiKeyInput);
+    setApiKeyInput('');
+  };
+
+  const handleSendMessage = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!currentMessage.trim() || isAiThinking) return;
+
+    const newMessage: ChatMessage = { role: 'user', text: currentMessage };
+
+    // Handle different output modes
+    if (outputMode === 'design') {
+      await handleDesignRequest(currentMessage);
+    } else {
+      // Regular discussion mode
+      const newHistory = [...conversationHistory, newMessage];
+      setConversationHistory(newHistory);
+      setCurrentMessage('');
+      setLoadingMessage('Thinking...');
+      setIsAiThinking(true);
+      setError(null);
+
+      try {
+        // Add context from previous steps
+        const contextPrompt = ContextService.generateContextPrompt();
+        let enhancedReferenceText = referenceText + contextPrompt;
+
+        // Add knowledge base context if enabled
+        if (includeKnowledgeBase) {
+          const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+            currentMessage,
+            includeKnowledgeBase
+          );
+          // Use the enhanced prompt for the conversation
+          newHistory[newHistory.length - 1].text = enhancedPrompt;
+        }
+
+        const modelResponse = await continueConversation(newHistory, enhancedReferenceText, outputMode);
+        setConversationHistory(prev => [...prev, { role: 'model', text: modelResponse }]);
+
+        // Extract and save LLM summary
+        const llmSummary = ContextService.extractLLMSummary(modelResponse);
+        ContextService.addStepSummary('discussion', newMessage.text, llmSummary);
+
+        // Add discussion to context
+        ContextService.addDiscussionToContext(newMessage.text, true);
+
+        // Save to thread
+        if (currentThread) {
+          ThreadService.addMessageToThread(currentThread.id, newMessage);
+          ThreadService.addMessageToThread(currentThread.id, { role: 'model', text: modelResponse });
+        } else {
+          const thread = ThreadService.createThread(outputMode, newMessage);
+          ThreadService.addMessageToThread(thread.id, { role: 'model', text: modelResponse });
+          setCurrentThread(thread);
+        }
+
+        if (isTtsEnabled) {
+          speak(modelResponse, speechRate, selectedVoiceURI);
+        }
+      } catch (err: any) {
+        console.error(err);
+        setError(err.message || 'An error occurred while communicating with the AI.');
+      } finally {
+        setIsAiThinking(false);
+        setLoadingMessage('');
+      }
+    }
+
+    setCurrentMessage('');
+  };
+
+  const handleDesignRequest = async (userInput: string) => {
+    setLoadingMessage('Generating component design...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Extract component name from user input or use a default
+      const componentMatch = userInput.match(/design\s+(?:for\s+)?(.+?)(?:\s|$)/i);
+      const componentName = componentMatch ? componentMatch[1].trim() : 'Component';
+
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const designGuidelines = GuidelinesService.getActiveGuidelines('design');
+      const allGuidelines = [...activeGuidelines, ...designGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      const design = await DesignService.generateComponentDesign(
+        componentName,
+        scopeContext,
+        enhancedUserInput,
+        guidelinesText,
+        referenceText
+      );
+
+      loadDesigns();
+      setLoadingMessage('');
+
+      // Add to conversation history for reference
+      setConversationHistory(prev => [
+        ...prev,
+        { role: 'user', text: userInput },
+        { role: 'model', text: `Design generated for ${componentName}. You can view the detailed design in the Design Display section below.` }
+      ]);
+
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'An error occurred while generating the design.');
+    } finally {
+      setIsAiThinking(false);
+      setLoadingMessage('');
+    }
+  };
+
+  const handleDrawingRequest = async (userInput: string) => {
+    setLoadingMessage('🔍 Analyzing your drawing requirements...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Enhanced input validation
+      if (!userInput.trim()) {
+        throw new Error('Please provide specific drawing requirements.');
+      }
+
+      if (userInput.trim().length < 10) {
+        throw new Error('Please provide more detailed drawing requirements (at least 10 characters).');
+      }
+
+      // Smart title extraction with flexible patterns
+      let title = 'Technical Drawing';
+      const titlePatterns = [
+        /(?:drawing|draw|create|generate|design)\s+(?:for\s+|of\s+|a\s+)?(.+?)(?:\s+(?:drawing|plan|view|section|detail)|$)/i,
+        /(?:plan|elevation|section|detail)\s+(?:for\s+|of\s+)?(.+?)(?:\s|$)/i,
+        /(.+?)\s+(?:drawing|plan|elevation|section|detail)/i
+      ];
+      
+      for (const pattern of titlePatterns) {
+        const match = userInput.match(pattern);
+        if (match && match[1].trim().length > 2) {
+          title = match[1].trim();
+          break;
+        }
+      }
+
+      // Gather all available context
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const drawingGuidelines = GuidelinesService.getActiveGuidelines('drawing');
+      const allGuidelines = [...activeGuidelines, ...drawingGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+      const designContext = ThreadService.getAllContextForMode('design');
+      
+      // Get existing designs that might be relevant
+      const existingDesigns = designs.filter(d => d.includeInContext !== false);
+      const designsContext = existingDesigns.length > 0 
+        ? existingDesigns.map(d => `**Design: ${d.componentName}**\n${d.designContent.substring(0, 500)}...`).join('\n\n')
+        : '';
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      // Create flexible, context-aware prompt for the LLM with comprehensive ezdxf knowledge
+      const flexibleDrawingPrompt = `You are a professional construction engineer and technical draftsman with expertise in Python ezdxf library for creating professional DXF files. You need to create a technical drawing based on the user's specific requirements.
+```
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { HsrItem, ChatMessage, KeywordsByItem, OutputMode, UserGuideline, ComponentDesign, ConversationThread } from './types';
+import { continueConversation, generatePlainTextEstimate, generateKeywordsForItems } from './services/geminiService';
+import { searchHSR } from './services/hsrService';
+import { extractHsrNumbersFromText } from './services/keywordService';
+import { speak } from './services/speechService';
+import { GuidelinesService } from './services/guidelinesService';
+import { ThreadService } from './services/threadService';
+import { DesignService } from './services/designService';
+import { ContextService } from './services/contextService';
+import { Spinner } from './components/Spinner';
+import { ResultDisplay } from './components/ResultDisplay';
+import { KeywordsDisplay } from './components/KeywordsDisplay';
+import { HsrItemsDisplay } from './components/HsrItemsDisplay';
+import { VoiceInput } from './components/VoiceInput';
+import { FileUpload } from './components/FileUpload';
+import { GuidelinesManager } from './components/GuidelinesManager';
+import { OutputModeSelector } from './components/OutputModeSelector';
+import { DesignDisplay } from './components/DesignDisplay';
+import { ContextManager } from './components/ContextManager';
+import { LLMProviderSelector } from './components/LLMProviderSelector';
+import { KnowledgeBaseManager } from './components/KnowledgeBaseManager';
+import { KnowledgeBaseDisplay } from './components/KnowledgeBaseDisplay';
+import { LLMService } from './services/llmService';
+import { RAGService } from './services/ragService';
+
+type Step = 'scoping' | 'generatingKeywords' | 'approvingKeywords' | 'approvingHsrItems' | 'approvingRefinedHsrItems' | 'generatingEstimate' | 'reviewingEstimate' | 'done';
+type ReferenceDoc = { file: File; text: string };
+
+const App: React.FC = () => {
+  const [step, setStep] = useState<Step>('scoping');
+  const [conversationHistory, setConversationHistory] = useState<ChatMessage[]>([
+    { role: 'model', text: 'Hello! I am your AI assistant for construction estimation. Please describe the project you want to build, and we can define its scope together.' }
+  ]);
+  const [currentMessage, setCurrentMessage] = useState<string>('');
+  const [finalizedScope, setFinalizedScope] = useState<string>('');
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [keywordsByItem, setKeywordsByItem] = useState<KeywordsByItem>({});
+  const [hsrItems, setHsrItems] = useState<HsrItem[]>([]);
+  const [newlyFoundHsrItems, setNewlyFoundHsrItems] = useState<HsrItem[]>([]);
+  const [finalEstimateText, setFinalEstimateText] = useState<string>('');
+  const [editInstruction, setEditInstruction] = useState<string>('');
+  const [keywordFeedback, setKeywordFeedback] = useState<string>('');
+  const [hsrItemFeedback, setHsrItemFeedback] = useState<string>('');
+  const [refinedHsrItemFeedback, setRefinedHsrItemFeedback] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+  const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
+  const [loadingMessage, setLoadingMessage] = useState<string>('');
+  const [isTtsEnabled, setIsTtsEnabled] = useState<boolean>(false);
+  const [speechRate, setSpeechRate] = useState(1);
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState<string | null>(null);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [apiKey, setApiKey] = useState<string>('');
+  const [apiKeyInput, setApiKeyInput] = useState<string>('');
+
+  const [referenceDocs, setReferenceDocs] = useState<ReferenceDoc[]>([]);
+  const [isFileProcessing, setIsFileProcessing] = useState<boolean>(false);
+
+  // Enhanced state for integrated workflow
+  const [outputMode, setOutputMode] = useState<OutputMode>('discussion');
+  const [currentThread, setCurrentThread] = useState<ConversationThread | null>(null);
+  const [guidelines, setGuidelines] = useState<UserGuideline[]>([]);
+  const [designs, setDesigns] = useState<ComponentDesign[]>([]);
+  const [isGuidelinesOpen, setIsGuidelinesOpen] = useState<boolean>(false);
+  const [isLLMSettingsOpen, setIsLLMSettingsOpen] = useState<boolean>(false);
+  const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState<boolean>(false);
+  const [includeKnowledgeBase, setIncludeKnowledgeBase] = useState<boolean>(false);
+  const [currentProvider, setCurrentProvider] = useState<string>(LLMService.getCurrentProvider());
+  const [currentModel, setCurrentModel] = useState<string>(LLMService.getCurrentModel());
+  const [showProjectData, setShowProjectData] = useState<boolean>(false);
+  const [contextKey, setContextKey] = useState<number>(0); // Force re-render of context
+
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  const referenceText = useMemo(() => 
+    referenceDocs.map(doc => `--- START OF ${doc.file.name} ---\n${doc.text}\n--- END OF ${doc.file.name} ---`).join('\n\n'), 
+  [referenceDocs]);
+
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [conversationHistory]);
+
+  useEffect(() => {
+    const storedApiKey = localStorage.getItem('gemini-api-key');
+    if (storedApiKey) {
+        setApiKey(storedApiKey);
+    }
+
+    // Load guidelines and project data
+    loadGuidelines();
+    loadDesigns();
+
+    // Initialize context if not exists
+    const existingContext = ContextService.getCurrentContext();
+    if (!existingContext && conversationHistory.length > 1) {
+      const projectDescription = conversationHistory.slice(1).map(msg => msg.text).join(' ').substring(0, 200);
+      ContextService.initializeContext(projectDescription);
+    }
+  }, []);
+
+  const loadGuidelines = () => {
+    const loadedGuidelines = GuidelinesService.loadGuidelines();
+    setGuidelines(loadedGuidelines);
+  };
+
+  const loadDesigns = () => {
+    const loadedDesigns = DesignService.loadDesigns();
+    setDesigns(loadedDesigns);
+  };
+
+  const handleContextUpdate = () => {
+    setContextKey(prev => prev + 1); // Force re-render of context components
+  };
+
+  const handleKnowledgeBaseUpdate = () => {
+    // Force re-render when knowledge base is updated
+    setContextKey(prev => prev + 1);
+  };
+
+
+
+  useEffect(() => {
+    const loadVoices = () => {
+        setAvailableVoices(window.speechSynthesis.getVoices());
+    };
+
+    // Load voices initially
+    loadVoices();
+
+    // Update when the voice list changes
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+
+    // Cleanup
+    return () => {
+        window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
+
+  const resetState = () => {
+    setStep('scoping');
+    setConversationHistory([{ role: 'model', text: 'Hello! Please describe the project you want to build.' }]);
+    setCurrentMessage('');
+    setFinalizedScope('');
+    setKeywords([]);
+    setKeywordsByItem({});
+    setHsrItems([]);
+    setFinalEstimateText('');
+    setEditInstruction('');
+    setError(null);
+    setIsAiThinking(false);
+    setLoadingMessage('');
+    setReferenceDocs([]);
+    setIsFileProcessing(false);
+    setOutputMode('discussion');
+    setCurrentThread(null);
+    setShowProjectData(false);
+    // Clear all threads for new project
+    ThreadService.clearAllThreads();
+  };
+  
+  const handleFileUpload = (newFiles: ReferenceDoc[]) => {
+    setReferenceDocs(prevDocs => {
+      const existingFileNames = new Set(prevDocs.map(doc => doc.file.name));
+      const filteredNewFiles = newFiles.filter(newFile => !existingFileNames.has(newFile.file.name));
+      return [...prevDocs, ...filteredNewFiles];
+    });
+  };
+
+  const handleFileRemove = (fileNameToRemove: string) => {
+    setReferenceDocs(prevDocs => prevDocs.filter(doc => doc.file.name !== fileNameToRemove));
+  };
+
+  const handleApiKeySave = () => {
+    localStorage.setItem('gemini-api-key', apiKeyInput);
+    setApiKey(apiKeyInput);
+    setApiKeyInput('');
+  };
+
+  const handleSendMessage = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!currentMessage.trim() || isAiThinking) return;
+
+    const newMessage: ChatMessage = { role: 'user', text: currentMessage };
+
+    // Handle different output modes
+    if (outputMode === 'design') {
+      await handleDesignRequest(currentMessage);
+    } else {
+      // Regular discussion mode
+      const newHistory = [...conversationHistory, newMessage];
+      setConversationHistory(newHistory);
+      setCurrentMessage('');
+      setLoadingMessage('Thinking...');
+      setIsAiThinking(true);
+      setError(null);
+
+      try {
+        // Add context from previous steps
+        const contextPrompt = ContextService.generateContextPrompt();
+        let enhancedReferenceText = referenceText + contextPrompt;
+
+        // Add knowledge base context if enabled
+        if (includeKnowledgeBase) {
+          const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+            currentMessage,
+            includeKnowledgeBase
+          );
+          // Use the enhanced prompt for the conversation
+          newHistory[newHistory.length - 1].text = enhancedPrompt;
+        }
+
+        const modelResponse = await continueConversation(newHistory, enhancedReferenceText, outputMode);
+        setConversationHistory(prev => [...prev, { role: 'model', text: modelResponse }]);
+
+        // Extract and save LLM summary
+        const llmSummary = ContextService.extractLLMSummary(modelResponse);
+        ContextService.addStepSummary('discussion', newMessage.text, llmSummary);
+
+        // Add discussion to context
+        ContextService.addDiscussionToContext(newMessage.text, true);
+
+        // Save to thread
+        if (currentThread) {
+          ThreadService.addMessageToThread(currentThread.id, newMessage);
+          ThreadService.addMessageToThread(currentThread.id, { role: 'model', text: modelResponse });
+        } else {
+          const thread = ThreadService.createThread(outputMode, newMessage);
+          ThreadService.addMessageToThread(thread.id, { role: 'model', text: modelResponse });
+          setCurrentThread(thread);
+        }
+
+        if (isTtsEnabled) {
+          speak(modelResponse, speechRate, selectedVoiceURI);
+        }
+      } catch (err: any) {
+        console.error(err);
+        setError(err.message || 'An error occurred while communicating with the AI.');
+      } finally {
+        setIsAiThinking(false);
+        setLoadingMessage('');
+      }
+    }
+
+    setCurrentMessage('');
+  };
+
+  const handleDesignRequest = async (userInput: string) => {
+    setLoadingMessage('Generating component design...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Extract component name from user input or use a default
+      const componentMatch = userInput.match(/design\s+(?:for\s+)?(.+?)(?:\s|$)/i);
+      const componentName = componentMatch ? componentMatch[1].trim() : 'Component';
+
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const designGuidelines = GuidelinesService.getActiveGuidelines('design');
+      const allGuidelines = [...activeGuidelines, ...designGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      const design = await DesignService.generateComponentDesign(
+        componentName,
+        scopeContext,
+        enhancedUserInput,
+        guidelinesText,
+        referenceText
+      );
+
+      loadDesigns();
+      setLoadingMessage('');
+
+      // Add to conversation history for reference
+      setConversationHistory(prev => [
+        ...prev,
+        { role: 'user', text: userInput },
+        { role: 'model', text: `Design generated for ${componentName}. You can view the detailed design in the Design Display section below.` }
+      ]);
+
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'An error occurred while generating the design.');
+    } finally {
+      setIsAiThinking(false);
+      setLoadingMessage('');
+    }
+  };
+
+  const handleDrawingRequest = async (userInput: string) => {
+    setLoadingMessage('🔍 Analyzing your drawing requirements...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      // Enhanced input validation
+      if (!userInput.trim()) {
+        throw new Error('Please provide specific drawing requirements.');
+      }
+
+      if (userInput.trim().length < 10) {
+        throw new Error('Please provide more detailed drawing requirements (at least 10 characters).');
+      }
+
+      // Smart title extraction with flexible patterns
+      let title = 'Technical Drawing';
+      const titlePatterns = [
+        /(?:drawing|draw|create|generate|design)\s+(?:for\s+|of\s+|a\s+)?(.+?)(?:\s+(?:drawing|plan|view|section|detail)|$)/i,
+        /(?:plan|elevation|section|detail)\s+(?:for\s+|of\s+)?(.+?)(?:\s|$)/i,
+        /(.+?)\s+(?:drawing|plan|elevation|section|detail)/i
+      ];
+      
+      for (const pattern of titlePatterns) {
+        const match = userInput.match(pattern);
+        if (match && match[1].trim().length > 2) {
+          title = match[1].trim();
+          break;
+        }
+      }
+
+      // Gather all available context
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const drawingGuidelines = GuidelinesService.getActiveGuidelines('drawing');
+      const allGuidelines = [...activeGuidelines, ...drawingGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+      const designContext = ThreadService.getAllContextForMode('design');
+      
+      // Get existing designs that might be relevant
+      const existingDesigns = designs.filter(d => d.includeInContext !== false);
+      const designsContext = existingDesigns.length > 0 
+        ? existingDesigns.map(d => `**Design: ${d.componentName}**\n${d.designContent.substring(0, 500)}...`).join('\n\n')
+        : '';
+
+      // Enhance user input with knowledge base if enabled
+      let enhancedUserInput = userInput;
+      if (includeKnowledgeBase) {
+        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedUserInput = enhancedPrompt;
+      }
+
+      // Create flexible, context-aware prompt for the LLM with comprehensive ezdxf knowledge
+      const flexibleDrawingPrompt = `You are a professional construction engineer and technical draftsman with expertise in Python ezdxf library for creating professional DXF files. You need to create a technical drawing based on the user's specific requirements.
+```
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { HsrItem, ChatMessage, KeywordsByItem, OutputMode, UserGuideline, ComponentDesign, ConversationThread } from './types';
+import { continueConversation, generatePlainTextEstimate, generateKeywordsForItems } from './services/geminiService';
+import { searchHSR } from './services/hsrService';
+import { extractHsrNumbersFromText } from './services/keywordService';
+import { speak } from './services/speechService';
+import { GuidelinesService } from './services/guidelinesService';
+import { ThreadService } from './services/threadService';
+import { DesignService } from './services/designService';
+import { ContextService } from './services/contextService';
+import { Spinner } from './components/Spinner';
+import { ResultDisplay } from './components/ResultDisplay';
+import { KeywordsDisplay } from './components/KeywordsDisplay';
+import { HsrItemsDisplay } from './components/HsrItemsDisplay';
+import { VoiceInput } from './components/VoiceInput';
+import { FileUpload } from './components/FileUpload';
+import { GuidelinesManager } from './components/GuidelinesManager';
+import { OutputModeSelector } from './components/OutputModeSelector';
+import { DesignDisplay } from './components/DesignDisplay';
+import { ContextManager } from './components/ContextManager';
+import { LLMProviderSelector } from './components/LLMProviderSelector';
+import { KnowledgeBaseManager } from './components/KnowledgeBaseManager';
+import { KnowledgeBaseDisplay } from './components/KnowledgeBaseDisplay';
+import { LLMService } from './services/llmService';
+import { RAGService } from './services/ragService';
+
+type Step = 'scoping' | 'generatingKeywords' | 'approvingKeywords' | 'approvingHsrItems' | 'approvingRefinedHsrItems' | 'generatingEstimate' | 'reviewingEstimate' | 'done';
+type ReferenceDoc = { file: File; text: string };
+
+const App: React.FC = () => {
+  const [step, setStep] = useState<Step>('scoping');
+  const [conversationHistory, setConversationHistory] = useState<ChatMessage[]>([
+    { role: 'model', text: 'Hello! I am your AI assistant for construction estimation. Please describe the project you want to build, and we can define its scope together.' }
+  ]);
+  const [currentMessage, setCurrentMessage] = useState<string>('');
+  const [finalizedScope, setFinalizedScope] = useState<string>('');
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [keywordsByItem, setKeywordsByItem] = useState<KeywordsByItem>({});
+  const [hsrItems, setHsrItems] = useState<HsrItem[]>([]);
+  const [newlyFoundHsrItems, setNewlyFoundHsrItems] = useState<HsrItem[]>([]);
+  const [finalEstimateText, setFinalEstimateText] = useState<string>('');
+  const [editInstruction, setEditInstruction] = useState<string>('');
+  const [keywordFeedback, setKeywordFeedback] = useState<string>('');
+  const [hsrItemFeedback, setHsrItemFeedback] = useState<string>('');
+  const [refinedHsrItemFeedback, setRefinedHsrItemFeedback] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+  const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
+  const [loadingMessage, setLoadingMessage] = useState<string>('');
+  const [isTtsEnabled, setIsTtsEnabled] = useState<boolean>(false);
+  const [speechRate, setSpeechRate] = useState(1);
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState<string | null>(null);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [apiKey, setApiKey] = useState<string>('');
+  const [apiKeyInput, setApiKeyInput] = useState<string>('');
+
+  const [referenceDocs, setReferenceDocs] = useState<ReferenceDoc[]>([]);
+  const [isFileProcessing, setIsFileProcessing] = useState<boolean>(false);
+
+  // Enhanced state for integrated workflow
+  const [outputMode, setOutputMode] = useState<OutputMode>('discussion');
+  const [currentThread, setCurrentThread] = useState<ConversationThread | null>(null);
+  const [guidelines, setGuidelines] = useState<UserGuideline[]>([]);
+  const [designs, setDesigns] = useState<ComponentDesign[]>([]);
+  const [isGuidelinesOpen, setIsGuidelinesOpen] = useState<boolean>(false);
+  const [isLLMSettingsOpen, setIsLLMSettingsOpen] = useState<boolean>(false);
+  const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState<boolean>(false);
+  const [includeKnowledgeBase, setIncludeKnowledgeBase] = useState<boolean>(false);
+  const [currentProvider, setCurrentProvider] = useState<string>(LLMService.getCurrentProvider());
+  const [currentModel, setCurrentModel] = useState<string>(LLMService.getCurrentModel());
+  const [showProjectData, setShowProjectData] = useState<boolean>(false);
+  const [contextKey, setContextKey] = useState<number>(0); // Force re-render of context
+
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  const referenceText = useMemo(() => 
+    referenceDocs.map(doc => `--- START OF ${doc.file.name} ---\n${doc.text}\n--- END OF ${doc.file.name} ---`).join('\n\n'), 
+  [referenceDocs]);
+
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [conversationHistory]);
+
+  useEffect(() => {
+    const storedApiKey = localStorage.getItem('gemini-api-key');
+    if (storedApiKey) {
+        setApiKey(storedApiKey);
+    }
+
+    // Load guidelines and project data
+    loadGuidelines();
+    loadDesigns();
+
+    // Initialize context if not exists
+    const existingContext = ContextService.getCurrentContext();
+    if (!existingContext && conversationHistory.length > 1) {
+      const projectDescription = conversationHistory.slice(1).map(msg => msg.text).join(' ').substring(0, 200);
+      ContextService.initializeContext(projectDescription);
+    }
+  }, []);
+
+  const loadGuidelines = () => {
+    const loadedGuidelines = GuidelinesService.loadGuidelines();
+    setGuidelines(loadedGuidelines);
+  };
+
+  const loadDesigns = () => {
+    const loadedDesigns = DesignService.loadDesigns();
+    setDesigns(loadedDesigns);
+  };
+
+  const handleContextUpdate = () => {
+    setContextKey(prev => prev + 1); // Force re-render of context components
+  };
+
+  const handleKnowledgeBaseUpdate = () => {
+    // Force re-render when knowledge base is updated
+    setContextKey(prev => prev + 1);
+  };
+
+
+
+  useEffect(() => {
+    const loadVoices = () => {
+        setAvailableVoices(window.speechSynthesis.getVoices());
+    };
+
+    // Load voices initially
+    loadVoices();
+
+    // Update when the voice list changes
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+
+    // Cleanup
+    return () => {
+        window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
+
+  const resetState = () => {
+    setStep('scoping');
+    setConversationHistory([{ role: 'model', text: 'Hello! Please describe the project you want to build.' }]);
+    setCurrentMessage('');
+    setFinalizedScope('');
+    setKeywords([]);
+    setKeywordsByItem({});
+    setHsrItems([]);
+    setFinalEstimateText('');
+    setEditInstruction('');
+    setError(null);
+    setIsAiThinking(false);
+    setLoadingMessage('');
+    setReferenceDocs([]);
+    setIsFileProcessing(false);
+    setOutputMode('discussion');
+    setCurrentThread(null);
+    setShowProjectData(false);
+    // Clear all threads for new project
+    ThreadService.clearAllThreads();
+  };
+  
+  const handleFileUpload = (newFiles: ReferenceDoc[]) => {
+    setReferenceDocs(prevDocs => {
+      const existingFileNames = new Set(prevDocs.map(doc => doc.file.name));
+      const filteredNewFiles = newFiles.filter(newFile => !existingFileNames.has(newFile.file.name));
+      return [...prevDocs, ...filteredNewFiles];
+    });
+  };
+
+  const handleFileRemove = (fileNameToRemove: string) => {
+    setReferenceDocs(prevDocs => prevDocs.filter(doc => doc.file.name !== fileNameToRemove));
+  };
+
+  const handleApiKeySave = () => {
+    localStorage.setItem('gemini-api-key', apiKeyInput);
+    setApiKey(apiKeyInput);
+    setApiKeyInput('');
+  };
+
+  const handleSendMessage = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!currentMessage.trim() || isAiThinking) return;
+
+    const newMessage: ChatMessage = { role: 'user', text: currentMessage };
+
+    // Handle different output modes
+    if (outputMode === 'design') {
+      await handleDesignRequest(currentMessage);
     } else {
       // Regular discussion mode
       const newHistory = [...conversationHistory, newMessage];
@@ -991,8 +7069,7 @@ Focus on creating exactly what the user requested, using available context to en
                 onChange={(e) => setCurrentMessage(e.target.value)}
                 placeholder={
                   outputMode === 'discussion' ? "Describe your project..." :
-                  outputMode === 'design' ? "Request component design (e.g., 'Design foundation for 2-story building')" :
-                  "Request technical drawing (e.g., 'Drawing for foundation plan')"
+                  "Request component design (e.g., 'Design foundation for 2-story building')"
                 }
                 className="flex-grow p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500"
                 disabled={isAiThinking}
@@ -1015,29 +7092,16 @@ Focus on creating exactly what the user requested, using available context to en
                 <svg className={`w-4 h-4 transform transition-transform ${showProjectData ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
-                View Project Data ({designs.length} designs, {drawings.length} drawings)
+                View Project Data ({designs.length} designs)
               </button>
 
               {showProjectData && (
                 <div className="mt-4 space-y-6">
-                  {/* Backend Configuration */}
-                  <BackendConfig />
-
                   {/* Design Display */}
                   <DesignDisplay
                     designs={designs}
                     onDesignUpdate={loadDesigns}
                     onContextUpdate={handleContextUpdate}
-                  />
-
-                  {/* DXF Setup Guide */}
-                  <DXFSetupGuide />
-
-                  {/* Drawing Display */}
-                  <DrawingDisplay
-                    drawings={drawings}
-                    onDrawingUpdate={loadDrawings}
-                    onRegenerateDrawing={handleRegenerateDrawing}
                   />
 
                   {/* Context Manager */}
