@@ -1,7 +1,47 @@
 # HSR Construction Estimator - Design Section Documentation
 
 ## Overview
-The Design Section is responsible for generating detailed component designs with specifications, materials, and calculations. It creates professional engineering designs that can be used for construction planning and cost estimation.
+The Design Section is a comprehensive component design generation and management system within the HSR Construction Estimator application. It enables users to create, edit, improve, and export detailed professional component designs with specifications, materials, and calculations using AI assistance. The section includes advanced features like design editing, HTML export, context management, and professional formatting.
+
+## 🆕 New Features (Latest Update)
+
+### 1. **Design Editing and Improvement**
+- **Edit Button**: Each design now has an "✏️ Edit" button for improvements
+- **Contextual Editing**: Uses original design content plus user instructions
+- **Intelligent Updates**: Preserves good aspects while making specific improvements
+- **Edit History**: Updates timestamp and maintains design evolution
+
+### 2. **Professional Text Formatting**
+- **Bold Formatting**: Automatically converts `**text**` and `*text*` to bold HTML
+- **Clean Display**: Removes markdown formatting characters for professional appearance
+- **Structured Layout**: Organized sections with proper typography
+- **Readable Content**: Enhanced spacing and formatting for technical documents
+
+### 3. **HTML Export Functionality**
+- **Professional HTML Generation**: Creates complete, standalone HTML documents
+- **Custom Instructions**: Users can provide specific HTML formatting requirements
+- **Download & Preview**: Automatic download with optional browser preview
+- **Print-Ready**: Professional styling optimized for printing and sharing
+- **Responsive Design**: Works on different screen sizes and devices
+
+### 4. **Collapsible Design Organization**
+- **Compact View**: Designs are collapsed by default to save space
+- **Expand/Collapse**: Easy toggle between summary and full content view
+- **Multiple Designs**: Efficiently manage many component designs
+- **Quick Overview**: See all designs at a glance with expand options
+
+### 5. **Context Management System**
+- **Include in Context**: Checkbox to control which designs are used in future work
+- **Context Purification**: Discussion Context Manager for cleaning conversation history
+- **Smart Context**: Uses purified context for better AI responses
+- **Selective Context**: Choose which designs contribute to future AI interactions
+
+### 6. **Discussion Context Purification**
+- **Context Manager Button**: Available in discussion mode settings
+- **Intelligent Analysis**: AI analyzes entire conversation history
+- **Final Decisions Only**: Extracts confirmed requirements, ignores reversed decisions
+- **Organized Summary**: Creates structured project context summary
+- **Clean Context**: Removes redundant discussions and focuses on outcomes
 
 ## Core Components
 

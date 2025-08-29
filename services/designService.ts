@@ -165,6 +165,15 @@ Focus on creating a professional, implementable design that integrates seamlessl
     localStorage.setItem(this.STORAGE_KEY, JSON.stringify(designs));
   }
 
+  static updateDesign(updatedDesign: ComponentDesign): void {
+    const designs = this.loadDesigns();
+    const index = designs.findIndex(d => d.id === updatedDesign.id);
+    if (index !== -1) {
+      designs[index] = updatedDesign;
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(designs));
+    }
+  }
+
   static loadDesigns(): ComponentDesign[] {
     try {
       const stored = localStorage.getItem(this.STORAGE_KEY);
@@ -195,16 +204,13 @@ Focus on creating a professional, implementable design that integrates seamlessl
     localStorage.removeItem(this.STORAGE_KEY);
   }
 
-  static updateDesign(designId: string, updates: Partial<ComponentDesign>): ComponentDesign | null {
+  static updateDesign(updatedDesign: ComponentDesign): void {
     const designs = this.loadDesigns();
-    const index = designs.findIndex(d => d.id === designId);
-    
-    if (index === -1) return null;
-    
-    designs[index] = { ...designs[index], ...updates };
-    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(designs));
-    
-    return designs[index];
+    const index = designs.findIndex(d => d.id === updatedDesign.id);
+    if (index !== -1) {
+      designs[index] = updatedDesign;
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(designs));
+    }
   }
 
   static getDesign(designId: string): ComponentDesign | null {
@@ -212,7 +218,74 @@ Focus on creating a professional, implementable design that integrates seamlessl
     return designs.find(d => d.id === designId) || null;
   }
 
-  static clearAllDesigns(): void {
-    localStorage.removeItem(this.STORAGE_KEY);
+  static async editComponentDesign(
+    design: ComponentDesign,
+    editInstruction: string,
+    projectScope: string,
+    guidelines: string,
+    referenceText: string
+  ): Promise<ComponentDesign> {
+    const prompt = `Edit and improve the existing component design based on user instructions.
+
+**ORIGINAL DESIGN TO EDIT:**
+Component: ${design.componentName}
+Created: ${new Date(design.createdAt).toLocaleString()}
+
+**CURRENT DESIGN CONTENT:**
+${design.designContent}
+
+**USER EDIT INSTRUCTIONS:**
+${editInstruction}
+
+**PROJECT CONTEXT:**
+Project Scope: ${projectScope}
+
+**DESIGN GUIDELINES:**
+${guidelines}
+
+**REFERENCE DOCUMENTS:**
+${referenceText}
+
+**EDIT REQUIREMENTS:**
+1. Carefully analyze the user's edit instructions
+2. Preserve all good aspects of the original design
+3. Make specific improvements based on user feedback
+4. Update specifications, materials, and calculations as needed
+5. Maintain compatibility with existing project components
+6. Reference relevant Indian building codes (IS codes, NBC)
+7. Ensure the edited design is more comprehensive and accurate
+8. Provide clear explanation of what was changed and why
+
+Focus on creating a professional, implementable design that incorporates the user's feedback while maintaining technical accuracy and project integration.`;
+
+    try {
+      console.log('Design Service: Editing design for component:', design.componentName);
+
+      // Create a conversation history for the edit request
+      const editHistory: ChatMessage[] = [
+        { role: 'user', text: prompt }
+      ];
+
+      // Use the unified LLM service through continueConversation
+      const editedContent = await continueConversation(editHistory, referenceText, 'design');
+
+      if (!editedContent || editedContent.trim().length < 50) {
+        throw new Error('Generated edited design content is too short or empty. Please try again with more specific edit instructions.');
+      }
+
+      // Create updated design
+      const editedDesign: ComponentDesign = {
+        ...design,
+        designContent: editedContent,
+        createdAt: new Date(), // Update timestamp
+      };
+
+      // Update the design in storage
+      this.updateDesign(editedDesign);
+      return editedDesign;
+    } catch (error) {
+      console.error('Design Service Edit Error:', error);
+      throw new Error(`Failed to edit design: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 }

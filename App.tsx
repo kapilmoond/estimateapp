@@ -8,6 +8,7 @@ import { ThreadService } from './services/threadService';
 import { DesignService } from './services/designService';
 import { ContextService } from './services/contextService';
 import { DXFService, DXFStorageService } from './services/dxfService';
+import { HTMLService } from './services/htmlService';
 import { Spinner } from './components/Spinner';
 import { ResultDisplay } from './components/ResultDisplay';
 import { KeywordsDisplay } from './components/KeywordsDisplay';
@@ -22,6 +23,7 @@ import { ContextManager } from './components/ContextManager';
 import { LLMProviderSelector } from './components/LLMProviderSelector';
 import { KnowledgeBaseManager } from './components/KnowledgeBaseManager';
 import { KnowledgeBaseDisplay } from './components/KnowledgeBaseDisplay';
+import { DiscussionContextManager } from './components/DiscussionContextManager';
 import { LLMService } from './services/llmService';
 import { RAGService } from './services/ragService';
 
@@ -70,6 +72,8 @@ const App: React.FC = () => {
   const [showProjectData, setShowProjectData] = useState<boolean>(false);
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [contextKey, setContextKey] = useState<number>(0); // Force re-render of context
+  const [isContextManagerOpen, setIsContextManagerOpen] = useState<boolean>(false);
+  const [purifiedContext, setPurifiedContext] = useState<string>('');
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
@@ -125,6 +129,100 @@ const App: React.FC = () => {
   const handleKnowledgeBaseUpdate = () => {
     // Force re-render when knowledge base is updated
     setContextKey(prev => prev + 1);
+  };
+
+  const handleEditDesign = async (design: ComponentDesign, editInstruction: string) => {
+    setLoadingMessage('🔄 Editing design based on your instructions...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const designGuidelines = GuidelinesService.getActiveGuidelines('design');
+      const allGuidelines = [...activeGuidelines, ...designGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = purifiedContext || finalizedScope || ThreadService.getAllContextForMode('discussion');
+
+      await DesignService.editComponentDesign(
+        design,
+        editInstruction,
+        scopeContext,
+        guidelinesText,
+        referenceText
+      );
+
+      loadDesigns();
+
+      // Add to conversation history
+      setConversationHistory(prev => [
+        ...prev,
+        { role: 'user', text: `Edit design for ${design.componentName}: ${editInstruction}` },
+        { role: 'model', text: `✅ **Design Updated Successfully!**\n\n🏗️ **Component:** ${design.componentName}\n\n📝 **Changes Applied:** ${editInstruction}\n\n📋 **Status:** The design has been improved based on your instructions.\n\n📁 **View:** Check the updated design in the Component Designs section below.` }
+      ]);
+
+    } catch (err: any) {
+      console.error('Edit design error:', err);
+      setError(err.message || 'An error occurred while editing the design.');
+    } finally {
+      setIsAiThinking(false);
+      setLoadingMessage('');
+    }
+  };
+
+  const handleGenerateHTML = async (design: ComponentDesign, htmlInstruction: string) => {
+    setLoadingMessage('🌐 Generating professional HTML document...');
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      const activeGuidelines = GuidelinesService.getActiveGuidelines();
+      const designGuidelines = GuidelinesService.getActiveGuidelines('design');
+      const allGuidelines = [...activeGuidelines, ...designGuidelines];
+      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
+
+      const scopeContext = purifiedContext || finalizedScope || ThreadService.getAllContextForMode('discussion');
+
+      const htmlContent = await HTMLService.generateHTMLFromDesign(
+        design,
+        htmlInstruction,
+        scopeContext,
+        guidelinesText,
+        referenceText
+      );
+
+      // Download the HTML file
+      HTMLService.downloadHTML(htmlContent, `${design.componentName.replace(/[^a-z0-9]/gi, '_')}_design`);
+
+      // Also offer to preview
+      if (confirm('HTML file downloaded! Would you like to preview it in a new window?')) {
+        HTMLService.previewHTML(htmlContent);
+      }
+
+      // Add to conversation history
+      setConversationHistory(prev => [
+        ...prev,
+        { role: 'user', text: `Generate HTML for ${design.componentName}: ${htmlInstruction}` },
+        { role: 'model', text: `✅ **HTML Generated Successfully!**\n\n🌐 **Component:** ${design.componentName}\n\n📄 **File:** Downloaded as HTML document\n\n💡 **Features:**\n• Professional formatting and styling\n• Print-ready layout\n• Complete design specifications\n• Organized sections and tables\n\n📁 **Status:** HTML file has been downloaded to your computer.` }
+      ]);
+
+    } catch (err: any) {
+      console.error('HTML generation error:', err);
+      setError(err.message || 'An error occurred while generating HTML.');
+    } finally {
+      setIsAiThinking(false);
+      setLoadingMessage('');
+    }
+  };
+
+  const handleContextPurified = (newPurifiedContext: string) => {
+    setPurifiedContext(newPurifiedContext);
+
+    // Add to conversation history
+    setConversationHistory(prev => [
+      ...prev,
+      { role: 'model', text: `✅ **Discussion Context Purified!**\n\n🧹 **Status:** Your discussion context has been analyzed and purified.\n\n📋 **Summary:** A comprehensive context summary has been created that captures all final decisions, requirements, and project details.\n\n💡 **Benefits:**\n• Cleaner context for future AI interactions\n• Focus on final decisions only\n• Organized project information\n• Improved AI response quality\n\n🎯 **Next Steps:** This purified context will now be used for all future design and estimation work.` }
+    ]);
   };
 
   useEffect(() => {
@@ -813,6 +911,18 @@ Focus on creating exactly what the user requested while leveraging all available
                       >
                         📚 Knowledge Base
                       </button>
+
+                      {outputMode === 'discussion' && (
+                        <button
+                          onClick={() => {
+                            setIsContextManagerOpen(true);
+                            setShowSettings(false);
+                          }}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded flex items-center gap-2"
+                        >
+                          🧹 Context Manager
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -919,6 +1029,8 @@ Focus on creating exactly what the user requested while leveraging all available
               designs={designs}
               onDesignUpdate={loadDesigns}
               onContextUpdate={handleContextUpdate}
+              onEditDesign={handleEditDesign}
+              onGenerateHTML={handleGenerateHTML}
             />
           )}
 
@@ -1107,6 +1219,15 @@ Focus on creating exactly what the user requested while leveraging all available
             isOpen={isKnowledgeBaseOpen}
             onClose={() => setIsKnowledgeBaseOpen(false)}
             onKnowledgeBaseUpdate={handleKnowledgeBaseUpdate}
+          />
+        )}
+
+        {isContextManagerOpen && (
+          <DiscussionContextManager
+            conversationHistory={conversationHistory}
+            onContextPurified={handleContextPurified}
+            isVisible={isContextManagerOpen}
+            onClose={() => setIsContextManagerOpen(false)}
           />
         )}
       </div>
