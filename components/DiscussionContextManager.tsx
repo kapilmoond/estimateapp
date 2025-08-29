@@ -18,6 +18,7 @@ export const DiscussionContextManager: React.FC<DiscussionContextManagerProps> =
   const [isPurifying, setIsPurifying] = useState(false);
   const [purifiedContext, setPurifiedContext] = useState<string>('');
   const [showPreview, setShowPreview] = useState(false);
+  const [userInstructions, setUserInstructions] = useState<string>('');
 
   const handlePurifyContext = async () => {
     setIsPurifying(true);
@@ -32,6 +33,9 @@ export const DiscussionContextManager: React.FC<DiscussionContextManagerProps> =
 
 **ORIGINAL DISCUSSION:**
 ${conversationText}
+
+**USER INSTRUCTIONS FOR PURIFICATION:**
+${userInstructions || 'Create a comprehensive summary focusing on final decisions and confirmed requirements.'}
 
 **CONTEXT PURIFICATION REQUIREMENTS:**
 1. Extract all final project requirements and specifications
@@ -155,6 +159,15 @@ Generate a professional context summary that captures the essence of the project
               </div>
 
               <div className="mb-6">
+                <h3 className="text-lg font-medium text-gray-900 mb-3">Purification Instructions</h3>
+                <textarea
+                  value={userInstructions}
+                  onChange={(e) => setUserInstructions(e.target.value)}
+                  placeholder="Optional: Enter specific instructions for context purification (e.g., 'Focus on structural requirements', 'Emphasize budget constraints', 'Include all material specifications')"
+                  className="w-full p-3 border rounded-lg resize-none mb-4"
+                  rows={3}
+                />
+
                 <h3 className="text-lg font-medium text-gray-900 mb-3">What Context Purification Does</h3>
                 <ul className="text-sm text-gray-600 space-y-2">
                   <li>• <strong>Extracts final decisions</strong> - Ignores reversed or changed decisions</li>

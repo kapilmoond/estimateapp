@@ -79,10 +79,16 @@ export const DesignDisplay: React.FC<DesignDisplayProps> = ({
   };
 
   const handleDownloadDesign = (design: ComponentDesign) => {
+    // Format content exactly as shown in UI (with bold formatting converted to plain text)
+    const cleanContent = design.designContent
+      .replace(/<strong>(.*?)<\/strong>/g, '$1')  // Remove HTML bold tags
+      .replace(/\*\*(.*?)\*\*/g, '$1')           // Remove ** formatting
+      .replace(/\*(.*?)\*/g, '$1');              // Remove * formatting
+
     const content = `${design.componentName} - Design Document
 Generated on: ${new Date(design.createdAt).toLocaleString()}
 
-${design.designContent}
+${cleanContent}
 
 Materials:
 ${design.specifications.materials.map(m => `• ${m}`).join('\n')}

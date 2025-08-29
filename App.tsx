@@ -9,6 +9,7 @@ import { DesignService } from './services/designService';
 import { ContextService } from './services/contextService';
 import { DXFService, DXFStorageService } from './services/dxfService';
 import { HTMLService } from './services/htmlService';
+import { TemplateService, MasterTemplate } from './services/templateService';
 import { Spinner } from './components/Spinner';
 import { ResultDisplay } from './components/ResultDisplay';
 import { KeywordsDisplay } from './components/KeywordsDisplay';
@@ -24,6 +25,9 @@ import { LLMProviderSelector } from './components/LLMProviderSelector';
 import { KnowledgeBaseManager } from './components/KnowledgeBaseManager';
 import { KnowledgeBaseDisplay } from './components/KnowledgeBaseDisplay';
 import { DiscussionContextManager } from './components/DiscussionContextManager';
+import { TemplateSelector } from './components/TemplateSelector';
+import { TemplateManager } from './components/TemplateManager';
+import { CollapsibleControlPanel } from './components/CollapsibleControlPanel';
 import { LLMService } from './services/llmService';
 import { RAGService } from './services/ragService';
 
@@ -74,6 +78,10 @@ const App: React.FC = () => {
   const [contextKey, setContextKey] = useState<number>(0); // Force re-render of context
   const [isContextManagerOpen, setIsContextManagerOpen] = useState<boolean>(false);
   const [purifiedContext, setPurifiedContext] = useState<string>('');
+  const [isTemplateSelectorOpen, setIsTemplateSelectorOpen] = useState<boolean>(false);
+  const [isTemplateManagerOpen, setIsTemplateManagerOpen] = useState<boolean>(false);
+  const [selectedTemplates, setSelectedTemplates] = useState<MasterTemplate[]>([]);
+  const [templateInstructions, setTemplateInstructions] = useState<string>('');
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
@@ -225,6 +233,18 @@ const App: React.FC = () => {
     ]);
   };
 
+  const handleTemplateSelected = (templates: MasterTemplate[], customInstructions: string) => {
+    setSelectedTemplates(templates);
+    setTemplateInstructions(customInstructions);
+
+    // Add to conversation history
+    const templateNames = templates.map(t => t.name).join(', ');
+    setConversationHistory(prev => [
+      ...prev,
+      { role: 'model', text: `✅ **Master Templates Applied!**\n\n📋 **Templates Selected:** ${templateNames}\n\n🎯 **Custom Instructions:** ${customInstructions || 'None specified'}\n\n💡 **Benefits:**\n• Proven estimation procedures\n• Faster decision making\n• Consistent quality standards\n• Best practices integration\n\n🚀 **Ready:** Your project now has access to proven templates and procedures. The AI will use these to guide the estimation process.` }
+    ]);
+  };
+
   useEffect(() => {
     const loadVoices = () => {
         setAvailableVoices(window.speechSynthesis.getVoices());
@@ -267,7 +287,15 @@ const App: React.FC = () => {
     setDesigns([]);
     setDrawings([]);
 
+    // Reset template data
+    setSelectedTemplates([]);
+    setTemplateInstructions('');
+    setPurifiedContext('');
+
     console.log('Project reset - all data cleared');
+
+    // Open template selector for new project
+    setIsTemplateSelectorOpen(true);
   };
   
   const handleFileUpload = (newFiles: ReferenceDoc[]) => {
@@ -321,6 +349,30 @@ const App: React.FC = () => {
           );
           // Use the enhanced prompt for the conversation
           newHistory[newHistory.length - 1].text = enhancedPrompt;
+        }
+
+        // Add template context if templates are selected
+        if (selectedTemplates.length > 0) {
+          let templateContext = `\n\n**MASTER TEMPLATES ACTIVE:**\n`;
+          selectedTemplates.forEach((template, index) => {
+            templateContext += `\n**Template ${index + 1}: ${template.name}**\n`;
+            templateContext += `Project Type: ${template.projectType}\n`;
+            templateContext += `Description: ${template.description}\n`;
+            templateContext += `Procedure:\n${template.stepByStepProcedure}\n`;
+          });
+
+          if (templateInstructions.trim()) {
+            templateContext += `\n**CUSTOM TEMPLATE INSTRUCTIONS:**\n${templateInstructions}\n`;
+          }
+
+          templateContext += `\n**TEMPLATE USAGE INSTRUCTIONS:**\n`;
+          templateContext += `- Follow the step-by-step procedures from the selected templates\n`;
+          templateContext += `- Adapt the templates based on project-specific requirements\n`;
+          templateContext += `- Use the proven calculation methods and standards from templates\n`;
+          templateContext += `- Apply the quality checkpoints and best practices\n`;
+          templateContext += `- Customize the approach based on any user-provided instructions\n`;
+
+          enhancedReferenceText += templateContext;
         }
 
         const modelResponse = await continueConversation(newHistory, enhancedReferenceText, outputMode);
@@ -804,133 +856,45 @@ Focus on creating exactly what the user requested while leveraging all available
           </div>
         )}
 
-        {/* Control Panel */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
-          <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-            {/* Primary Actions */}
-            <div className="flex items-center gap-3">
-              <button
-                onClick={resetState}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
-              >
-                🔄 New Project
-              </button>
+        {/* Collapsible Control Panel */}
+        <CollapsibleControlPanel
+          onFileUpload={handleFileUpload}
+          onFileRemove={handleFileRemove}
+          uploadedFiles={referenceDocs}
+          isFileProcessing={isFileProcessing}
+          setIsFileProcessing={setIsFileProcessing}
+          includeKnowledgeBase={includeKnowledgeBase}
+          onToggleInclude={setIncludeKnowledgeBase}
+          onOpenManager={() => setIsKnowledgeBaseOpen(true)}
+          onOpenGuidelines={() => setIsGuidelinesOpen(true)}
+          onOpenLLMSettings={() => setIsLLMSettingsOpen(true)}
+          onOpenKnowledgeBase={() => setIsKnowledgeBaseOpen(true)}
+          onOpenContextManager={() => setIsContextManagerOpen(true)}
+          onOpenTemplateManager={() => setIsTemplateManagerOpen(true)}
+          guidelinesCount={guidelines.filter(g => g.isActive).length}
+          currentProvider={currentProvider}
+          outputMode={outputMode}
+          onNewProject={resetState}
+          onToggleProjectData={() => setShowProjectData(!showProjectData)}
+          onTestLLM={async () => {
+            try {
+              setLoadingMessage('Testing LLM service...');
+              setIsAiThinking(true);
+              const result = await LLMService.generateContent('Test prompt: Say hello');
+              console.log('Test result:', result);
+              alert(`LLM Test Success: ${result.substring(0, 100)}...`);
+            } catch (error) {
+              console.error('Test error:', error);
+              alert(`LLM Test Failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            } finally {
+              setIsAiThinking(false);
+              setLoadingMessage('');
+            }
+          }}
+        />
 
-              <button
-                onClick={() => setShowProjectData(!showProjectData)}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
-              >
-                📊 Project Data
-              </button>
-
-              {/* Debug Test Button */}
-              <button
-                onClick={async () => {
-                  try {
-                    setLoadingMessage('Testing LLM service...');
-                    setIsAiThinking(true);
-                    const result = await LLMService.generateContent('Test prompt: Say hello');
-                    console.log('Test result:', result);
-                    alert(`LLM Test Success: ${result.substring(0, 100)}...`);
-                  } catch (error) {
-                    console.error('Test error:', error);
-                    alert(`LLM Test Failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-                  } finally {
-                    setIsAiThinking(false);
-                    setLoadingMessage('');
-                  }
-                }}
-                className="px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-xs"
-                title="Test LLM Service"
-              >
-                🧪 Test LLM
-              </button>
-
-              {/* File Upload - More Accessible */}
-              <div className="relative">
-                <FileUpload
-                  onFileUpload={handleFileUpload}
-                  onFileRemove={handleFileRemove}
-                  uploadedFiles={referenceDocs}
-                  isFileProcessing={isFileProcessing}
-                  setIsFileProcessing={setIsFileProcessing}
-                />
-              </div>
-            </div>
-
-            {/* Settings Dropdown */}
-            <div className="flex items-center gap-3">
-              {/* Knowledge Base Display - More Prominent */}
-              <KnowledgeBaseDisplay
-                includeInPrompts={includeKnowledgeBase}
-                onToggleInclude={setIncludeKnowledgeBase}
-                onOpenManager={() => setIsKnowledgeBaseOpen(true)}
-              />
-
-              {/* Settings Dropdown */}
-              <div className="relative">
-                <button
-                  onClick={() => setShowSettings(!showSettings)}
-                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm flex items-center gap-2"
-                >
-                  ⚙️ Settings
-                  <span className="text-xs">
-                    {showSettings ? '▲' : '▼'}
-                  </span>
-                </button>
-
-                {showSettings && (
-                  <div className="absolute right-0 top-full mt-2 bg-white border border-gray-200 rounded-lg shadow-lg z-10 min-w-48">
-                    <div className="p-2 space-y-1">
-                      <button
-                        onClick={() => {
-                          setIsGuidelinesOpen(true);
-                          setShowSettings(false);
-                        }}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded flex items-center gap-2"
-                      >
-                        📋 Guidelines ({guidelines.filter(g => g.isActive).length})
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          setIsLLMSettingsOpen(true);
-                          setShowSettings(false);
-                        }}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded flex items-center gap-2"
-                      >
-                        🤖 LLM Provider ({currentProvider})
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          setIsKnowledgeBaseOpen(true);
-                          setShowSettings(false);
-                        }}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded flex items-center gap-2"
-                      >
-                        📚 Knowledge Base
-                      </button>
-
-                      {outputMode === 'discussion' && (
-                        <button
-                          onClick={() => {
-                            setIsContextManagerOpen(true);
-                            setShowSettings(false);
-                          }}
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded flex items-center gap-2"
-                        >
-                          🧹 Context Manager
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Output Mode Selector */}
+        {/* Output Mode Selector */}
+        <div className="mb-6">
           <OutputModeSelector
             currentMode={outputMode}
             onModeChange={handleOutputModeChange}
@@ -1009,6 +973,18 @@ Focus on creating exactly what the user requested while leveraging all available
                 appendToTranscript={setCurrentMessage}
                 disabled={isAiThinking}
               />
+
+              {/* Compact File Upload */}
+              <div className="relative">
+                <FileUpload
+                  onFileUpload={handleFileUpload}
+                  onFileRemove={handleFileRemove}
+                  uploadedFiles={referenceDocs}
+                  isFileProcessing={isFileProcessing}
+                  setIsFileProcessing={setIsFileProcessing}
+                />
+              </div>
+
               <button
                 type="submit"
                 disabled={isAiThinking || !currentMessage.trim()}
@@ -1228,6 +1204,29 @@ Focus on creating exactly what the user requested while leveraging all available
             onContextPurified={handleContextPurified}
             isVisible={isContextManagerOpen}
             onClose={() => setIsContextManagerOpen(false)}
+          />
+        )}
+
+        {isTemplateSelectorOpen && (
+          <TemplateSelector
+            isOpen={isTemplateSelectorOpen}
+            onClose={() => setIsTemplateSelectorOpen(false)}
+            onTemplateSelected={handleTemplateSelected}
+          />
+        )}
+
+        {isTemplateManagerOpen && (
+          <TemplateManager
+            isOpen={isTemplateManagerOpen}
+            onClose={() => setIsTemplateManagerOpen(false)}
+            conversationHistory={conversationHistory}
+            finalizedScope={finalizedScope}
+            keywords={keywords}
+            hsrItems={hsrItems}
+            finalEstimate={finalEstimateText}
+            designs={designs}
+            drawings={drawings}
+            referenceText={referenceText}
           />
         )}
       </div>
