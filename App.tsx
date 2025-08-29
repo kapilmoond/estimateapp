@@ -261,7 +261,7 @@ const App: React.FC = () => {
   };
 
   const handleDesignRequest = async (userInput: string) => {
-    setLoadingMessage('Generating component design...');
+    setLoadingMessage('🎨 Initializing design generation...');
     setIsAiThinking(true);
     setError(null);
 
@@ -270,12 +270,18 @@ const App: React.FC = () => {
       const componentMatch = userInput.match(/design\s+(?:for\s+)?(.+?)(?:\s|$)/i);
       const componentName = componentMatch ? componentMatch[1].trim() : 'Component';
 
+      console.log(`Design Request: Component="${componentName}", Input="${userInput}"`);
+
+      setLoadingMessage('📋 Gathering project context and guidelines...');
+
       const activeGuidelines = GuidelinesService.getActiveGuidelines();
       const designGuidelines = GuidelinesService.getActiveGuidelines('design');
       const allGuidelines = [...activeGuidelines, ...designGuidelines];
       const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
 
       const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+
+      setLoadingMessage('🔍 Enhancing request with knowledge base...');
 
       // Enhance user input with knowledge base if enabled
       let enhancedUserInput = userInput;
@@ -287,6 +293,8 @@ const App: React.FC = () => {
         enhancedUserInput = enhancedPrompt;
       }
 
+      setLoadingMessage('🤖 Generating professional component design...');
+
       await DesignService.generateComponentDesign(
         componentName,
         scopeContext,
@@ -295,19 +303,46 @@ const App: React.FC = () => {
         referenceText
       );
 
+      setLoadingMessage('💾 Saving design and updating display...');
       loadDesigns();
-      setLoadingMessage('');
 
       // Add to conversation history for reference
       setConversationHistory(prev => [
         ...prev,
         { role: 'user', text: userInput },
-        { role: 'model', text: `Design generated for ${componentName}. You can view the detailed design in the Design Display section below.` }
+        { role: 'model', text: `✅ **Design Generated Successfully!**\n\n🏗️ **Component:** ${componentName}\n\n📋 **Status:** Professional component design has been generated with specifications, materials, and calculations.\n\n📁 **View:** Check the Component Designs section below to view the complete design documentation.\n\n💡 **Next Steps:** You can now generate technical drawings for this component or proceed with cost estimation.` }
       ]);
 
+      console.log('Design generation completed successfully');
+
     } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'An error occurred while generating the design.');
+      console.error('Design generation error:', err);
+
+      let errorMessage = 'An error occurred while generating the design.';
+
+      // Provide specific error messages based on error type
+      if (err.message?.includes('API key')) {
+        errorMessage = '🔑 API Key Error: Please check your API key configuration in LLM Settings.';
+      } else if (err.message?.includes('quota') || err.message?.includes('limit')) {
+        errorMessage = '📊 API Quota Exceeded: Please check your usage limits or try switching to Kimi K2 in LLM Settings.';
+      } else if (err.message?.includes('rate limit')) {
+        errorMessage = '⏱️ Rate Limit: Please wait a moment and try again, or switch to Kimi K2 in LLM Settings.';
+      } else if (err.message?.includes('blocked') || err.message?.includes('safety')) {
+        errorMessage = '🛡️ Content Filtered: Your request was blocked by safety filters. Please try rephrasing your design request.';
+      } else if (err.message?.includes('Empty response')) {
+        errorMessage = '📭 Empty Response: The AI returned an empty response. Please try again with more specific design requirements.';
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+
+      setError(errorMessage);
+
+      // Add error to conversation for user visibility
+      setConversationHistory(prev => [
+        ...prev,
+        { role: 'user', text: userInput },
+        { role: 'model', text: `❌ **Design Generation Failed**\n\n${errorMessage}\n\n🔧 **Troubleshooting:**\n1. Check your API key in LLM Settings\n2. Try switching to Kimi K2 provider\n3. Ensure your design request is specific and clear\n4. Check your internet connection\n\n💡 **Tip:** Try a simpler request like "Design a concrete foundation" first.` }
+      ]);
     } finally {
       setIsAiThinking(false);
       setLoadingMessage('');

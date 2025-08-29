@@ -4,6 +4,46 @@ import { continueConversation } from './geminiService';
 export class DesignService {
   private static readonly STORAGE_KEY = 'hsr-component-designs';
 
+  // Retry function with exponential backoff
+  private static async retryWithBackoff<T>(
+    fn: () => Promise<T>,
+    maxRetries: number,
+    baseDelay: number
+  ): Promise<T> {
+    let lastError: Error;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await fn();
+      } catch (error) {
+        lastError = error as Error;
+
+        // Don't retry on certain errors
+        if (error instanceof Error) {
+          if (error.message.includes('API key') ||
+              error.message.includes('invalid') ||
+              error.message.includes('404')) {
+            throw error; // Don't retry these errors
+          }
+        }
+
+        // If this was the last attempt, throw the error
+        if (attempt === maxRetries) {
+          break;
+        }
+
+        // Calculate delay with exponential backoff
+        const delay = baseDelay * Math.pow(2, attempt);
+        console.log(`Design Service: Attempt ${attempt + 1} failed, retrying in ${delay}ms...`);
+
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+
+    throw lastError!;
+  }
+
   static async generateComponentDesign(
     componentName: string,
     projectScope: string,
@@ -107,9 +147,11 @@ Focus on creating a professional, implementable design that integrates seamlessl
         if (error.message.includes('API request failed: 404')) {
           throw new Error('API endpoint not found. Please check your API configuration and try again.');
         } else if (error.message.includes('overloaded')) {
-          throw new Error('AI service is currently overloaded. Please wait a moment and try again.');
+          throw new Error('AI service is currently overloaded. Try switching to Kimi K2 in LLM Settings or wait 30 seconds and retry.');
         } else if (error.message.includes('invalid')) {
           throw new Error('Invalid request. Please check your API key and try again.');
+        } else if (error.message.includes('quota') || error.message.includes('limit')) {
+          throw new Error('API quota exceeded. Try switching to Kimi K2 in LLM Settings or check your API usage limits.');
         }
       }
 

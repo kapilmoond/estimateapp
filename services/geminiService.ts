@@ -44,15 +44,24 @@ ${enhancedPrompt}
 };
 
 export const continueConversation = async (history: ChatMessage[], referenceText?: string, mode: 'discussion' | 'design' | 'drawing' = 'discussion'): Promise<string> => {
-    // Check if we're using Gemini provider for advanced features, otherwise use simple LLM service
-    const currentProvider = LLMService.getCurrentProvider();
+    try {
+        console.log(`continueConversation: Mode=${mode}, Provider=${LLMService.getCurrentProvider()}`);
+        console.log(`continueConversation: History length=${history.length}, Reference length=${referenceText?.length || 0}`);
 
-    if (currentProvider !== 'gemini') {
-        // For non-Gemini providers, use simple text generation
-        const conversationText = history.map(msg => `${msg.role.toUpperCase()}: ${msg.text}`).join('\n');
-        const prompt = `Continue this conversation in a helpful and professional manner:\n\n${conversationText}\n\nASSISTANT:`;
-        return await LLMService.generateContent(prompt);
-    }
+        // Check if we're using Gemini provider for advanced features, otherwise use simple LLM service
+        const currentProvider = LLMService.getCurrentProvider();
+
+        if (currentProvider !== 'gemini') {
+            // For non-Gemini providers, use simple text generation
+            const conversationText = history.map(msg => `${msg.role.toUpperCase()}: ${msg.text}`).join('\n');
+            const prompt = `Continue this conversation in a helpful and professional manner:\n\n${conversationText}\n\nASSISTANT:`;
+
+            console.log(`continueConversation: Using ${currentProvider} with prompt length ${prompt.length}`);
+            const result = await LLMService.generateContent(prompt);
+            console.log(`continueConversation: Generated response length ${result?.length || 0}`);
+
+            return result;
+        }
 
     // For Gemini, use advanced features
     const ai = getAiClient();
@@ -205,6 +214,8 @@ Focus on creating comprehensive, standards-compliant technical drawing instructi
     }));
 
     try {
+        console.log(`continueConversation: Calling Gemini with ${contents.length} messages`);
+
         const response = await ai.models.generateContent({
             model,
             contents,
@@ -213,11 +224,47 @@ Focus on creating comprehensive, standards-compliant technical drawing instructi
                 tools: [{googleSearch: {}}],
             }
         });
+
+        console.log('continueConversation: Gemini response received');
+
+        if (!response || !response.text) {
+            console.error('continueConversation: Empty response from Gemini', response);
+            const finishReason = response?.candidates?.[0]?.finishReason;
+            if (finishReason && finishReason !== 'STOP') {
+                throw new Error(`Response blocked by safety filters. Reason: ${finishReason}. Please try rephrasing your request.`);
+            }
+            throw new Error('Empty response from AI. Please try again with a different request.');
+        }
+
+        console.log(`continueConversation: Response length ${response.text.length}`);
         return response.text;
     } catch (error) {
-        console.error("Error continuing conversation with Gemini:", error);
-        throw new Error("Failed to get a response from the AI. The model might be overloaded or the request is invalid.");
+        console.error("continueConversation: Gemini error:", error);
+
+        if (error instanceof Error) {
+            // Pass through our custom error messages
+            if (error.message.includes('Response blocked') || error.message.includes('Empty response')) {
+                throw error;
+            }
+
+            // Handle specific Gemini errors
+            if (error.message.includes('API_KEY_INVALID')) {
+                throw new Error('Invalid Gemini API key. Please check your API key in LLM Settings.');
+            } else if (error.message.includes('QUOTA_EXCEEDED')) {
+                throw new Error('Gemini API quota exceeded. Please check your usage limits or try Kimi K2.');
+            } else if (error.message.includes('RATE_LIMIT_EXCEEDED')) {
+                throw new Error('Gemini API rate limit exceeded. Please wait a moment and try again.');
+            } else if (error.message.includes('MODEL_NOT_FOUND')) {
+                throw new Error('Gemini model not found. Please try switching to a different model.');
+            }
+        }
+
+        throw new Error(`AI service error: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again or switch to Kimi K2 in LLM Settings.`);
     }
+} catch (error) {
+    console.error("continueConversation: Outer error:", error);
+    throw error;
+}
 };
 
 export const generateKeywordsForItems = async (scope: string, feedback?: string, referenceText?: string): Promise<KeywordsByItem> => {
