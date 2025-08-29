@@ -1,5 +1,6 @@
 ﻿import React from 'react';
 import { ComponentDesign } from '../types';
+import { DesignService } from '../services/designService';
 
 interface DesignDisplayProps {
   designs: ComponentDesign[];
@@ -7,10 +8,26 @@ interface DesignDisplayProps {
   onContextUpdate?: () => void;
 }
 
-export const DesignDisplay: React.FC<DesignDisplayProps> = ({ designs }) => {
+export const DesignDisplay: React.FC<DesignDisplayProps> = ({ designs, onDesignUpdate }) => {
+  const handleClearDesigns = () => {
+    if (confirm('Are you sure you want to clear all designs? This action cannot be undone.')) {
+      DesignService.clearAllDesigns();
+      onDesignUpdate();
+    }
+  };
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-      <h3 className="text-xl font-semibold text-gray-900 mb-4">Component Designs</h3>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-xl font-semibold text-gray-900">Component Designs</h3>
+        {designs.length > 0 && (
+          <button
+            onClick={handleClearDesigns}
+            className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+          >
+            Clear All
+          </button>
+        )}
+      </div>
       {designs.length === 0 ? (
         <div className="text-center py-12 text-gray-500">
           <div className="text-6xl mb-4">🎨</div>

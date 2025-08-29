@@ -70,8 +70,17 @@ Focus on creating a professional, implementable design that integrates seamlessl
         { role: 'user', text: prompt }
       ];
 
+      console.log('Design Service: Generating design for component:', componentName);
+      console.log('Design Service: Using prompt length:', prompt.length);
+
       // Use the unified LLM service through continueConversation
       const designContent = await continueConversation(designHistory, referenceText, 'design');
+
+      console.log('Design Service: Generated content length:', designContent?.length || 0);
+
+      if (!designContent || designContent.trim().length < 50) {
+        throw new Error('Generated design content is too short or empty. Please try again with more specific requirements.');
+      }
 
       const design: ComponentDesign = {
         id: Date.now().toString(36) + Math.random().toString(36).substr(2),
@@ -118,11 +127,15 @@ Focus on creating a professional, implementable design that integrates seamlessl
   static deleteDesign(designId: string): boolean {
     const designs = this.loadDesigns();
     const filtered = designs.filter(d => d.id !== designId);
-    
+
     if (filtered.length === designs.length) return false;
-    
+
     localStorage.setItem(this.STORAGE_KEY, JSON.stringify(filtered));
     return true;
+  }
+
+  static clearAllDesigns(): void {
+    localStorage.removeItem(this.STORAGE_KEY);
   }
 
   static updateDesign(designId: string, updates: Partial<ComponentDesign>): ComponentDesign | null {
