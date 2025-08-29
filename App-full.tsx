@@ -185,8 +185,6 @@ const App: React.FC = () => {
     // Handle different output modes
     if (outputMode === 'design') {
       await handleDesignRequest(currentMessage);
-    } else if (outputMode === 'drawing') {
-      await handleDrawingRequest(currentMessage);
     } else {
       // Regular discussion mode
       const newHistory = [...conversationHistory, newMessage];
@@ -300,65 +298,9 @@ const App: React.FC = () => {
     }
   };
 
-  const handleDrawingRequest = async (userInput: string) => {
-    setLoadingMessage('Generating technical drawing...');
-    setIsAiThinking(true);
-    setError(null);
-
-    try {
-      // Extract drawing details from user input
-      const titleMatch = userInput.match(/drawing\s+(?:for\s+)?(.+?)(?:\s|$)/i);
-      const title = titleMatch ? titleMatch[1].trim() : 'Technical Drawing';
-      const componentName = title;
-
-      const activeGuidelines = GuidelinesService.getActiveGuidelines();
-      const drawingGuidelines = GuidelinesService.getActiveGuidelines('drawing');
-      const allGuidelines = [...activeGuidelines, ...drawingGuidelines];
-      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
-
-      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
-      const designContext = ThreadService.getAllContextForMode('design');
-
-      // Enhance user input with knowledge base if enabled
-      let enhancedUserInput = userInput;
-      if (includeKnowledgeBase) {
-        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
-          userInput,
-          includeKnowledgeBase
-        );
-        enhancedUserInput = enhancedPrompt;
-      }
-
-      const drawing = await DrawingService.generateTechnicalDrawing(
-        title,
-        enhancedUserInput,
-        componentName,
-        enhancedUserInput,
-        guidelinesText,
-        designContext,
-        referenceText
-      );
-
-      loadDrawings();
-      setLoadingMessage('');
-
-      // Add to conversation history for reference
-      setConversationHistory(prev => [
-        ...prev,
-        { role: 'user', text: userInput },
-        { role: 'model', text: `Technical drawing generated for ${title}. You can view and edit the drawing in the Drawing Display section below.` }
-      ]);
-
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'An error occurred while generating the drawing.');
-    } finally {
-      setIsAiThinking(false);
-      setLoadingMessage('');
-    }
-  };
-
   const handleOutputModeChange = (mode: OutputMode) => {
+    if (mode !== 'discussion' && mode !== 'design') return;
+    
     setOutputMode(mode);
     setCurrentThread(null);
 
@@ -697,8 +639,7 @@ const App: React.FC = () => {
                 onChange={(e) => setCurrentMessage(e.target.value)}
                 placeholder={
                   outputMode === 'discussion' ? "Describe your project..." :
-                  outputMode === 'design' ? "Request component design (e.g., 'Design foundation for 2-story building')" :
-                  "Request technical drawing (e.g., 'Drawing for foundation plan')"
+                  "Request component design (e.g., 'Design foundation for 2-story building')"
                 }
                 className="flex-grow p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500"
                 disabled={isAiThinking}
@@ -721,7 +662,7 @@ const App: React.FC = () => {
                 <svg className={`w-4 h-4 transform transition-transform ${showProjectData ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
-                View Project Data ({designs.length} designs, {drawings.length} drawings)
+                View Project Data ({designs.length} designs)
               </button>
 
               {showProjectData && (
@@ -730,13 +671,6 @@ const App: React.FC = () => {
                   <DesignDisplay
                     designs={designs}
                     onDesignUpdate={loadDesigns}
-                    onContextUpdate={handleContextUpdate}
-                  />
-
-                  {/* Drawing Display */}
-                  <DrawingDisplay
-                    drawings={drawings}
-                    onDrawingUpdate={loadDrawings}
                     onContextUpdate={handleContextUpdate}
                   />
 

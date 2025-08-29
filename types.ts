@@ -16,7 +16,7 @@ export interface KeywordsByItem {
 }
 
 // Enhanced types for integrated workflow
-export type OutputMode = 'discussion' | 'design';
+export type OutputMode = 'discussion' | 'design' | 'drawing';
 
 export interface UserGuideline {
   id: string;
@@ -48,6 +48,30 @@ export interface ComponentDesign {
     calculations: string;
   };
   createdAt: Date;
+  includeInContext?: boolean;
+}
+
+export interface TechnicalDrawing {
+  id: string;
+  title: string;
+  description: string;
+  dxfContent: string; // Base64 encoded DXF content
+  dxfFilename: string;
+  createdAt: Date;
+  updatedAt: Date;
+  metadata: {
+    drawingType: 'plan' | 'elevation' | 'section' | 'detail' | 'general';
+    scale: string;
+    dimensions: {
+      width: number;
+      height: number;
+      units: 'mm' | 'cm' | 'm' | 'ft' | 'in';
+    };
+    layers: string[];
+    hasAnnotations: boolean;
+    hasDimensions: boolean;
+  };
+  userRequirements: string;
   includeInContext?: boolean;
 }
 
@@ -102,6 +126,7 @@ export interface LLMModel {
 export interface ProjectData {
   discussions: ConversationThread[];
   designs: ComponentDesign[];
+  drawings: TechnicalDrawing[];
   finalizedScope: string;
   keywords: string[];
   keywordsByItem: KeywordsByItem;
