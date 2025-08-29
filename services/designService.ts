@@ -1,4 +1,5 @@
-import { ComponentDesign } from '../types';
+import { ComponentDesign, ChatMessage } from '../types';
+import { continueConversation } from './geminiService';
 
 export class DesignService {
   private static readonly STORAGE_KEY = 'hsr-component-designs';
@@ -10,11 +11,6 @@ export class DesignService {
     guidelines: string,
     referenceText: string
   ): Promise<ComponentDesign> {
-    const apiKey = localStorage.getItem('gemini-api-key');
-    if (!apiKey) {
-      throw new Error('Gemini API key not found. Please set your API key first.');
-    }
-
     // Get existing designs for context
     const existingDesigns = this.loadDesigns();
     let existingDesignsContext = '';
@@ -69,20 +65,13 @@ Provide a comprehensive design document that includes:
 Focus on creating a professional, implementable design that integrates seamlessly with the overall project.`;
 
     try {
-      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=' + apiKey, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }]
-        })
-      });
+      // Create a conversation history for the design request
+      const designHistory: ChatMessage[] = [
+        { role: 'user', text: prompt }
+      ];
 
-      if (!response.ok) {
-        throw new Error(`API request failed: ${response.status}`);
-      }
-
-      const data = await response.json();
-      const designContent = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No design content generated';
+      // Use the unified LLM service through continueConversation
+      const designContent = await continueConversation(designHistory, referenceText, 'design');
 
       const design: ComponentDesign = {
         id: Date.now().toString(36) + Math.random().toString(36).substr(2),

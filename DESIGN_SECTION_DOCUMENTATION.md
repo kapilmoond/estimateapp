@@ -158,22 +158,26 @@ Your primary goal is to create detailed component designs with specifications, m
 Focus on creating comprehensive, implementable designs that comply with Indian construction standards, integrate well with other project components, and provide sufficient detail for subsequent drawing generation and cost estimation.`;
 ```
 
-### 5. API Communication
+### 5. LLM Service Integration
 
-#### Gemini API Integration
-**Location**: `services/designService.ts` lines 27-41
+#### Unified LLM Service Call
+**Location**: `services/designService.ts` lines 67-74
 ```javascript
-const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=' + apiKey, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }]
-    })
-});
+// Create a conversation history for the design request
+const designHistory: ChatMessage[] = [
+    { role: 'user', text: prompt }
+];
 
-const data = await response.json();
-const designContent = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No design content generated';
+// Use the unified LLM service through continueConversation
+const designContent = await continueConversation(designHistory, referenceText, 'design');
 ```
+
+**Benefits of Unified Service:**
+- Uses the same LLM provider selection as discussion section
+- Supports multiple LLM providers (Gemini, Kimi K2, etc.)
+- Consistent error handling and API management
+- Automatic fallback and retry mechanisms
+- Unified system instructions and prompt enhancement
 
 ### 6. Design Object Structure
 
