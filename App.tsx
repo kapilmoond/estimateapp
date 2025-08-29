@@ -725,6 +725,29 @@ Focus on creating exactly what the user requested while leveraging all available
                 📊 Project Data
               </button>
 
+              {/* Debug Test Button */}
+              <button
+                onClick={async () => {
+                  try {
+                    setLoadingMessage('Testing LLM service...');
+                    setIsAiThinking(true);
+                    const result = await LLMService.generateContent('Test prompt: Say hello');
+                    console.log('Test result:', result);
+                    alert(`LLM Test Success: ${result.substring(0, 100)}...`);
+                  } catch (error) {
+                    console.error('Test error:', error);
+                    alert(`LLM Test Failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                  } finally {
+                    setIsAiThinking(false);
+                    setLoadingMessage('');
+                  }
+                }}
+                className="px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-xs"
+                title="Test LLM Service"
+              >
+                🧪 Test LLM
+              </button>
+
               {/* File Upload - More Accessible */}
               <div className="relative">
                 <FileUpload
