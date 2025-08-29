@@ -72,10 +72,12 @@ Focus on creating a professional, implementable design that integrates seamlessl
 
       console.log('Design Service: Generating design for component:', componentName);
       console.log('Design Service: Using prompt length:', prompt.length);
+      console.log('Design Service: Reference text length:', referenceText?.length || 0);
 
       // Use the unified LLM service through continueConversation
       const designContent = await continueConversation(designHistory, referenceText, 'design');
 
+      console.log('Design Service: Generated content:', designContent?.substring(0, 100) + '...');
       console.log('Design Service: Generated content length:', designContent?.length || 0);
 
       if (!designContent || designContent.trim().length < 50) {
@@ -98,7 +100,20 @@ Focus on creating a professional, implementable design that integrates seamlessl
       this.saveDesign(design);
       return design;
     } catch (error) {
-      throw new Error(`Failed to generate design: ${error}`);
+      console.error('Design Service Error:', error);
+
+      // Provide more specific error messages
+      if (error instanceof Error) {
+        if (error.message.includes('API request failed: 404')) {
+          throw new Error('API endpoint not found. Please check your API configuration and try again.');
+        } else if (error.message.includes('overloaded')) {
+          throw new Error('AI service is currently overloaded. Please wait a moment and try again.');
+        } else if (error.message.includes('invalid')) {
+          throw new Error('Invalid request. Please check your API key and try again.');
+        }
+      }
+
+      throw new Error(`Failed to generate design: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 

@@ -109,6 +109,7 @@ const App: React.FC = () => {
 
   const loadDesigns = () => {
     const loadedDesigns = DesignService.loadDesigns();
+    console.log('Loading designs:', loadedDesigns);
     setDesigns(loadedDesigns);
   };
 
@@ -161,8 +162,14 @@ const App: React.FC = () => {
     setOutputMode('discussion');
     setCurrentThread(null);
     setShowProjectData(false);
-    // Clear all threads for new project
+
+    // Clear all data for new project
     ThreadService.clearAllThreads();
+    DesignService.clearAllDesigns();
+    setDesigns([]);
+    setDrawings([]);
+
+    console.log('Project reset - all data cleared');
   };
   
   const handleFileUpload = (newFiles: ReferenceDoc[]) => {
