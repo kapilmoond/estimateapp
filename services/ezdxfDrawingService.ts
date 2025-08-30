@@ -231,26 +231,28 @@ ellipse = msp.add_ellipse((0, 0), major_axis=(5, 0), ratio=0.5,
                          dxfattribs={"layer": "CONSTRUCTION"})
 \`\`\`
 
-**2.3 TEXT AND ANNOTATIONS:**
+**2.3 TEXT AND SIMPLE ANNOTATIONS:**
 \`\`\`python
-# Simple text
-text = msp.add_text("TITLE", dxfattribs={"layer": "TEXT", "height": 2.5})
-text.set_placement((5, 8), align=TextEntityAlignment.MIDDLE_CENTER)
+# Simple text (AVOID COMPLEX LEADERS - USE SIMPLE TEXT)
+text = msp.add_text("LABEL", dxfattribs={"layer": "TEXT", "height": 25})
+text.set_placement((100, 100), align=TextEntityAlignment.MIDDLE_LEFT)
 
-# Text with specific alignment options:
-# LEFT, CENTER, RIGHT, ALIGNED, MIDDLE, FIT
-# BASELINE_LEFT, BASELINE_CENTER, BASELINE_RIGHT
-# BOTTOM_LEFT, BOTTOM_CENTER, BOTTOM_RIGHT
-# MIDDLE_LEFT, MIDDLE_CENTER, MIDDLE_RIGHT
-# TOP_LEFT, TOP_CENTER, TOP_RIGHT
+# PROFESSIONAL ANNOTATION METHOD (NO LEADERS):
+# 1. Draw simple line for pointer
+msp.add_line((50, 50), (150, 100), dxfattribs={"layer": "DIMENSIONS"})
+# 2. Add text at end of line
+msp.add_text("CONCRETE M20", dxfattribs={"layer": "TEXT", "height": 20}).set_placement((150, 100))
 
-# Multiline text (MTEXT) for complex formatting
-mtext = msp.add_mtext("Line 1\\PLine 2\\PLine 3",
-                     dxfattribs={"layer": "TEXT", "char_height": 1.0})
-mtext.set_location((10, 10), rotation=0, attachment_point=1)
+# Text alignment options (USE THESE ONLY):
+# TextEntityAlignment.LEFT
+# TextEntityAlignment.CENTER
+# TextEntityAlignment.RIGHT
+# TextEntityAlignment.MIDDLE_CENTER
+# TextEntityAlignment.MIDDLE_LEFT
+# TextEntityAlignment.MIDDLE_RIGHT
 
-# Text with rotation
-rotated_text = msp.add_text("ROTATED", dxfattribs={"layer": "TEXT", "height": 1.0, "rotation": 45})
+# AVOID: Complex leaders, MTEXT, rotated text unless specifically needed
+# KEEP IT SIMPLE: Use basic text with simple positioning
 \`\`\`
 
 **3. COMPLETE DIMENSIONING SYSTEM:**
@@ -451,12 +453,11 @@ msp.add_line((5, 0), (5, 10), dxfattribs={"layer": "HIDDEN", "linetype": "HIDDEN
 # Construction lines (infinite reference lines)
 msp.add_xline((0, 0), (1, 1), dxfattribs={"layer": "CONSTRUCTION"})  # 45° line through origin
 
-# Leader lines (for annotations)
-leader = msp.add_leader([
-    (15, 15),    # Arrow point
-    (20, 20),    # Elbow point
-    (25, 20)     # Text point
-], dxfattribs={"layer": "DIMENSIONS"})
+# SIMPLE ANNOTATION LINES (instead of complex leaders)
+# Draw simple line for annotation
+msp.add_line((100, 100), (200, 150), dxfattribs={"layer": "DIMENSIONS"})
+# Add text at the end
+msp.add_text("ANNOTATION TEXT", dxfattribs={"layer": "TEXT", "height": 25}).set_placement((200, 150))
 \`\`\`
 
 **5.3 LINETYPES AND STYLES:**
@@ -515,9 +516,9 @@ def create_foundation_section():
     dim2 = msp.add_linear_dim(base=(19, 0), p1=(18, 0), p2=(18, -2), angle=90, dimstyle="EZDXF")
     dim2.render()
 
-    # Labels
-    msp.add_text("CONCRETE FOUNDATION", dxfattribs={"layer": "TEXT", "height": 1.0}).set_placement((10, -1), align=TextEntityAlignment.MIDDLE_CENTER)
-    msp.add_text("GROUND LEVEL", dxfattribs={"layer": "TEXT", "height": 0.8}).set_placement((1, 0.5))
+    # Simple labels (NO LEADERS)
+    msp.add_text("CONCRETE FOUNDATION", dxfattribs={"layer": "TEXT", "height": 20}).set_placement((10, -1000), align=TextEntityAlignment.MIDDLE_CENTER)
+    msp.add_text("GROUND LEVEL", dxfattribs={"layer": "TEXT", "height": 20}).set_placement((100, 100))
 
     doc.saveas("foundation_section.dxf")
     return doc
@@ -620,6 +621,8 @@ def create_wall_section_with_stepped_foundation():
 **4. PROFESSIONAL APPEARANCE:**
 - NO oversized titles or unnecessary text
 - NO instruction boxes or labels unless requested
+- NO LEADERS - use simple text and lines only
+- NO complex annotations - keep it simple
 - Clean, minimal design focused on the drawing
 - Proper spacing and proportions
 - Use consistent coordinate system
@@ -629,6 +632,20 @@ def create_wall_section_with_stepped_foundation():
 - Use setup=True when creating document
 - Save with doc.saveas("drawing.dxf")
 - Test all patterns and settings for visibility
+
+**6. FORBIDDEN METHODS (WILL CAUSE ERRORS):**
+- DO NOT use msp.add_leader() - causes errors
+- DO NOT use leader.set_text() - method does not exist
+- DO NOT use complex MTEXT unless specifically needed
+- DO NOT use rotated text unless specifically needed
+- AVOID complex annotations - use simple text and lines only
+
+**7. SAFE ANNOTATION METHOD:**
+\`\`\`python
+# CORRECT: Simple annotation with line and text
+msp.add_line((50, 50), (150, 100), dxfattribs={"layer": "DIMENSIONS"})
+msp.add_text("LABEL", dxfattribs={"layer": "TEXT", "height": 20}).set_placement((150, 100))
+\`\`\`
 
 **CRITICAL OUTPUT REQUIREMENTS:**
 
