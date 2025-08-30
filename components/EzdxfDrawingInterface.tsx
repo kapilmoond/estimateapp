@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { EzdxfDrawingService, DrawingRequest, DrawingResult } from '../services/ezdxfDrawingService';
 import { DrawingDebugDisplay } from './DrawingDebugDisplay';
+import { DrawingSpecificationInterface, DrawingSpecification } from './DrawingSpecificationInterface';
+import { DrawingCodeGenerator } from '../services/drawingCodeGenerator';
+import { DrawingSpecificationParser } from '../services/drawingSpecificationParser';
 
 interface EzdxfDrawingInterfaceProps {
   userInput: string;
@@ -27,6 +30,8 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
   const [showCode, setShowCode] = useState(false);
   const [serverStatus, setServerStatus] = useState<{ running: boolean; message: string; version?: string } | null>(null);
   const [isCheckingServer, setIsCheckingServer] = useState(false);
+  const [drawingMode, setDrawingMode] = useState<'natural' | 'structured'>('natural');
+  const [showSpecificationInterface, setShowSpecificationInterface] = useState(false);
 
   // Debug information
   const [debugInfo, setDebugInfo] = useState<{
@@ -95,6 +100,11 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
       return;
     }
 
+    if (drawingMode === 'structured') {
+      setShowSpecificationInterface(true);
+      return;
+    }
+
     setIsGenerating(true);
     setCurrentStep('Analyzing requirements...');
 
@@ -108,49 +118,72 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
         error: null
       });
 
-      // Extract title and description from user input
-      const title = extractTitle(userInput);
-      const description = extractDescription(userInput);
+      // Step 1: Parse natural language into structured specification
+      setCurrentStep('Parsing drawing requirements...');
+      const specification = await DrawingSpecificationParser.parseDescription(userInput);
+      setDebugInfo(prev => ({ ...prev, llmOutput: JSON.stringify(specification, null, 2) }));
 
-      const request: DrawingRequest = {
-        title,
-        description,
-        userRequirements: userInput,
-        projectContext,
-        designContext,
-        guidelines,
-        referenceText
+      // Step 2: Generate Python code from specification
+      setCurrentStep('Generating professional Python code...');
+      const pythonCode = DrawingCodeGenerator.generatePythonCode(specification);
+      setGeneratedCode(pythonCode);
+      setDebugInfo(prev => ({ ...prev, extractedCode: pythonCode }));
+
+      // Step 3: Execute code and get DXF
+      setCurrentStep('Executing Python code via local server...');
+
+      const serverRequest = {
+        python_code: pythonCode,
+        filename: specification.title.replace(/[^a-zA-Z0-9\s-_]/g, '').replace(/\s+/g, '_').toLowerCase()
       };
+      setDebugInfo(prev => ({ ...prev, serverRequest }));
 
-      // Step 1: Generate Python code with debug capture
-      setCurrentStep('Generating ezdxf Python code...');
+      const result = await EzdxfDrawingService.executeDrawingCode(pythonCode, specification.title);
+      setDebugInfo(prev => ({ ...prev, serverResponse: result }));
 
-      try {
-        const pythonCode = await EzdxfDrawingService.generateDrawingCode(request);
-        setGeneratedCode(pythonCode);
-        setDebugInfo(prev => ({ ...prev, extractedCode: pythonCode }));
+      setCurrentStep('Drawing generated successfully!');
+      onDrawingGenerated(result);
 
-        // Step 2: Execute code and get DXF with debug capture
-        setCurrentStep('Executing Python code via local server...');
+    } catch (error) {
+      console.error('Drawing generation error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to generate drawing';
+      setDebugInfo(prev => ({ ...prev, error: errorMessage }));
+      onError(errorMessage);
+    } finally {
+      setIsGenerating(false);
+      setCurrentStep('');
+    }
+  };
 
-        const serverRequest = {
-          python_code: pythonCode,
-          filename: title.replace(/[^a-zA-Z0-9\s-_]/g, '').replace(/\s+/g, '_').toLowerCase()
-        };
-        setDebugInfo(prev => ({ ...prev, serverRequest }));
+  const handleSpecificationComplete = async (specification: DrawingSpecification) => {
+    setShowSpecificationInterface(false);
+    setIsGenerating(true);
+    setCurrentStep('Generating professional Python code...');
 
-        const result = await EzdxfDrawingService.executeDrawingCode(pythonCode, title);
-        setDebugInfo(prev => ({ ...prev, serverResponse: result }));
+    try {
+      // Generate Python code from specification
+      const pythonCode = DrawingCodeGenerator.generatePythonCode(specification);
+      setGeneratedCode(pythonCode);
+      setDebugInfo(prev => ({
+        ...prev,
+        llmOutput: JSON.stringify(specification, null, 2),
+        extractedCode: pythonCode
+      }));
 
-        setCurrentStep('Drawing generated successfully!');
-        onDrawingGenerated(result);
+      // Execute code and get DXF
+      setCurrentStep('Executing Python code via local server...');
 
-      } catch (codeError) {
-        console.error('Code generation/execution error:', codeError);
-        const errorMessage = codeError instanceof Error ? codeError.message : 'Failed to generate or execute drawing code';
-        setDebugInfo(prev => ({ ...prev, error: errorMessage }));
-        throw codeError;
-      }
+      const serverRequest = {
+        python_code: pythonCode,
+        filename: specification.title.replace(/[^a-zA-Z0-9\s-_]/g, '').replace(/\s+/g, '_').toLowerCase()
+      };
+      setDebugInfo(prev => ({ ...prev, serverRequest }));
+
+      const result = await EzdxfDrawingService.executeDrawingCode(pythonCode, specification.title);
+      setDebugInfo(prev => ({ ...prev, serverResponse: result }));
+
+      setCurrentStep('Drawing generated successfully!');
+      onDrawingGenerated(result);
 
     } catch (error) {
       console.error('Drawing generation error:', error);
@@ -275,6 +308,42 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
         </ol>
       </div>
 
+      {/* Drawing Mode Selection */}
+      <div className="mb-6">
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          🎯 Drawing Generation Mode
+        </label>
+        <div className="grid grid-cols-2 gap-4">
+          <button
+            onClick={() => setDrawingMode('natural')}
+            className={`p-4 border rounded-lg text-left ${
+              drawingMode === 'natural'
+                ? 'border-blue-500 bg-blue-50'
+                : 'border-gray-300 hover:border-gray-400'
+            }`}
+          >
+            <div className="font-medium text-gray-900">🗣️ Natural Language</div>
+            <div className="text-sm text-gray-600 mt-1">
+              Describe your drawing in plain English. AI parses and generates reliable code.
+            </div>
+          </button>
+
+          <button
+            onClick={() => setDrawingMode('structured')}
+            className={`p-4 border rounded-lg text-left ${
+              drawingMode === 'structured'
+                ? 'border-blue-500 bg-blue-50'
+                : 'border-gray-300 hover:border-gray-400'
+            }`}
+          >
+            <div className="font-medium text-gray-900">📋 Structured Input</div>
+            <div className="text-sm text-gray-600 mt-1">
+              Step-by-step specification of elements and dimensions. Most reliable.
+            </div>
+          </button>
+        </div>
+      </div>
+
       <div className="mb-6">
         <label className="block text-sm font-medium text-gray-700 mb-2">
           Drawing Requirements:
@@ -389,6 +458,18 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
         serverResponse={debugInfo.serverResponse}
         error={debugInfo.error}
       />
+
+      {/* Structured Drawing Specification Modal */}
+      {showSpecificationInterface && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <DrawingSpecificationInterface
+              onSpecificationComplete={handleSpecificationComplete}
+              onCancel={() => setShowSpecificationInterface(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
