@@ -1,21 +1,26 @@
+import { DrawingSettings } from '../components/DrawingSettingsPanel';
+import { DrawingSettingsService } from './drawingSettingsService';
+
 export class DrawingCodeGenerator {
   /**
    * Generate complete Python code from attribute-based specification
    */
-  static generatePythonCode(spec: any): string {
+  static generatePythonCode(spec: any, settings?: DrawingSettings): string {
+    const drawingSettings = settings || DrawingSettingsService.loadSettings();
+
     const code = [
       this.generateImports(),
-      this.generateDocumentSetup(),
-      this.generateStandardLayers(),
-      this.generateDimensionStyle(),
-      this.generateLines(spec.lines || []),
-      this.generateCircles(spec.circles || []),
-      this.generateArcs(spec.arcs || []),
-      this.generateRectangles(spec.rectangles || []),
-      this.generatePolylines(spec.polylines || []),
-      this.generateLinearDimensions(spec.linearDimensions || []),
-      this.generateRadialDimensions(spec.radialDimensions || []),
-      this.generateHatching(spec.hatching || []),
+      this.generateDocumentSetup(drawingSettings),
+      this.generateLayers(drawingSettings),
+      this.generateDimensionStyle(drawingSettings),
+      this.generateLines(spec.lines || [], drawingSettings),
+      this.generateCircles(spec.circles || [], drawingSettings),
+      this.generateArcs(spec.arcs || [], drawingSettings),
+      this.generateRectangles(spec.rectangles || [], drawingSettings),
+      this.generatePolylines(spec.polylines || [], drawingSettings),
+      this.generateLinearDimensions(spec.linearDimensions || [], drawingSettings),
+      this.generateRadialDimensions(spec.radialDimensions || [], drawingSettings),
+      this.generateHatching(spec.hatching || [], drawingSettings),
       this.generateSave(spec.title || 'drawing')
     ];
 
@@ -26,79 +31,96 @@ export class DrawingCodeGenerator {
     return 'import ezdxf';
   }
 
-  private static generateDocumentSetup(): string {
+  private static generateDocumentSetup(settings: DrawingSettings): string {
     return '# Create document with setup=True for dimension styles\n' +
-           'doc = ezdxf.new("R2010", setup=True)\n' +
+           'doc = ezdxf.new("' + settings.documentFormat + '", setup=True)\n' +
            'msp = doc.modelspace()\n' +
            '\n' +
-           '# Ensure Standard text style exists and is properly configured\n' +
+           '# Configure text style from settings\n' +
            'if "Standard" not in doc.styles:\n' +
-           '    doc.styles.add("Standard", font="arial.ttf")\n' +
+           '    doc.styles.add("Standard", font="' + settings.text.fontName + '")\n' +
            'text_style = doc.styles.get("Standard")\n' +
            'text_style.dxf.height = 0  # Variable height\n' +
-           'text_style.dxf.width = 1.0  # Width factor';
+           'text_style.dxf.width = ' + settings.text.widthFactor + '  # Width factor\n' +
+           'text_style.dxf.oblique = ' + (settings.text.obliqueAngle * Math.PI / 180) + '  # Oblique angle in radians';
   }
 
-  private static generateStandardLayers(): string {
-    return '# Create standard layers\n' +
-           'doc.layers.add(name="CONSTRUCTION", color=7)\n' +
-           'doc.layers.add(name="DIMENSIONS", color=1)\n' +
-           'doc.layers.add(name="HATCHING", color=2)';
+  private static generateLayers(settings: DrawingSettings): string {
+    const layers = settings.layers;
+    return '# Create layers from settings\n' +
+           'doc.layers.add(name="' + layers.construction.name + '", color=' + layers.construction.color + ', linetype="' + layers.construction.lineType + '")\n' +
+           'doc.layers.add(name="' + layers.dimensions.name + '", color=' + layers.dimensions.color + ', linetype="' + layers.dimensions.lineType + '")\n' +
+           'doc.layers.add(name="' + layers.hatching.name + '", color=' + layers.hatching.color + ', linetype="' + layers.hatching.lineType + '")\n' +
+           'doc.layers.add(name="' + layers.text.name + '", color=' + layers.text.color + ', linetype="' + layers.text.lineType + '")';
   }
 
-  private static generateDimensionStyle(): string {
-    return '# Configure dimension style for VISIBLE text and arrows/ticks\n' +
+  private static generateDimensionStyle(settings: DrawingSettings): string {
+    const dim = settings.dimensions;
+    const layers = settings.layers;
+
+    // Determine text position value
+    const textPosValue = dim.textPosition === 'above' ? 1 : dim.textPosition === 'below' ? 2 : 0;
+    const textAlignValue = dim.textAlignment === 'left' ? 1 : dim.textAlignment === 'right' ? 2 : 0;
+
+    let arrowConfig = '';
+    if (dim.arrowType === 'arrows') {
+      arrowConfig = 'dimstyle.dxf.dimasz = ' + dim.arrowSize + '         # Arrow size\n' +
+                   'dimstyle.dxf.dimtsz = 0          # No tick marks\n';
+    } else if (dim.arrowType === 'ticks') {
+      arrowConfig = 'dimstyle.dxf.dimasz = 0          # No arrows\n' +
+                   'dimstyle.dxf.dimtsz = ' + dim.tickSize + '         # Tick size\n';
+    } else {
+      // Auto mode - try arrows with tick fallback
+      arrowConfig = 'dimstyle.dxf.dimasz = ' + dim.arrowSize + '         # Arrow size\n' +
+                   'dimstyle.dxf.dimtsz = ' + dim.tickSize + '         # Tick size (fallback)\n';
+    }
+
+    return '# Configure dimension style from user settings\n' +
            'dimstyle = doc.dimstyles.get("Standard")\n' +
            '\n' +
-           '# CRITICAL: Text visibility settings\n' +
-           'dimstyle.dxf.dimtxt = 250        # Text height (EXTRA LARGE for visibility)\n' +
-           'dimstyle.dxf.dimtad = 1          # Text above dimension line\n' +
-           'dimstyle.dxf.dimjust = 0         # Center text horizontally\n' +
+           '# Text settings from user preferences\n' +
+           'dimstyle.dxf.dimtxt = ' + dim.textHeight + '        # Text height from settings\n' +
+           'dimstyle.dxf.dimtad = ' + textPosValue + '          # Text position: ' + dim.textPosition + '\n' +
+           'dimstyle.dxf.dimjust = ' + textAlignValue + '         # Text alignment: ' + dim.textAlignment + '\n' +
            'dimstyle.dxf.dimtih = 0          # Keep text horizontal inside\n' +
            'dimstyle.dxf.dimtoh = 0          # Keep text horizontal outside\n' +
            '\n' +
-           '# CRITICAL: Arrow/Tick configuration (try arrows first, fallback to ticks)\n' +
-           'dimstyle.dxf.dimasz = 100        # Arrow/tick size (LARGE)\n' +
-           'dimstyle.dxf.dimtsz = 50         # Tick size (fallback if arrows fail)\n' +
+           '# Arrow/Tick configuration from settings\n' +
+           arrowConfig +
            'dimstyle.dxf.dimblk = ""         # Default arrow block\n' +
            'dimstyle.dxf.dimblk1 = ""        # First arrow block\n' +
            'dimstyle.dxf.dimblk2 = ""        # Second arrow block\n' +
            '\n' +
-           '# Extension line settings\n' +
-           'dimstyle.dxf.dimexe = 50         # Extension beyond dimension line\n' +
-           'dimstyle.dxf.dimexo = 30         # Extension line offset\n' +
-           'dimstyle.dxf.dimgap = 30         # Gap around text\n' +
+           '# Extension line settings from user preferences\n' +
+           'dimstyle.dxf.dimexe = ' + dim.extensionBeyond + '         # Extension beyond dimension line\n' +
+           'dimstyle.dxf.dimexo = ' + dim.extensionOffset + '         # Extension line offset\n' +
+           'dimstyle.dxf.dimgap = ' + dim.textGap + '         # Gap around text\n' +
            '\n' +
-           '# Color settings for visibility\n' +
-           'dimstyle.dxf.dimclrt = 1         # Text color (red)\n' +
-           'dimstyle.dxf.dimclrd = 1         # Dimension line color (red)\n' +
-           'dimstyle.dxf.dimclre = 1         # Extension line color (red)\n' +
+           '# Color settings from layer configuration\n' +
+           'dimstyle.dxf.dimclrt = ' + layers.dimensions.color + '         # Text color from layer\n' +
+           'dimstyle.dxf.dimclrd = ' + layers.dimensions.color + '         # Dimension line color\n' +
+           'dimstyle.dxf.dimclre = ' + layers.dimensions.color + '         # Extension line color\n' +
            '\n' +
-           '# Force text display\n' +
-           'dimstyle.dxf.dimtxsty = "Standard"  # Use standard text style\n' +
-           'dimstyle.dxf.dimscale = 1.0      # Overall scale factor\n' +
+           '# Text formatting from settings\n' +
+           'dimstyle.dxf.dimtxsty = "Standard"  # Use configured text style\n' +
+           'dimstyle.dxf.dimscale = ' + (1.0 / settings.scale) + '      # Scale factor\n' +
            'dimstyle.dxf.dimtfac = 1.0       # Text scale factor\n' +
            'dimstyle.dxf.dimlfac = 1.0       # Linear scale factor\n' +
            '\n' +
-           '# Ensure dimension values are shown\n' +
-           'dimstyle.dxf.dimzin = 0          # Show all zeros\n' +
-           'dimstyle.dxf.dimdec = 0          # Decimal places\n' +
-           'dimstyle.dxf.dimrnd = 0          # No rounding\n' +
-           '\n' +
-           '# Alternative: If arrows fail, use oblique strokes (slashes)\n' +
-           '# dimstyle.dxf.dimtsz = 100      # Uncomment to force tick marks instead of arrows\n' +
-           '\n' +
-           '# BACKUP: Create tick-based dimension style if arrows fail\n' +
+           '# Number formatting from settings\n' +
+           'dimstyle.dxf.dimzin = ' + (dim.suppressZeros ? 8 : 0) + '          # Zero suppression\n' +
+           'dimstyle.dxf.dimdec = ' + dim.decimalPlaces + '          # Decimal places\n' +
+           'dimstyle.dxf.dimrnd = ' + dim.roundingValue + '          # Rounding value\n' +
+           (dim.arrowType === 'auto' ? '\n' +
+           '# Auto mode: Fallback to tick marks if arrows fail\n' +
            'try:\n' +
-           '    # Test if arrow style works\n' +
            '    test_dim = msp.add_linear_dim(base=(0, -1000), p1=(0, -1000), p2=(100, -1000), dimstyle="Standard")\n' +
            '    test_dim.render()\n' +
            '    msp.delete_entity(test_dim)\n' +
            'except:\n' +
-           '    # If arrows fail, switch to tick marks (slashes)\n' +
-           '    dimstyle.dxf.dimtsz = 100     # Force tick marks\n' +
+           '    dimstyle.dxf.dimtsz = ' + dim.tickSize + '     # Force tick marks\n' +
            '    dimstyle.dxf.dimasz = 0       # Disable arrows\n' +
-           '    print("Using tick marks instead of arrows for better visibility")';
+           '    print("Using tick marks instead of arrows for better visibility")' : '');
   }
 
   private static generateLines(lines: any[]): string {
