@@ -118,27 +118,29 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
         error: null
       });
 
-      // Step 1: Parse natural language into structured specification
-      setCurrentStep('Parsing drawing requirements...');
+      // Step 1: LLM analyzes and provides complete drawing intelligence
+      setCurrentStep('Analyzing drawing requirements with AI...');
       const specification = await DrawingSpecificationParser.parseDescription(userInput);
+      console.log('LLM Drawing Specification:', specification);
       setDebugInfo(prev => ({ ...prev, llmOutput: JSON.stringify(specification, null, 2) }));
 
-      // Step 2: Generate Python code from specification
+      // Step 2: App generates reliable Python code from LLM specification
       setCurrentStep('Generating professional Python code...');
       const pythonCode = DrawingCodeGenerator.generatePythonCode(specification);
+      console.log('App-Generated Python Code:', pythonCode);
       setGeneratedCode(pythonCode);
       setDebugInfo(prev => ({ ...prev, extractedCode: pythonCode }));
 
-      // Step 3: Execute code and get DXF
+      // Step 3: Execute reliable code on local server
       setCurrentStep('Executing Python code via local server...');
 
       const serverRequest = {
         python_code: pythonCode,
-        filename: specification.title.replace(/[^a-zA-Z0-9\s-_]/g, '').replace(/\s+/g, '_').toLowerCase()
+        filename: (specification.title || 'drawing').replace(/[^a-zA-Z0-9\s-_]/g, '').replace(/\s+/g, '_').toLowerCase()
       };
       setDebugInfo(prev => ({ ...prev, serverRequest }));
 
-      const result = await EzdxfDrawingService.executeDrawingCode(pythonCode, specification.title);
+      const result = await EzdxfDrawingService.executeDrawingCode(pythonCode, specification.title || 'drawing');
       setDebugInfo(prev => ({ ...prev, serverResponse: result }));
 
       setCurrentStep('Drawing generated successfully!');

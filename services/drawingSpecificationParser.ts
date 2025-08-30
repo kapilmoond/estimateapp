@@ -20,76 +20,166 @@ export class DrawingSpecificationParser {
   }
 
   private static createParsingPrompt(description: string): string {
-    return `You are a professional CAD engineer. Parse the following drawing description into a structured JSON specification.
+    return `You are a professional CAD engineer and technical drawing expert. Analyze the following drawing description and provide a complete, detailed drawing specification.
+
+**CRITICAL: You must respond with ONLY a JSON object. NO Python code, NO explanations, NO markdown. Just the JSON specification.**
 
 **DRAWING DESCRIPTION:**
 ${description}
+
+**YOUR TASK:**
+1. Determine ALL geometric elements needed (lines, circles, arcs, rectangles, etc.)
+2. Calculate exact coordinates and dimensions based on engineering standards
+3. Specify ALL dimension lines needed to fully document the drawing
+4. Determine hatching patterns for materials (if any)
+5. Position everything professionally with proper spacing
 
 **REQUIRED OUTPUT FORMAT:**
 Respond with ONLY a valid JSON object in this exact format:
 
 {
-  "title": "Drawing Title",
-  "scale": 100,
+  "title": "Descriptive Drawing Title",
+  "scale": 1,
   "units": "mm",
+  "drawingSize": {"width": 3000, "height": 2000},
   "elements": [
     {
-      "type": "line|circle|arc|rectangle|polyline",
+      "type": "line",
       "coordinates": [[x1, y1], [x2, y2]],
-      "properties": {
-        "layer": "CONSTRUCTION|DIMENSIONS|HATCHING"
-      }
+      "properties": {"layer": "CONSTRUCTION", "lineType": "CONTINUOUS"}
+    },
+    {
+      "type": "circle",
+      "coordinates": [[centerX, centerY], [radius]],
+      "properties": {"layer": "CONSTRUCTION"}
+    },
+    {
+      "type": "rectangle",
+      "coordinates": [[x1, y1], [x2, y2]],
+      "properties": {"layer": "CONSTRUCTION"}
+    },
+    {
+      "type": "polyline",
+      "coordinates": [[x1, y1], [x2, y2], [x3, y3], [x4, y4]],
+      "properties": {"layer": "CONSTRUCTION", "closed": true}
     }
   ],
   "dimensions": [
     {
-      "type": "linear|aligned|radial|angular",
-      "points": [[x1, y1], [x2, y2]],
+      "type": "linear",
+      "measurePoints": [[x1, y1], [x2, y2]],
+      "dimensionLinePosition": [x, y],
       "properties": {
         "layer": "DIMENSIONS",
         "textHeight": 100,
         "arrowSize": 50,
-        "position": [x, y]
+        "label": "auto"
       }
     }
   ],
+  "hatching": [
+    {
+      "boundaryPoints": [[x1, y1], [x2, y2], [x3, y3], [x4, y4]],
+      "pattern": "ANSI31",
+      "scale": 1.0,
+      "angle": 45,
+      "properties": {"layer": "HATCHING", "material": "concrete"}
+    }
+  ],
   "layers": [
-    {"name": "CONSTRUCTION", "color": 7},
-    {"name": "DIMENSIONS", "color": 1},
-    {"name": "HATCHING", "color": 2}
+    {"name": "CONSTRUCTION", "color": 7, "lineType": "CONTINUOUS"},
+    {"name": "DIMENSIONS", "color": 1, "lineType": "CONTINUOUS"},
+    {"name": "HATCHING", "color": 2, "lineType": "CONTINUOUS"}
   ]
 }
 
-**PARSING RULES:**
-1. Extract geometric elements (lines, circles, etc.) from the description
-2. Determine appropriate coordinates based on mentioned dimensions
-3. Add linear dimensions for all major measurements mentioned
-4. Use standard layers: CONSTRUCTION (color 7), DIMENSIONS (color 1), HATCHING (color 2)
-5. Set appropriate scale based on drawing size (1:1 for small, 1:100 for buildings)
-6. Use millimeters as default units
-7. Position dimensions below/beside elements with appropriate offsets
+**ENGINEERING ANALYSIS RULES:**
+1. **Coordinate System**: Origin (0,0) at bottom-left, X-axis right, Y-axis up, all in millimeters
+2. **Element Positioning**: Center drawings in coordinate space, leave margins for dimensions
+3. **Dimension Placement**: Position dimension lines 200-300mm away from elements
+4. **Text Sizing**: Use textHeight 100-150 for drawings up to 5000mm, scale proportionally
+5. **Layer Standards**: CONSTRUCTION (color 7), DIMENSIONS (color 1), HATCHING (color 2)
+6. **Professional Spacing**: Ensure adequate space between elements and dimensions
 
-**COORDINATE SYSTEM:**
-- Origin (0,0) at bottom-left
-- X-axis horizontal (positive right)
-- Y-axis vertical (positive up)
-- All coordinates in millimeters
+**DETAILED EXAMPLES:**
 
-**EXAMPLES:**
+**Example 1 - "2m line with dimensions":**
+{
+  "title": "2000mm Horizontal Line",
+  "elements": [
+    {"type": "line", "coordinates": [[0, 0], [2000, 0]], "properties": {"layer": "CONSTRUCTION"}}
+  ],
+  "dimensions": [
+    {
+      "type": "linear",
+      "measurePoints": [[0, 0], [2000, 0]],
+      "dimensionLinePosition": [1000, -200],
+      "properties": {"layer": "DIMENSIONS", "textHeight": 100, "arrowSize": 50}
+    }
+  ]
+}
 
-For "2m line": 
-- Element: line from (0,0) to (2000,0)
-- Dimension: linear from (0,0) to (2000,0) positioned at (0,-200)
+**Example 2 - "Circle 500mm radius":**
+{
+  "title": "Circle R500",
+  "elements": [
+    {"type": "circle", "coordinates": [[0, 0], [500]], "properties": {"layer": "CONSTRUCTION"}}
+  ],
+  "dimensions": [
+    {
+      "type": "radial",
+      "measurePoints": [[0, 0], [500, 0]],
+      "dimensionLinePosition": [250, 250],
+      "properties": {"layer": "DIMENSIONS", "textHeight": 100}
+    }
+  ]
+}
 
-For "circle with 500mm radius":
-- Element: circle at (0,0) with radius 500
-- Dimension: radial from center (0,0) to point (500,0)
+**Example 3 - "Rectangle 1000x500mm with concrete hatching":**
+{
+  "title": "Concrete Rectangle 1000x500",
+  "elements": [
+    {"type": "rectangle", "coordinates": [[0, 0], [1000, 500]], "properties": {"layer": "CONSTRUCTION"}}
+  ],
+  "dimensions": [
+    {
+      "type": "linear",
+      "measurePoints": [[0, 0], [1000, 0]],
+      "dimensionLinePosition": [500, -200],
+      "properties": {"layer": "DIMENSIONS", "textHeight": 100}
+    },
+    {
+      "type": "linear",
+      "measurePoints": [[0, 0], [0, 500]],
+      "dimensionLinePosition": [-200, 250],
+      "properties": {"layer": "DIMENSIONS", "textHeight": 100}
+    }
+  ],
+  "hatching": [
+    {
+      "boundaryPoints": [[0, 0], [1000, 0], [1000, 500], [0, 500]],
+      "pattern": "ANSI31",
+      "scale": 1.0,
+      "angle": 45,
+      "properties": {"layer": "HATCHING", "material": "concrete"}
+    }
+  ]
+}
 
-For "rectangle 1000x500mm":
-- Element: rectangle from (0,0) to (1000,500)
-- Dimensions: linear for width and height
+**CRITICAL REQUIREMENTS:**
+1. Respond with ONLY the JSON object
+2. NO Python code generation
+3. NO explanations or text
+4. NO markdown formatting
+5. Just the structured JSON specification
 
-Respond with ONLY the JSON object, no explanations.`;
+**FORBIDDEN:**
+- Do NOT generate Python code
+- Do NOT include import statements
+- Do NOT include ezdxf code
+- Do NOT add explanations
+
+Respond with ONLY the JSON object.`;
   }
 
   private static extractSpecificationFromResponse(response: string): DrawingSpecification {

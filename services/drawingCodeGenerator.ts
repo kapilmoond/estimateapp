@@ -1,70 +1,68 @@
-import { DrawingSpecification, DrawingElement, DimensionElement } from '../components/DrawingSpecificationInterface';
-
 export class DrawingCodeGenerator {
   /**
    * Generate complete Python code from drawing specification
    */
-  static generatePythonCode(spec: DrawingSpecification): string {
+  static generatePythonCode(spec: any): string {
     const code = [
       this.generateImports(),
       this.generateDocumentSetup(),
-      this.generateLayers(spec.layers),
+      this.generateLayers(spec.layers || []),
       this.generateDimensionStyle(spec),
-      this.generateElements(spec.elements),
-      this.generateDimensions(spec.dimensions),
-      this.generateSave(spec.title)
+      this.generateElements(spec.elements || []),
+      this.generateDimensions(spec.dimensions || []),
+      this.generateHatching(spec.hatching || []),
+      this.generateSave(spec.title || 'drawing')
     ];
 
     return code.join('\n\n');
   }
 
   private static generateImports(): string {
-    return `import ezdxf`;
+    return 'import ezdxf';
   }
 
   private static generateDocumentSetup(): string {
-    return `# Create document with setup=True for dimension styles
-doc = ezdxf.new("R2010", setup=True)
-msp = doc.modelspace()`;
+    return '# Create document with setup=True for dimension styles\n' +
+           'doc = ezdxf.new("R2010", setup=True)\n' +
+           'msp = doc.modelspace()';
   }
 
-  private static generateLayers(layers: { name: string; color: number; lineType?: string }[]): string {
+  private static generateLayers(layers: any[]): string {
     const layerCode = layers.map(layer => {
       if (layer.lineType) {
-        return `doc.layers.add(name="${layer.name}", color=${layer.color}, linetype="${layer.lineType}")`;
+        return 'doc.layers.add(name="' + layer.name + '", color=' + layer.color + ', linetype="' + layer.lineType + '")';
       } else {
-        return `doc.layers.add(name="${layer.name}", color=${layer.color})`;
+        return 'doc.layers.add(name="' + layer.name + '", color=' + layer.color + ')';
       }
     });
 
-    return `# Create layers
-${layerCode.join('\n')}`;
+    return '# Create layers\n' + layerCode.join('\n');
   }
 
-  private static generateDimensionStyle(spec: DrawingSpecification): string {
-    // Calculate appropriate text height based on drawing scale
+  private static generateDimensionStyle(spec: any): string {
     const baseTextHeight = 100;
-    const scaledTextHeight = Math.max(50, baseTextHeight / Math.sqrt(spec.scale));
+    const scaledTextHeight = Math.max(50, baseTextHeight / Math.sqrt(spec.scale || 1));
     const arrowSize = Math.max(25, scaledTextHeight * 0.5);
 
-    return `# Configure dimension style for visible text and arrows
-dimstyle = doc.dimstyles.get("Standard")
-dimstyle.dxf.dimtxt = ${scaledTextHeight}        # Text height
-dimstyle.dxf.dimasz = ${arrowSize}         # Arrow size
-dimstyle.dxf.dimexe = ${Math.round(arrowSize * 0.5)}         # Extension beyond dimension line
-dimstyle.dxf.dimexo = ${Math.round(arrowSize * 0.2)}          # Extension line offset
-dimstyle.dxf.dimgap = ${Math.round(arrowSize * 0.2)}         # Gap around text
-dimstyle.dxf.dimclrt = 1         # Text color (red)
-dimstyle.dxf.dimclrd = 1         # Dimension line color (red)
-dimstyle.dxf.dimclre = 1         # Extension line color (red)
-dimstyle.dxf.dimtad = 1          # Text above dimension line
-dimstyle.dxf.dimjust = 0         # Center text
-dimstyle.dxf.dimblk = ""         # Use default arrow blocks
-dimstyle.dxf.dimblk1 = ""        # First arrow block
-dimstyle.dxf.dimblk2 = ""        # Second arrow block`;
+    return '# Configure dimension style for visible text and arrows\n' +
+           'dimstyle = doc.dimstyles.get("Standard")\n' +
+           'dimstyle.dxf.dimtxt = ' + scaledTextHeight + '        # Text height\n' +
+           'dimstyle.dxf.dimasz = ' + arrowSize + '         # Arrow size\n' +
+           'dimstyle.dxf.dimexe = ' + Math.round(arrowSize * 0.5) + '         # Extension beyond dimension line\n' +
+           'dimstyle.dxf.dimexo = ' + Math.round(arrowSize * 0.2) + '          # Extension line offset\n' +
+           'dimstyle.dxf.dimgap = ' + Math.round(arrowSize * 0.2) + '         # Gap around text\n' +
+           'dimstyle.dxf.dimclrt = 1         # Text color (red)\n' +
+           'dimstyle.dxf.dimclrd = 1         # Dimension line color (red)\n' +
+           'dimstyle.dxf.dimclre = 1         # Extension line color (red)\n' +
+           'dimstyle.dxf.dimtad = 1          # Text above dimension line\n' +
+           'dimstyle.dxf.dimjust = 0         # Center text\n' +
+           'dimstyle.dxf.dimblk = ""         # Use default arrow blocks\n' +
+           'dimstyle.dxf.dimblk1 = ""        # First arrow block\n' +
+           'dimstyle.dxf.dimblk2 = ""        # Second arrow block\n' +
+           'dimstyle.dxf.dimtsz = 0          # Use arrows (not ticks)';
   }
 
-  private static generateElements(elements: DrawingElement[]): string {
+  private static generateElements(elements: any[]): string {
     if (elements.length === 0) {
       return '# No elements specified';
     }
@@ -82,34 +80,33 @@ dimstyle.dxf.dimblk2 = ""        # Second arrow block`;
         case 'polyline':
           return this.generatePolyline(element);
         default:
-          return `# Unknown element type: ${element.type}`;
+          return '# Unknown element type: ' + element.type;
       }
     });
 
-    return `# Add drawing elements
-${elementCode.join('\n')}`;
+    return '# Add drawing elements\n' + elementCode.join('\n');
   }
 
-  private static generateLine(element: DrawingElement): string {
+  private static generateLine(element: any): string {
     const [start, end] = element.coordinates;
-    return `msp.add_line((${start[0]}, ${start[1]}), (${end[0]}, ${end[1]}), dxfattribs={"layer": "${element.properties.layer}"})`;
+    return 'msp.add_line((' + start[0] + ', ' + start[1] + '), (' + end[0] + ', ' + end[1] + '), dxfattribs={"layer": "' + element.properties.layer + '"})';
   }
 
-  private static generateCircle(element: DrawingElement): string {
+  private static generateCircle(element: any): string {
     const [center] = element.coordinates;
-    const radius = element.coordinates[1] ? element.coordinates[1][0] : 100; // Default radius
-    return `msp.add_circle((${center[0]}, ${center[1]}), radius=${radius}, dxfattribs={"layer": "${element.properties.layer}"})`;
+    const radius = element.coordinates[1] ? element.coordinates[1][0] : 100;
+    return 'msp.add_circle((' + center[0] + ', ' + center[1] + '), radius=' + radius + ', dxfattribs={"layer": "' + element.properties.layer + '"})';
   }
 
-  private static generateArc(element: DrawingElement): string {
+  private static generateArc(element: any): string {
     const [center] = element.coordinates;
     const radius = element.coordinates[1] ? element.coordinates[1][0] : 100;
     const startAngle = element.coordinates[2] ? element.coordinates[2][0] : 0;
     const endAngle = element.coordinates[2] ? element.coordinates[2][1] : 90;
-    return `msp.add_arc((${center[0]}, ${center[1]}), radius=${radius}, start_angle=${startAngle}, end_angle=${endAngle}, dxfattribs={"layer": "${element.properties.layer}"})`;
+    return 'msp.add_arc((' + center[0] + ', ' + center[1] + '), radius=' + radius + ', start_angle=' + startAngle + ', end_angle=' + endAngle + ', dxfattribs={"layer": "' + element.properties.layer + '"})';
   }
 
-  private static generateRectangle(element: DrawingElement): string {
+  private static generateRectangle(element: any): string {
     const [corner1, corner2] = element.coordinates;
     const points = [
       [corner1[0], corner1[1]],
@@ -117,15 +114,16 @@ ${elementCode.join('\n')}`;
       [corner2[0], corner2[1]],
       [corner1[0], corner2[1]]
     ];
-    return `msp.add_lwpolyline([${points.map(p => `(${p[0]}, ${p[1]})`).join(', ')}], close=True, dxfattribs={"layer": "${element.properties.layer}"})`;
+    const pointsStr = points.map(p => '(' + p[0] + ', ' + p[1] + ')').join(', ');
+    return 'msp.add_lwpolyline([' + pointsStr + '], close=True, dxfattribs={"layer": "' + element.properties.layer + '"})';
   }
 
-  private static generatePolyline(element: DrawingElement): string {
-    const points = element.coordinates.map(coord => `(${coord[0]}, ${coord[1]})`).join(', ');
-    return `msp.add_lwpolyline([${points}], dxfattribs={"layer": "${element.properties.layer}"})`;
+  private static generatePolyline(element: any): string {
+    const pointsStr = element.coordinates.map((coord: number[]) => '(' + coord[0] + ', ' + coord[1] + ')').join(', ');
+    return 'msp.add_lwpolyline([' + pointsStr + '], dxfattribs={"layer": "' + element.properties.layer + '"})';
   }
 
-  private static generateDimensions(dimensions: DimensionElement[]): string {
+  private static generateDimensions(dimensions: any[]): string {
     if (dimensions.length === 0) {
       return '# No dimensions specified';
     }
@@ -141,113 +139,89 @@ ${elementCode.join('\n')}`;
         case 'angular':
           return this.generateAngularDimension(dimension, index);
         default:
-          return `# Unknown dimension type: ${dimension.type}`;
+          return '# Unknown dimension type: ' + dimension.type;
       }
     });
 
-    return `# Add dimensions
-${dimensionCode.join('\n')}`;
+    return '# Add dimensions\n' + dimensionCode.join('\n');
   }
 
-  private static generateLinearDimension(dimension: DimensionElement, index: number): string {
-    const [p1, p2] = dimension.points;
-    const [baseX, baseY] = dimension.properties.position;
+  private static generateLinearDimension(dimension: any, index: number): string {
+    const [p1, p2] = dimension.measurePoints;
+    const [baseX, baseY] = dimension.dimensionLinePosition;
     
-    return `dim${index + 1} = msp.add_linear_dim(
-    base=(${baseX}, ${baseY}),
-    p1=(${p1[0]}, ${p1[1]}),
-    p2=(${p2[0]}, ${p2[1]}),
-    dimstyle="Standard",
-    text="<>",
-    dxfattribs={"layer": "${dimension.properties.layer}"}
-)
-dim${index + 1}.render()`;
+    return 'dim' + (index + 1) + ' = msp.add_linear_dim(\n' +
+           '    base=(' + baseX + ', ' + baseY + '),\n' +
+           '    p1=(' + p1[0] + ', ' + p1[1] + '),\n' +
+           '    p2=(' + p2[0] + ', ' + p2[1] + '),\n' +
+           '    dimstyle="Standard",\n' +
+           '    text="<>",\n' +
+           '    dxfattribs={"layer": "' + (dimension.properties.layer || 'DIMENSIONS') + '"}\n' +
+           ')\n' +
+           'dim' + (index + 1) + '.render()';
   }
 
-  private static generateAlignedDimension(dimension: DimensionElement, index: number): string {
-    const [p1, p2] = dimension.points;
-    const distance = 200; // Default distance from measured line
+  private static generateAlignedDimension(dimension: any, index: number): string {
+    const [p1, p2] = dimension.measurePoints;
+    const distance = 200;
     
-    return `dim${index + 1} = msp.add_aligned_dim(
-    p1=(${p1[0]}, ${p1[1]}),
-    p2=(${p2[0]}, ${p2[1]}),
-    distance=${distance},
-    dimstyle="Standard",
-    text="<>",
-    dxfattribs={"layer": "${dimension.properties.layer}"}
-)
-dim${index + 1}.render()`;
+    return 'dim' + (index + 1) + ' = msp.add_aligned_dim(\n' +
+           '    p1=(' + p1[0] + ', ' + p1[1] + '),\n' +
+           '    p2=(' + p2[0] + ', ' + p2[1] + '),\n' +
+           '    distance=' + distance + ',\n' +
+           '    dimstyle="Standard",\n' +
+           '    text="<>",\n' +
+           '    dxfattribs={"layer": "' + (dimension.properties.layer || 'DIMENSIONS') + '"}\n' +
+           ')\n' +
+           'dim' + (index + 1) + '.render()';
   }
 
-  private static generateRadialDimension(dimension: DimensionElement, index: number): string {
-    const [center, point] = dimension.points;
+  private static generateRadialDimension(dimension: any, index: number): string {
+    const [center, point] = dimension.measurePoints;
     
-    return `dim${index + 1} = msp.add_radius_dim(
-    center=(${center[0]}, ${center[1]}),
-    mpoint=(${point[0]}, ${point[1]}),
-    dimstyle="Standard",
-    dxfattribs={"layer": "${dimension.properties.layer}"}
-)
-dim${index + 1}.render()`;
+    return 'dim' + (index + 1) + ' = msp.add_radius_dim(\n' +
+           '    center=(' + center[0] + ', ' + center[1] + '),\n' +
+           '    mpoint=(' + point[0] + ', ' + point[1] + '),\n' +
+           '    dimstyle="Standard",\n' +
+           '    dxfattribs={"layer": "' + (dimension.properties.layer || 'DIMENSIONS') + '"}\n' +
+           ')\n' +
+           'dim' + (index + 1) + '.render()';
   }
 
-  private static generateAngularDimension(dimension: DimensionElement, index: number): string {
-    const [center, p1, p2] = dimension.points;
+  private static generateAngularDimension(dimension: any, index: number): string {
+    const [center, p1, p2] = dimension.measurePoints;
     
-    return `dim${index + 1} = msp.add_angular_dim_3p(
-    base=(${center[0]}, ${center[1]}),
-    p1=(${p1[0]}, ${p1[1]}),
-    p2=(${p2[0]}, ${p2[1]}),
-    dimstyle="Standard",
-    dxfattribs={"layer": "${dimension.properties.layer}"}
-)
-dim${index + 1}.render()`;
+    return 'dim' + (index + 1) + ' = msp.add_angular_dim_3p(\n' +
+           '    base=(' + center[0] + ', ' + center[1] + '),\n' +
+           '    p1=(' + p1[0] + ', ' + p1[1] + '),\n' +
+           '    p2=(' + p2[0] + ', ' + p2[1] + '),\n' +
+           '    dimstyle="Standard",\n' +
+           '    dxfattribs={"layer": "' + (dimension.properties.layer || 'DIMENSIONS') + '"}\n' +
+           ')\n' +
+           'dim' + (index + 1) + '.render()';
+  }
+
+  private static generateHatching(hatching: any[]): string {
+    if (hatching.length === 0) {
+      return '# No hatching specified';
+    }
+
+    const hatchCode = hatching.map((hatch, index) => {
+      const points = hatch.boundaryPoints.map((p: number[]) => '(' + p[0] + ', ' + p[1] + ')').join(', ');
+      
+      return 'hatch' + (index + 1) + ' = msp.add_hatch(dxfattribs={"layer": "' + (hatch.properties.layer || 'HATCHING') + '"})\n' +
+             'hatch' + (index + 1) + '.set_pattern_fill("' + hatch.pattern + '", scale=' + hatch.scale + ', angle=' + hatch.angle + ')\n' +
+             'hatch' + (index + 1) + '.paths.add_polyline_path([' + points + '], is_closed=True)';
+    });
+
+    return '# Add hatching\n' + hatchCode.join('\n');
   }
 
   private static generateSave(title: string): string {
     const filename = title ? 
-      `${title.replace(/[^a-zA-Z0-9\s-_]/g, '').replace(/\s+/g, '_').toLowerCase()}.dxf` : 
+      title.replace(/[^a-zA-Z0-9\s-_]/g, '').replace(/\s+/g, '_').toLowerCase() + '.dxf' : 
       'drawing.dxf';
     
-    return `# Save the drawing
-doc.saveas("${filename}")`;
-  }
-
-  /**
-   * Generate drawing specification from natural language using LLM
-   */
-  static async generateSpecificationFromDescription(description: string): Promise<DrawingSpecification> {
-    // This would use LLM to parse natural language and create structured specification
-    // For now, return a basic specification
-    return {
-      title: 'Generated Drawing',
-      scale: 100,
-      units: 'mm',
-      elements: [
-        {
-          id: 'line1',
-          type: 'line',
-          coordinates: [[0, 0], [2000, 0]],
-          properties: { layer: 'CONSTRUCTION' }
-        }
-      ],
-      dimensions: [
-        {
-          id: 'dim1',
-          type: 'linear',
-          points: [[0, 0], [2000, 0]],
-          properties: {
-            layer: 'DIMENSIONS',
-            textHeight: 100,
-            arrowSize: 50,
-            position: [0, -200]
-          }
-        }
-      ],
-      layers: [
-        { name: 'CONSTRUCTION', color: 7 },
-        { name: 'DIMENSIONS', color: 1 }
-      ]
-    };
+    return '# Save the drawing\ndoc.saveas("' + filename + '")';
   }
 }
