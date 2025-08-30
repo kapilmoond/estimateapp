@@ -1,20 +1,25 @@
 export class DrawingCodeGenerator {
   /**
-   * Generate complete Python code from drawing specification
+   * Generate complete Python code from attribute-based specification
    */
   static generatePythonCode(spec: any): string {
     const code = [
       this.generateImports(),
       this.generateDocumentSetup(),
-      this.generateLayers(spec.layers || []),
-      this.generateDimensionStyle(spec),
-      this.generateElements(spec.elements || []),
-      this.generateDimensions(spec.dimensions || []),
+      this.generateStandardLayers(),
+      this.generateDimensionStyle(),
+      this.generateLines(spec.lines || []),
+      this.generateCircles(spec.circles || []),
+      this.generateArcs(spec.arcs || []),
+      this.generateRectangles(spec.rectangles || []),
+      this.generatePolylines(spec.polylines || []),
+      this.generateLinearDimensions(spec.linearDimensions || []),
+      this.generateRadialDimensions(spec.radialDimensions || []),
       this.generateHatching(spec.hatching || []),
       this.generateSave(spec.title || 'drawing')
     ];
 
-    return code.join('\n\n');
+    return code.filter(section => section.trim() !== '').join('\n\n');
   }
 
   private static generateImports(): string {
@@ -34,81 +39,131 @@ export class DrawingCodeGenerator {
            'text_style.dxf.width = 1.0  # Width factor';
   }
 
-  private static generateLayers(layers: any[]): string {
-    const layerCode = layers.map(layer => {
-      if (layer.lineType) {
-        return 'doc.layers.add(name="' + layer.name + '", color=' + layer.color + ', linetype="' + layer.lineType + '")';
-      } else {
-        return 'doc.layers.add(name="' + layer.name + '", color=' + layer.color + ')';
-      }
-    });
-
-    return '# Create layers\n' + layerCode.join('\n');
+  private static generateStandardLayers(): string {
+    return '# Create standard layers\n' +
+           'doc.layers.add(name="CONSTRUCTION", color=7)\n' +
+           'doc.layers.add(name="DIMENSIONS", color=1)\n' +
+           'doc.layers.add(name="HATCHING", color=2)';
   }
 
-  private static generateDimensionStyle(spec: any): string {
-    // Use larger text height for better visibility
-    const baseTextHeight = 200;  // Increased from 100
-    const scaledTextHeight = Math.max(100, baseTextHeight / Math.sqrt(spec.scale || 1));
-    const arrowSize = Math.max(50, scaledTextHeight * 0.4);
-
+  private static generateDimensionStyle(): string {
     return '# Configure dimension style for VISIBLE text and arrows\n' +
            'dimstyle = doc.dimstyles.get("Standard")\n' +
-           '# CRITICAL: Text visibility settings\n' +
-           'dimstyle.dxf.dimtxt = ' + scaledTextHeight + '        # Text height (LARGE for visibility)\n' +
-           'dimstyle.dxf.dimasz = ' + arrowSize + '         # Arrow size\n' +
-           'dimstyle.dxf.dimexe = ' + Math.round(arrowSize * 0.5) + '         # Extension beyond dimension line\n' +
-           'dimstyle.dxf.dimexo = ' + Math.round(arrowSize * 0.3) + '          # Extension line offset\n' +
-           'dimstyle.dxf.dimgap = ' + Math.round(arrowSize * 0.3) + '         # Gap around text\n' +
-           '# Text positioning and visibility\n' +
+           'dimstyle.dxf.dimtxt = 200        # Text height (LARGE for visibility)\n' +
+           'dimstyle.dxf.dimasz = 80         # Arrow size\n' +
+           'dimstyle.dxf.dimexe = 40         # Extension beyond dimension line\n' +
+           'dimstyle.dxf.dimexo = 24         # Extension line offset\n' +
+           'dimstyle.dxf.dimgap = 24         # Gap around text\n' +
            'dimstyle.dxf.dimtad = 1          # Text above dimension line\n' +
            'dimstyle.dxf.dimjust = 0         # Center text horizontally\n' +
-           'dimstyle.dxf.dimtih = 0          # Text inside horizontal\n' +
-           'dimstyle.dxf.dimtoh = 0          # Text outside horizontal\n' +
-           '# Colors for visibility\n' +
            'dimstyle.dxf.dimclrt = 1         # Text color (red)\n' +
            'dimstyle.dxf.dimclrd = 1         # Dimension line color (red)\n' +
            'dimstyle.dxf.dimclre = 1         # Extension line color (red)\n' +
-           '# Arrow configuration\n' +
            'dimstyle.dxf.dimblk = ""         # Use default arrow blocks\n' +
            'dimstyle.dxf.dimblk1 = ""        # First arrow block\n' +
            'dimstyle.dxf.dimblk2 = ""        # Second arrow block\n' +
            'dimstyle.dxf.dimtsz = 0          # Use arrows (not ticks)\n' +
-           '# Force text display\n' +
-           'dimstyle.dxf.dimtxsty = "Standard"  # Use standard text style\n' +
-           'dimstyle.dxf.dimscale = 1.0      # Overall scale factor\n' +
-           '\n' +
-           '# CRITICAL: Force dimension text visibility\n' +
-           'dimstyle.dxf.dimtfac = 1.0       # Text scale factor\n' +
-           'dimstyle.dxf.dimlfac = 1.0       # Linear scale factor\n' +
-           'dimstyle.dxf.dimrnd = 0          # Rounding value\n' +
-           'dimstyle.dxf.dimdec = 0          # Decimal places\n' +
-           'dimstyle.dxf.dimzin = 0          # Zero suppression';
+           'dimstyle.dxf.dimtxsty = "Standard"  # Use standard text style';
   }
 
-  private static generateElements(elements: any[]): string {
-    if (elements.length === 0) {
-      return '# No elements specified';
-    }
+  private static generateLines(lines: any[]): string {
+    if (lines.length === 0) return '';
 
-    const elementCode = elements.map(element => {
-      switch (element.type) {
-        case 'line':
-          return this.generateLine(element);
-        case 'circle':
-          return this.generateCircle(element);
-        case 'arc':
-          return this.generateArc(element);
-        case 'rectangle':
-          return this.generateRectangle(element);
-        case 'polyline':
-          return this.generatePolyline(element);
-        default:
-          return '# Unknown element type: ' + element.type;
-      }
+    const lineCode = lines.map((line, index) => {
+      return 'msp.add_line((' + line.startPoint[0] + ', ' + line.startPoint[1] + '), (' +
+             line.endPoint[0] + ', ' + line.endPoint[1] + '), dxfattribs={"layer": "' +
+             line.layer + '", "color": ' + line.color + '})';
     });
 
-    return '# Add drawing elements\n' + elementCode.join('\n');
+    return '# Add lines\n' + lineCode.join('\n');
+  }
+
+  private static generateCircles(circles: any[]): string {
+    if (circles.length === 0) return '';
+
+    const circleCode = circles.map((circle, index) => {
+      return 'msp.add_circle((' + circle.centerPoint[0] + ', ' + circle.centerPoint[1] + '), radius=' +
+             circle.radius + ', dxfattribs={"layer": "' + circle.layer + '", "color": ' + circle.color + '})';
+    });
+
+    return '# Add circles\n' + circleCode.join('\n');
+  }
+
+  private static generateArcs(arcs: any[]): string {
+    if (arcs.length === 0) return '';
+
+    const arcCode = arcs.map((arc, index) => {
+      return 'msp.add_arc((' + arc.centerPoint[0] + ', ' + arc.centerPoint[1] + '), radius=' +
+             arc.radius + ', start_angle=' + arc.startAngle + ', end_angle=' + arc.endAngle +
+             ', dxfattribs={"layer": "' + arc.layer + '", "color": ' + arc.color + '})';
+    });
+
+    return '# Add arcs\n' + arcCode.join('\n');
+  }
+
+  private static generateRectangles(rectangles: any[]): string {
+    if (rectangles.length === 0) return '';
+
+    const rectCode = rectangles.map((rect, index) => {
+      const points = [
+        '(' + rect.corner1[0] + ', ' + rect.corner1[1] + ')',
+        '(' + rect.corner2[0] + ', ' + rect.corner1[1] + ')',
+        '(' + rect.corner2[0] + ', ' + rect.corner2[1] + ')',
+        '(' + rect.corner1[0] + ', ' + rect.corner2[1] + ')'
+      ];
+      return 'msp.add_lwpolyline([' + points.join(', ') + '], close=True, dxfattribs={"layer": "' +
+             rect.layer + '", "color": ' + rect.color + '})';
+    });
+
+    return '# Add rectangles\n' + rectCode.join('\n');
+  }
+
+  private static generatePolylines(polylines: any[]): string {
+    if (polylines.length === 0) return '';
+
+    const polyCode = polylines.map((poly, index) => {
+      const points = poly.points.map((p: number[]) => '(' + p[0] + ', ' + p[1] + ')').join(', ');
+      const closeStr = poly.closed ? ', close=True' : '';
+      return 'msp.add_lwpolyline([' + points + ']' + closeStr + ', dxfattribs={"layer": "' +
+             poly.layer + '", "color": ' + poly.color + '})';
+    });
+
+    return '# Add polylines\n' + polyCode.join('\n');
+  }
+
+  private static generateLinearDimensions(dimensions: any[]): string {
+    if (dimensions.length === 0) return '';
+
+    const dimCode = dimensions.map((dim, index) => {
+      const textHeight = dim.textHeight || 200;
+      return 'dim' + (index + 1) + ' = msp.add_linear_dim(\n' +
+             '    base=(' + dim.dimensionLinePosition[0] + ', ' + dim.dimensionLinePosition[1] + '),\n' +
+             '    p1=(' + dim.point1[0] + ', ' + dim.point1[1] + '),\n' +
+             '    p2=(' + dim.point2[0] + ', ' + dim.point2[1] + '),\n' +
+             '    dimstyle="Standard",\n' +
+             '    text="<>",\n' +
+             '    dxfattribs={"layer": "' + dim.layer + '", "color": ' + dim.color + '}\n' +
+             ')\n' +
+             'dim' + (index + 1) + '.render()';
+    });
+
+    return '# Add linear dimensions\n' + dimCode.join('\n\n');
+  }
+
+  private static generateRadialDimensions(dimensions: any[]): string {
+    if (dimensions.length === 0) return '';
+
+    const dimCode = dimensions.map((dim, index) => {
+      return 'rdim' + (index + 1) + ' = msp.add_radius_dim(\n' +
+             '    center=(' + dim.centerPoint[0] + ', ' + dim.centerPoint[1] + '),\n' +
+             '    mpoint=(' + dim.radiusPoint[0] + ', ' + dim.radiusPoint[1] + '),\n' +
+             '    dimstyle="Standard",\n' +
+             '    dxfattribs={"layer": "' + dim.layer + '", "color": ' + dim.color + '}\n' +
+             ')\n' +
+             'rdim' + (index + 1) + '.render()';
+    });
+
+    return '# Add radial dimensions\n' + dimCode.join('\n\n');
   }
 
   private static generateLine(element: any): string {

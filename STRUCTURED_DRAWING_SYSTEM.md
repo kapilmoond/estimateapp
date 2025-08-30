@@ -1,12 +1,12 @@
-# Structured Drawing System Documentation
+# Professional Attribute-Based Drawing System
 
 ## Overview
 
-The new structured drawing system separates responsibilities between the LLM and the application:
-- **LLM**: Provides drawing intelligence (what to draw, where to place it)
-- **App**: Generates reliable Python code from structured data
+The new single-mode drawing system uses precise attribute specification:
+- **LLM**: Provides exact coordinates, dimensions, and attributes for each drawing element
+- **App**: Generates reliable Python code from precise attribute data
 
-This approach eliminates code generation errors while maintaining AI-powered drawing analysis.
+This approach ensures professional accuracy while eliminating code generation errors.
 
 ## System Architecture
 

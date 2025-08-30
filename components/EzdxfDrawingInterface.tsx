@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { EzdxfDrawingService, DrawingRequest, DrawingResult } from '../services/ezdxfDrawingService';
 import { DrawingDebugDisplay } from './DrawingDebugDisplay';
-import { DrawingSpecificationInterface, DrawingSpecification } from './DrawingSpecificationInterface';
 import { DrawingCodeGenerator } from '../services/drawingCodeGenerator';
 import { DrawingSpecificationParser } from '../services/drawingSpecificationParser';
 
@@ -30,8 +29,7 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
   const [showCode, setShowCode] = useState(false);
   const [serverStatus, setServerStatus] = useState<{ running: boolean; message: string; version?: string } | null>(null);
   const [isCheckingServer, setIsCheckingServer] = useState(false);
-  const [drawingMode, setDrawingMode] = useState<'natural' | 'structured'>('natural');
-  const [showSpecificationInterface, setShowSpecificationInterface] = useState(false);
+  // Single mode - attribute-based drawing generation
 
   // Debug information
   const [debugInfo, setDebugInfo] = useState<{
@@ -100,11 +98,6 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
       return;
     }
 
-    if (drawingMode === 'structured') {
-      setShowSpecificationInterface(true);
-      return;
-    }
-
     setIsGenerating(true);
     setCurrentStep('Analyzing requirements...');
 
@@ -118,14 +111,14 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
         error: null
       });
 
-      // Step 1: LLM analyzes and provides complete drawing intelligence
-      setCurrentStep('Analyzing drawing requirements with AI...');
+      // Step 1: LLM provides precise attribute specifications
+      setCurrentStep('Getting precise drawing specifications from AI...');
       const specification = await DrawingSpecificationParser.parseDescription(userInput);
-      console.log('LLM Drawing Specification:', specification);
+      console.log('LLM Attribute Specification:', specification);
       setDebugInfo(prev => ({ ...prev, llmOutput: JSON.stringify(specification, null, 2) }));
 
-      // Step 2: App generates reliable Python code from LLM specification
-      setCurrentStep('Generating professional Python code...');
+      // Step 2: App generates reliable Python code from attributes
+      setCurrentStep('Generating professional Python code from attributes...');
       const pythonCode = DrawingCodeGenerator.generatePythonCode(specification);
       console.log('App-Generated Python Code:', pythonCode);
       setGeneratedCode(pythonCode);
@@ -157,46 +150,7 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
     }
   };
 
-  const handleSpecificationComplete = async (specification: DrawingSpecification) => {
-    setShowSpecificationInterface(false);
-    setIsGenerating(true);
-    setCurrentStep('Generating professional Python code...');
 
-    try {
-      // Generate Python code from specification
-      const pythonCode = DrawingCodeGenerator.generatePythonCode(specification);
-      setGeneratedCode(pythonCode);
-      setDebugInfo(prev => ({
-        ...prev,
-        llmOutput: JSON.stringify(specification, null, 2),
-        extractedCode: pythonCode
-      }));
-
-      // Execute code and get DXF
-      setCurrentStep('Executing Python code via local server...');
-
-      const serverRequest = {
-        python_code: pythonCode,
-        filename: specification.title.replace(/[^a-zA-Z0-9\s-_]/g, '').replace(/\s+/g, '_').toLowerCase()
-      };
-      setDebugInfo(prev => ({ ...prev, serverRequest }));
-
-      const result = await EzdxfDrawingService.executeDrawingCode(pythonCode, specification.title);
-      setDebugInfo(prev => ({ ...prev, serverResponse: result }));
-
-      setCurrentStep('Drawing generated successfully!');
-      onDrawingGenerated(result);
-
-    } catch (error) {
-      console.error('Drawing generation error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to generate drawing';
-      setDebugInfo(prev => ({ ...prev, error: errorMessage }));
-      onError(errorMessage);
-    } finally {
-      setIsGenerating(false);
-      setCurrentStep('');
-    }
-  };
 
   const extractTitle = (input: string): string => {
     // Try to extract a meaningful title from user input
@@ -310,39 +264,13 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
         </ol>
       </div>
 
-      {/* Drawing Mode Selection */}
+      {/* Single Mode: Attribute-Based Drawing Generation */}
       <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          🎯 Drawing Generation Mode
-        </label>
-        <div className="grid grid-cols-2 gap-4">
-          <button
-            onClick={() => setDrawingMode('natural')}
-            className={`p-4 border rounded-lg text-left ${
-              drawingMode === 'natural'
-                ? 'border-blue-500 bg-blue-50'
-                : 'border-gray-300 hover:border-gray-400'
-            }`}
-          >
-            <div className="font-medium text-gray-900">🗣️ Natural Language</div>
-            <div className="text-sm text-gray-600 mt-1">
-              Describe your drawing in plain English. AI parses and generates reliable code.
-            </div>
-          </button>
-
-          <button
-            onClick={() => setDrawingMode('structured')}
-            className={`p-4 border rounded-lg text-left ${
-              drawingMode === 'structured'
-                ? 'border-blue-500 bg-blue-50'
-                : 'border-gray-300 hover:border-gray-400'
-            }`}
-          >
-            <div className="font-medium text-gray-900">📋 Structured Input</div>
-            <div className="text-sm text-gray-600 mt-1">
-              Step-by-step specification of elements and dimensions. Most reliable.
-            </div>
-          </button>
+        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="font-medium text-blue-900">🎯 Professional Attribute-Based Drawing</div>
+          <div className="text-sm text-blue-700 mt-1">
+            Describe your drawing requirements. AI will provide precise coordinates and attributes, then the app generates reliable code.
+          </div>
         </div>
       </div>
 
@@ -461,17 +389,7 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
         error={debugInfo.error}
       />
 
-      {/* Structured Drawing Specification Modal */}
-      {showSpecificationInterface && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-            <DrawingSpecificationInterface
-              onSpecificationComplete={handleSpecificationComplete}
-              onCancel={() => setShowSpecificationInterface(false)}
-            />
-          </div>
-        </div>
-      )}
+
     </div>
   );
 };
