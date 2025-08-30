@@ -5,6 +5,8 @@ import { DrawingCodeGenerator } from '../services/drawingCodeGenerator';
 import { DrawingSpecificationParser } from '../services/drawingSpecificationParser';
 import { DrawingSettingsPanel, DrawingSettings } from './DrawingSettingsPanel';
 import { DrawingSettingsService } from '../services/drawingSettingsService';
+import { DrawingService, ProjectDrawing } from '../services/drawingService';
+import { ProjectService } from '../services/projectService';
 
 interface EzdxfDrawingInterfaceProps {
   userInput: string;
@@ -34,6 +36,31 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
   // Settings management
   const [drawingSettings, setDrawingSettings] = useState<DrawingSettings>(DrawingSettingsService.loadSettings());
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+
+  // Drawing persistence
+  const [currentDrawing, setCurrentDrawing] = useState<ProjectDrawing | null>(null);
+  const [projectDrawings, setProjectDrawings] = useState<ProjectDrawing[]>([]);
+
+  // Get current project ID
+  const getCurrentProjectId = (): string => {
+    const currentProject = ProjectService.getCurrentProject();
+    return currentProject?.id || 'default';
+  };
+
+  // Load drawings on component mount and when project changes
+  useEffect(() => {
+    const projectId = getCurrentProjectId();
+    const drawings = DrawingService.loadProjectDrawings(projectId);
+    setProjectDrawings(drawings);
+
+    // Load the latest drawing if available
+    const latestDrawing = DrawingService.getLatestProjectDrawing(projectId);
+    if (latestDrawing) {
+      setCurrentDrawing(latestDrawing);
+      // Restore the drawing result to display
+      onDrawingGenerated(latestDrawing.result);
+    }
+  }, []);
 
   // Debug information
   const [debugInfo, setDebugInfo] = useState<{
@@ -141,6 +168,24 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
       setDebugInfo(prev => ({ ...prev, serverResponse: result }));
 
       setCurrentStep('Drawing generated successfully!');
+
+      // Save the drawing to persistence
+      const savedDrawing = DrawingService.saveDrawing({
+        projectId: getCurrentProjectId(),
+        title: extractTitle(userInput),
+        description: extractDescription(userInput),
+        specification,
+        generatedCode: pythonCode,
+        result,
+        settings: drawingSettings
+      });
+
+      setCurrentDrawing(savedDrawing);
+
+      // Update project drawings list
+      const updatedDrawings = DrawingService.loadProjectDrawings(getCurrentProjectId());
+      setProjectDrawings(updatedDrawings);
+
       onDrawingGenerated(result);
 
     } catch (error) {
@@ -300,6 +345,16 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
           Arrows: {drawingSettings.dimensions.arrowSize}px,
           Format: {drawingSettings.documentFormat}
         </div>
+
+        {/* Current Drawing Info */}
+        {currentDrawing && (
+          <div className="text-xs text-blue-600 bg-blue-50 p-2 rounded border border-blue-200 mt-2">
+            <strong>Current Drawing:</strong> {currentDrawing.title}
+            <span className="text-blue-500 ml-2">
+              (Saved {new Date(currentDrawing.timestamp).toLocaleString()})
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="mb-6">
@@ -362,6 +417,33 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
             </button>
           </>
         )}
+
+        {/* Drawing Management Buttons */}
+        {projectDrawings.length > 0 && (
+          <>
+            <button
+              onClick={() => DrawingService.exportProjectDrawings(getCurrentProjectId())}
+              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
+              title="Export all project drawings"
+            >
+              📤 Export Drawings
+            </button>
+
+            <button
+              onClick={() => {
+                if (confirm(`Clear all ${projectDrawings.length} drawings for this project?`)) {
+                  DrawingService.deleteProjectDrawings(getCurrentProjectId());
+                  setProjectDrawings([]);
+                  setCurrentDrawing(null);
+                }
+              }}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+              title="Clear all project drawings"
+            >
+              🗑️ Clear All
+            </button>
+          </>
+        )}
       </div>
 
       {/* Progress Indicator */}
@@ -385,6 +467,70 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
             <pre className="text-xs whitespace-pre-wrap font-mono">
               {generatedCode}
             </pre>
+          </div>
+        </div>
+      )}
+
+      {/* Drawing History */}
+      {projectDrawings.length > 0 && (
+        <div className="mb-6">
+          <h4 className="text-sm font-medium text-gray-700 mb-3">📋 Drawing History ({projectDrawings.length})</h4>
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 max-h-40 overflow-y-auto">
+            <div className="space-y-2">
+              {projectDrawings
+                .sort((a, b) => b.timestamp - a.timestamp)
+                .slice(0, 5)
+                .map((drawing) => (
+                <div
+                  key={drawing.id}
+                  className={`flex items-center justify-between p-2 rounded cursor-pointer transition-colors ${
+                    currentDrawing?.id === drawing.id
+                      ? 'bg-blue-100 border border-blue-200'
+                      : 'bg-white hover:bg-gray-100'
+                  }`}
+                  onClick={() => {
+                    setCurrentDrawing(drawing);
+                    onDrawingGenerated(drawing.result);
+                    setGeneratedCode(drawing.generatedCode);
+                  }}
+                >
+                  <div className="flex-1">
+                    <div className="text-sm font-medium text-gray-900">{drawing.title}</div>
+                    <div className="text-xs text-gray-500">
+                      {new Date(drawing.timestamp).toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    {currentDrawing?.id === drawing.id && (
+                      <span className="text-xs text-blue-600 font-medium">Current</span>
+                    )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (confirm('Delete this drawing?')) {
+                          DrawingService.deleteDrawing(drawing.id);
+                          const updated = DrawingService.loadProjectDrawings(getCurrentProjectId());
+                          setProjectDrawings(updated);
+                          if (currentDrawing?.id === drawing.id) {
+                            setCurrentDrawing(null);
+                          }
+                        }
+                      }}
+                      className="text-red-500 hover:text-red-700 text-xs"
+                      title="Delete drawing"
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {projectDrawings.length > 5 && (
+                <div className="text-xs text-gray-500 text-center pt-2">
+                  ... and {projectDrawings.length - 5} more drawings
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
