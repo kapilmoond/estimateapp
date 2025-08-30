@@ -24,6 +24,54 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
   const [currentStep, setCurrentStep] = useState<string>('');
   const [generatedCode, setGeneratedCode] = useState<string>('');
   const [showCode, setShowCode] = useState(false);
+  const [serverStatus, setServerStatus] = useState<{ running: boolean; message: string; version?: string } | null>(null);
+  const [isCheckingServer, setIsCheckingServer] = useState(false);
+
+  // Check server status on component mount
+  React.useEffect(() => {
+    checkServerStatus();
+  }, []);
+
+  const checkServerStatus = async () => {
+    setIsCheckingServer(true);
+    try {
+      const status = await EzdxfDrawingService.checkServerStatus();
+      setServerStatus(status);
+    } catch (error) {
+      setServerStatus({
+        running: false,
+        message: 'Cannot connect to local server'
+      });
+    } finally {
+      setIsCheckingServer(false);
+    }
+  };
+
+  const testServer = async () => {
+    setIsCheckingServer(true);
+    try {
+      const result = await EzdxfDrawingService.testServer();
+      if (result.success) {
+        setServerStatus({
+          running: true,
+          message: result.message,
+          version: 'Working'
+        });
+      } else {
+        setServerStatus({
+          running: false,
+          message: result.message
+        });
+      }
+    } catch (error) {
+      setServerStatus({
+        running: false,
+        message: 'Server test failed'
+      });
+    } finally {
+      setIsCheckingServer(false);
+    }
+  };
 
   const handleGenerateDrawing = async () => {
     if (!userInput.trim()) {
@@ -120,11 +168,63 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
         </div>
       </div>
 
+      {/* Server Status */}
+      <div className={`mb-4 p-4 border rounded-lg ${
+        serverStatus?.running
+          ? 'bg-green-50 border-green-200'
+          : 'bg-red-50 border-red-200'
+      }`}>
+        <div className="flex items-center justify-between mb-2">
+          <h4 className={`font-medium ${
+            serverStatus?.running ? 'text-green-900' : 'text-red-900'
+          }`}>
+            🖥️ Local ezdxf Server Status
+          </h4>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={checkServerStatus}
+              disabled={isCheckingServer}
+              className="px-3 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700 disabled:bg-gray-400"
+            >
+              {isCheckingServer ? '⟳' : '🔄'} Check
+            </button>
+            {serverStatus?.running && (
+              <button
+                onClick={testServer}
+                disabled={isCheckingServer}
+                className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400"
+              >
+                🧪 Test
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className={`text-sm ${
+          serverStatus?.running ? 'text-green-800' : 'text-red-800'
+        }`}>
+          {serverStatus?.running ? '✅' : '❌'} {serverStatus?.message || 'Checking server...'}
+          {serverStatus?.version && (
+            <span className="ml-2 text-xs opacity-75">
+              (ezdxf {serverStatus.version})
+            </span>
+          )}
+        </div>
+
+        {!serverStatus?.running && (
+          <div className="mt-2 text-xs text-red-700">
+            <strong>To start the server:</strong><br/>
+            • Windows: Double-click <code>start_server.bat</code> in the local-server folder<br/>
+            • Linux/Mac: Run <code>./start_server.sh</code> in the local-server folder
+          </div>
+        )}
+      </div>
+
       <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
         <h4 className="font-medium text-blue-900 mb-2">How it works:</h4>
         <ol className="text-sm text-blue-800 space-y-1">
           <li>1. 🤖 AI generates complete ezdxf Python code based on your requirements</li>
-          <li>2. ☁️ Code executes on Google Cloud Functions with full ezdxf library</li>
+          <li>2. 🖥️ Code executes on your local ezdxf server with full library access</li>
           <li>3. 📐 Professional DXF file created with dimensions, text, and annotations</li>
           <li>4. 💾 Download ready-to-use CAD file for AutoCAD, FreeCAD, etc.</li>
         </ol>
@@ -161,10 +261,17 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
       <div className="flex items-center gap-3 mb-4">
         <button
           onClick={handleGenerateDrawing}
-          disabled={isGenerating || !userInput.trim()}
-          className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 transition-colors font-medium"
+          disabled={isGenerating || !userInput.trim() || !serverStatus?.running}
+          className={`px-6 py-3 rounded-lg transition-colors font-medium ${
+            serverStatus?.running
+              ? 'bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-400'
+              : 'bg-red-600 text-white cursor-not-allowed'
+          }`}
+          title={!serverStatus?.running ? 'Please start the local ezdxf server first' : ''}
         >
-          {isGenerating ? '⚙️ Generating...' : '🚀 Generate Professional Drawing'}
+          {isGenerating ? '⚙️ Generating...' :
+           !serverStatus?.running ? '🔌 Server Required' :
+           '🚀 Generate Professional Drawing'}
         </button>
 
         {generatedCode && (

@@ -171,15 +171,27 @@ const App: React.FC = () => {
     setKeywords(project.keywords);
     setHsrItems(project.hsrItems);
     setFinalEstimateText(project.finalEstimateText);
-    setDesigns(project.designs);
-    setDrawings(project.drawings);
+
+    // Clear all designs and drawings first, then load project-specific ones
+    setDesigns([]);
+    setDrawings([]);
+    setDrawingResults([]);
+
+    // Load project-specific designs and drawings
+    setDesigns(project.designs || []);
+    setDrawings(project.drawings || []);
+
     setReferenceDocs(project.referenceDocs);
     setOutputMode(project.outputMode);
     setPurifiedContext(project.purifiedContext);
-    setSelectedTemplates(project.selectedTemplates);
-    setTemplateInstructions(project.templateInstructions);
+    setSelectedTemplates(project.selectedTemplates || []);
+    setTemplateInstructions(project.templateInstructions || '');
 
-    console.log('Loaded project:', project.name);
+    // Clear any global design/drawing storage to prevent cross-project contamination
+    DesignService.clearAllDesigns();
+    DXFStorageService.clearAllDrawings();
+
+    console.log('Loaded project:', project.name, 'with', project.designs?.length || 0, 'designs');
   };
 
   const saveCurrentProject = () => {

@@ -20,7 +20,7 @@ export interface DrawingResult {
 }
 
 export class EzdxfDrawingService {
-  private static readonly GOOGLE_CLOUD_FUNCTION_URL = 'YOUR_GOOGLE_CLOUD_FUNCTION_URL'; // Replace with your actual URL
+  private static readonly LOCAL_SERVER_URL = process.env.REACT_APP_LOCAL_SERVER_URL || 'http://127.0.0.1:8080';
 
   /**
    * Generate complete ezdxf Python code for technical drawing
@@ -42,13 +42,13 @@ export class EzdxfDrawingService {
   }
 
   /**
-   * Execute Python code via Google Cloud Function and get DXF file
+   * Execute Python code via local ezdxf server and get DXF file
    */
   static async executeDrawingCode(pythonCode: string, title: string): Promise<DrawingResult> {
     try {
-      console.log('EzdxfDrawingService: Executing Python code via Google Cloud Function');
-      
-      const response = await fetch(this.GOOGLE_CLOUD_FUNCTION_URL, {
+      console.log('EzdxfDrawingService: Executing Python code via local ezdxf server');
+
+      const response = await fetch(`${this.LOCAL_SERVER_URL}/generate-drawing`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -60,11 +60,14 @@ export class EzdxfDrawingService {
       });
 
       if (!response.ok) {
-        throw new Error(`Cloud Function error: ${response.status} ${response.statusText}`);
+        if (response.status === 0 || !response.status) {
+          throw new Error(`🔌 Cannot connect to local ezdxf server at ${this.LOCAL_SERVER_URL}. Please start the local server by running 'start_server.bat' (Windows) or 'start_server.sh' (Linux/Mac) from the local-server folder.`);
+        }
+        throw new Error(`Local server error: ${response.status} ${response.statusText}`);
       }
 
       const result = await response.json();
-      
+
       if (result.error) {
         throw new Error(`Python execution error: ${result.error}`);
       }
@@ -79,6 +82,11 @@ export class EzdxfDrawingService {
 
     } catch (error) {
       console.error('EzdxfDrawingService: Execution error:', error);
+
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        throw new Error(`🔌 Cannot connect to local ezdxf server. Please start the server by running 'start_server.bat' (Windows) or 'start_server.sh' (Linux/Mac) from the local-server folder.`);
+      }
+
       throw new Error(`Failed to execute drawing code: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -272,6 +280,67 @@ The code should create a professional technical drawing that fully satisfies the
       .replace(/\s+/g, '_')
       .toLowerCase()
       .substring(0, 50) || 'drawing';
+  }
+
+  /**
+   * Check if the local ezdxf server is running
+   */
+  static async checkServerStatus(): Promise<{ running: boolean; message: string; version?: string }> {
+    try {
+      const response = await fetch(`${this.LOCAL_SERVER_URL}/`, {
+        method: 'GET',
+        timeout: 5000
+      } as any);
+
+      if (response.ok) {
+        const result = await response.json();
+        return {
+          running: true,
+          message: result.message || 'Server is running',
+          version: result.version
+        };
+      } else {
+        return {
+          running: false,
+          message: `Server responded with status ${response.status}`
+        };
+      }
+    } catch (error) {
+      return {
+        running: false,
+        message: 'Cannot connect to local server. Please start the server.'
+      };
+    }
+  }
+
+  /**
+   * Test the ezdxf functionality on the server
+   */
+  static async testServer(): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await fetch(`${this.LOCAL_SERVER_URL}/test`, {
+        method: 'GET'
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.status === 'success') {
+        return {
+          success: true,
+          message: `ezdxf server is working correctly (version ${result.ezdxf_version})`
+        };
+      } else {
+        return {
+          success: false,
+          message: result.message || 'Server test failed'
+        };
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Cannot connect to server for testing'
+      };
+    }
   }
 
   /**

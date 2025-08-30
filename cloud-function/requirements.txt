@@ -1,0 +1,6 @@
+functions-framework==3.*
+ezdxf==1.4.2
+numpy>=1.21.0
+pyparsing>=3.0.0
+typing-extensions>=4.0.0
+fonttools>=4.0.0
