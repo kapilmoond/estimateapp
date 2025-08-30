@@ -17,6 +17,10 @@ export interface DrawingResult {
   title: string;
   description: string;
   executionLog: string;
+  imagePng?: string;
+  imagePdf?: string;
+  imageSuccess?: boolean;
+  imageError?: string;
 }
 
 export class EzdxfDrawingService {
@@ -77,7 +81,11 @@ export class EzdxfDrawingService {
         dxfContent: result.dxf_content,
         title,
         description: result.description || 'Technical drawing generated with ezdxf',
-        executionLog: result.execution_log || 'Drawing generated successfully'
+        executionLog: result.execution_log || 'Drawing generated successfully',
+        imagePng: result.image_png,
+        imagePdf: result.image_pdf,
+        imageSuccess: result.image_success,
+        imageError: result.image_error
       };
 
     } catch (error) {
@@ -358,20 +366,112 @@ The code should create a professional technical drawing that fully satisfies the
       // Create blob and download
       const blob = new Blob([bytes], { type: 'application/dxf' });
       const url = URL.createObjectURL(blob);
-      
+
       const link = document.createElement('a');
       link.href = url;
       link.download = `${filename}.dxf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      
+
       URL.revokeObjectURL(url);
-      
+
       console.log('EzdxfDrawingService: DXF file downloaded successfully');
     } catch (error) {
       console.error('EzdxfDrawingService: Download error:', error);
       throw new Error('Failed to download DXF file');
+    }
+  }
+
+  /**
+   * Download PNG image from base64 content
+   */
+  static downloadPNG(imageContent: string, filename: string): void {
+    try {
+      const binaryString = atob(imageContent);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+
+      const blob = new Blob([bytes], { type: 'image/png' });
+      const url = URL.createObjectURL(blob);
+
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${filename}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      URL.revokeObjectURL(url);
+
+      console.log('EzdxfDrawingService: PNG image downloaded successfully');
+    } catch (error) {
+      console.error('EzdxfDrawingService: PNG download error:', error);
+      throw new Error('Failed to download PNG image');
+    }
+  }
+
+  /**
+   * Download PDF image from base64 content
+   */
+  static downloadPDF(imageContent: string, filename: string): void {
+    try {
+      const binaryString = atob(imageContent);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${filename}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      URL.revokeObjectURL(url);
+
+      console.log('EzdxfDrawingService: PDF image downloaded successfully');
+    } catch (error) {
+      console.error('EzdxfDrawingService: PDF download error:', error);
+      throw new Error('Failed to download PDF image');
+    }
+  }
+
+  /**
+   * Print PNG image directly
+   */
+  static printPNG(imageContent: string): void {
+    try {
+      const binaryString = atob(imageContent);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+
+      const blob = new Blob([bytes], { type: 'image/png' });
+      const url = URL.createObjectURL(blob);
+
+      // Open in new window for printing
+      const printWindow = window.open(url, '_blank');
+      if (printWindow) {
+        printWindow.onload = () => {
+          printWindow.print();
+        };
+      }
+
+      // Clean up URL after a delay
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+
+      console.log('EzdxfDrawingService: PNG image opened for printing');
+    } catch (error) {
+      console.error('EzdxfDrawingService: Print error:', error);
+      throw new Error('Failed to print PNG image');
     }
   }
 }
