@@ -334,38 +334,47 @@ dim.render()
 
 **3.4 DIMENSION STYLE FOR VISIBLE TEXT (WORKING SOLUTION):**
 \`\`\`python
-# CRITICAL: Use "Standard" dimstyle which always works
-# Configure dimension for visible text display
+# CRITICAL: Configure dimension style for visible text
+# Method 1: Configure Standard dimstyle properly
+dimstyle = doc.dimstyles.get("Standard")
+dimstyle.dxf.dimtxt = 100        # Text height (proportional to drawing)
+dimstyle.dxf.dimasz = 50         # Arrow size
+dimstyle.dxf.dimexe = 25         # Extension beyond dimension line
+dimstyle.dxf.dimexo = 10         # Extension line offset
+dimstyle.dxf.dimgap = 10         # Gap around text
+dimstyle.dxf.dimclrt = 1         # Text color (red)
+dimstyle.dxf.dimclrd = 1         # Dimension line color (red)
+dimstyle.dxf.dimclre = 1         # Extension line color (red)
+dimstyle.dxf.dimtad = 1          # Text above dimension line
+dimstyle.dxf.dimjust = 0         # Center text
+
+# Create dimension with configured style
 dim = msp.add_linear_dim(
     base=(0, -200),              # Position dimension line below
     p1=(0, 0),                   # Start measurement point
     p2=(2000, 0),                # End measurement point (2000mm = 2m)
-    dimstyle="Standard",         # Use Standard dimstyle (always available)
+    dimstyle="Standard",         # Use configured Standard dimstyle
     text="<>",                   # Use automatic measurement text
     dxfattribs={"layer": "DIMENSIONS"}
 )
 dim.render()  # CRITICAL: Always call render()
 
-# ALTERNATIVE: Use text override for custom format
+# Method 2: Use override dictionary for specific dimensions
 dim = msp.add_linear_dim(
     base=(0, -200),
     p1=(0, 0),
     p2=(2000, 0),
     dimstyle="Standard",
-    text="L=<>",                 # "L=" prefix with automatic measurement
+    text="<>",
+    override={
+        "dimtxt": 100,           # Text height
+        "dimasz": 50,            # Arrow size
+        "dimclrt": 1,            # Text color
+        "dimtad": 1,             # Text above line
+    },
     dxfattribs={"layer": "DIMENSIONS"}
 )
 dim.render()
-
-# ALTERNATIVE: Configure EZDXF dimstyle if needed
-dimstyle = doc.dimstyles.get("EZDXF")
-dimstyle.dxf.dimtxt = 100        # Text height for visibility
-dimstyle.dxf.dimasz = 50         # Arrow size
-dimstyle.dxf.dimexe = 25         # Extension beyond dimension line
-dimstyle.dxf.dimexo = 10         # Extension line offset
-dimstyle.dxf.dimclrt = 1         # Text color (red)
-dimstyle.dxf.dimclrd = 1         # Dimension line color (red)
-dimstyle.dxf.dimclre = 1         # Extension line color (red)
 \`\`\`
 \`\`\`
 
@@ -595,12 +604,13 @@ def create_wall_section_with_stepped_foundation():
 **CRITICAL PROFESSIONAL DRAWING STANDARDS:**
 
 **1. DIMENSION TEXT REQUIREMENTS (CRITICAL FOR INDIAN STANDARDS):**
-- Use dimstyle="Standard" (always works reliably)
+- Configure dimstyle BEFORE creating dimensions
+- Set dimtxt proportional to drawing size (e.g., 100 for 2000mm line)
+- Use dimtad=1 (text above line) and dimjust=0 (center text)
 - Include text="<>" parameter for automatic measurement
 - Alternative: text="L=<>" for Indian standard format
 - ALWAYS call dim.render() after each dimension
-- Position dimensions clearly below/beside geometry
-- Ensure measurement numbers are visible on dimension lines
+- Ensure measurement numbers are clearly visible on dimension lines
 
 **2. CLEAN DRAWING REQUIREMENTS:**
 - NO TITLES of any kind
@@ -647,7 +657,7 @@ def create_wall_section_with_stepped_foundation():
 4. **INCLUDE RENDER CALLS** - Always call dim.render() after creating dimensions
 5. **USE PROPER SYNTAX** - Follow exact ezdxf patterns shown above
 
-**WORKING EXAMPLE - LINE WITH VISIBLE DIMENSION TEXT (TESTED):**
+**WORKING EXAMPLE - LINE WITH VISIBLE DIMENSION TEXT (FIXED):**
 \`\`\`python
 import ezdxf
 
@@ -659,48 +669,51 @@ msp = doc.modelspace()
 doc.layers.add(name="CONSTRUCTION", color=7)
 doc.layers.add(name="DIMENSIONS", color=1)
 
+# CRITICAL: Configure dimension style for visible text
+dimstyle = doc.dimstyles.get("Standard")
+dimstyle.dxf.dimtxt = 100        # Text height (proportional to 2000mm line)
+dimstyle.dxf.dimasz = 50         # Arrow size
+dimstyle.dxf.dimexe = 25         # Extension beyond dimension line
+dimstyle.dxf.dimexo = 10         # Extension line offset
+dimstyle.dxf.dimgap = 10         # Gap around text
+dimstyle.dxf.dimclrt = 1         # Text color (red)
+dimstyle.dxf.dimclrd = 1         # Dimension line color (red)
+dimstyle.dxf.dimclre = 1         # Extension line color (red)
+dimstyle.dxf.dimtad = 1          # Text above dimension line
+dimstyle.dxf.dimjust = 0         # Center text
+
 # Draw 2m line (2000mm in drawing units)
 msp.add_line((0, 0), (2000, 0), dxfattribs={"layer": "CONSTRUCTION"})
 
-# WORKING METHOD 1: Use Standard dimstyle with text parameter
+# Add dimension with visible text showing "2000"
 dim = msp.add_linear_dim(
     base=(0, -200),              # Position below the line
     p1=(0, 0),                   # Start point
     p2=(2000, 0),                # End point (2000mm)
-    dimstyle="Standard",         # Use Standard dimstyle (always works)
+    dimstyle="Standard",         # Use configured Standard dimstyle
     text="<>",                   # Automatic measurement text
     dxfattribs={"layer": "DIMENSIONS"}
 )
 dim.render()  # CRITICAL: Always call render()
 
-# WORKING METHOD 2: Use text with prefix (Indian standard format)
-dim2 = msp.add_linear_dim(
-    base=(0, -400),              # Position further below
-    p1=(0, 0),
-    p2=(2000, 0),
-    dimstyle="Standard",
-    text="L=<>",                 # "L=" prefix with measurement
-    dxfattribs={"layer": "DIMENSIONS"}
-)
-dim2.render()
-
 # Save the drawing (NO TITLES, NO EXTRA TEXT)
 doc.saveas("drawing.dxf")
 \`\`\`
 
-**CRITICAL FINAL REQUIREMENTS FOR INDIAN DIMENSION STANDARDS:**
+**CRITICAL FINAL REQUIREMENTS FOR VISIBLE DIMENSION TEXT:**
 
-1. **DIMENSION TEXT MUST SHOW MEASUREMENTS**: Use dimstyle="Standard" and text="<>" parameter
-2. **INDIAN FORMAT OPTION**: Use text="L=<>" for length dimensions with prefix
-3. **NO TITLES OR LABELS**: Do not add any title blocks, headers, or unnecessary text
-4. **CLEAN DRAWING ONLY**: Focus purely on geometry and dimensions with visible numbers
-5. **ALWAYS CALL dim.render()**: After every dimension creation
-6. **MEASUREMENT VISIBILITY**: Ensure dimension lines show actual measurements (e.g., "2000" for 2m)
+1. **CONFIGURE DIMSTYLE FIRST**: Always configure dimstyle BEFORE creating dimensions
+2. **TEXT SIZE**: Set dimtxt proportional to drawing (e.g., 100 for 2000mm line)
+3. **TEXT POSITION**: Use dimtad=1 (above line) and dimjust=0 (center)
+4. **MEASUREMENT DISPLAY**: Use text="<>" for automatic measurements
+5. **INDIAN FORMAT**: Use text="L=<>" for length with prefix
+6. **ALWAYS CALL dim.render()**: After every dimension creation
+7. **NO TITLES OR LABELS**: Clean drawing only with visible dimension numbers
 
 **RESPOND WITH ONLY THE PYTHON CODE - NO EXPLANATIONS, NO MARKDOWN, NO OTHER TEXT**
 
 Your response must start with "import ezdxf" and end with "doc.saveas('drawing.dxf')".
-Create ONLY the technical drawing with visible dimension text showing measurements. NO titles, NO labels, NO extra text.`;
+ALWAYS configure dimstyle before creating dimensions. Ensure dimension text is visible and properly sized.`;
   }
 
   /**
