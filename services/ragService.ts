@@ -1,5 +1,6 @@
 import { RAGContext, DocumentChunk } from '../types';
 import { KnowledgeBaseService } from './knowledgeBaseService';
+import { FileParsingService, ParsedFile } from './fileParsingService';
 
 export class RAGService {
   private static readonly MAX_CONTEXT_LENGTH = 8000; // Maximum characters for context

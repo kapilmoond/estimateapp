@@ -1,12 +1,13 @@
-import { 
-  KnowledgeBaseDocument, 
-  DocumentChunk, 
-  DocumentMetadata, 
-  ChunkMetadata, 
-  KnowledgeBaseConfig, 
+import {
+  KnowledgeBaseDocument,
+  DocumentChunk,
+  DocumentMetadata,
+  ChunkMetadata,
+  KnowledgeBaseConfig,
   RAGContext,
-  KnowledgeBaseStats 
+  KnowledgeBaseStats
 } from '../types';
+import { FileParsingService, ParsedFile } from './fileParsingService';
 
 export class KnowledgeBaseService {
   private static readonly STORAGE_KEY = 'hsr-knowledge-base';
@@ -49,30 +50,54 @@ export class KnowledgeBaseService {
     }
   }
 
-  // Add a new document to the knowledge base
+  // Add a new document to the knowledge base with professional parsing
   static async addDocument(
-    file: File, 
-    content: string, 
+    file: File,
+    content?: string,
     metadata?: Partial<DocumentMetadata>
   ): Promise<KnowledgeBaseDocument> {
     const config = this.getConfig();
     const documentId = this.generateId();
-    
-    // Extract file metadata
+
+    // Use professional file parsing
+    let parsedFile: ParsedFile;
+    let finalContent: string;
+
+    if (content) {
+      // Use provided content (legacy support)
+      finalContent = content;
+      parsedFile = {
+        name: file.name,
+        type: FileParsingService.getFileType(file),
+        size: file.size,
+        content,
+        metadata: {},
+        parsedAt: Date.now()
+      };
+    } else {
+      // Use professional file parsing
+      parsedFile = await FileParsingService.parseFile(file);
+      finalContent = parsedFile.content;
+    }
+
+    // Enhanced file metadata with parsing information
     const fileMetadata: DocumentMetadata = {
       fileSize: file.size,
-      title: file.name,
+      title: parsedFile.name,
+      fileType: parsedFile.type,
+      parsedAt: parsedFile.parsedAt,
+      parsingMetadata: parsedFile.metadata,
       ...metadata
     };
 
-    // Create document chunks
-    const chunks = this.createChunks(documentId, content, config);
+    // Create document chunks from parsed content
+    const chunks = this.createChunks(documentId, finalContent, config);
 
     const document: KnowledgeBaseDocument = {
       id: documentId,
       fileName: file.name,
-      fileType: this.getFileType(file.name),
-      content,
+      fileType: parsedFile.type,
+      content: finalContent,
       chunks,
       metadata: fileMetadata,
       createdAt: new Date(),

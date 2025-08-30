@@ -166,6 +166,14 @@ export interface DocumentMetadata {
   subject?: string;
   keywords?: string[];
   language?: string;
+  fileType?: string;
+  parsedAt?: number;
+  parsingMetadata?: {
+    sheets?: string[];
+    pages?: number;
+    encoding?: string;
+    structure?: any;
+  };
 }
 
 export interface ChunkMetadata {

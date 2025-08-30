@@ -1,5 +1,6 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { ReferenceDoc } from '../types';
+import { FileParsingService, ParsedFile } from '../services/fileParsingService';
 
 interface CompactFileUploadProps {
   onFileUpload: (newFiles: ReferenceDoc[]) => void;
@@ -18,13 +19,40 @@ export const CompactFileUpload: React.FC<CompactFileUploadProps> = ({
     const files = Array.from(event.target.files || []);
     if (files.length === 0) return;
 
-    const newDocs: ReferenceDoc[] = files.map(file => ({
-      file,
-      content: '', // Will be processed later
-      type: file.type.includes('pdf') ? 'pdf' : 
-            file.type.includes('word') ? 'word' :
-            file.type.includes('sheet') || file.name.endsWith('.xlsx') ? 'excel' : 'text'
-    }));
+    const newDocs: ReferenceDoc[] = [];
+
+    for (const file of files) {
+      try {
+        // Validate file before processing
+        const validation = FileParsingService.validateFile(file);
+        if (!validation.valid) {
+          console.error(`File validation failed for ${file.name}: ${validation.error}`);
+          continue;
+        }
+
+        // Parse file professionally
+        const parsedFile = await FileParsingService.parseFile(file);
+
+        newDocs.push({
+          file,
+          content: parsedFile.content,
+          type: parsedFile.type as any,
+          metadata: {
+            parsedAt: parsedFile.parsedAt,
+            parsingMetadata: parsedFile.metadata,
+            fileSize: parsedFile.size
+          }
+        });
+      } catch (error) {
+        console.error(`Error parsing file ${file.name}:`, error);
+        // Add file with basic info if parsing fails
+        newDocs.push({
+          file,
+          content: `[Error parsing ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}]`,
+          type: FileParsingService.getFileType(file) as any
+        });
+      }
+    }
 
     onFileUpload(newDocs);
     

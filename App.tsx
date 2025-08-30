@@ -38,7 +38,21 @@ import { LLMService } from './services/llmService';
 import { RAGService } from './services/ragService';
 
 type Step = 'scoping' | 'generatingKeywords' | 'approvingKeywords' | 'approvingHsrItems' | 'approvingRefinedHsrItems' | 'generatingEstimate' | 'reviewingEstimate' | 'done';
-type ReferenceDoc = { file: File; text: string };
+type ReferenceDoc = {
+  file: File;
+  content: string; // Changed from 'text' to 'content' for consistency
+  type: 'pdf' | 'word' | 'excel' | 'text' | 'markdown' | 'unknown';
+  metadata?: {
+    parsedAt?: number;
+    parsingMetadata?: {
+      sheets?: string[];
+      pages?: number;
+      encoding?: string;
+      structure?: any;
+    };
+    fileSize?: number;
+  };
+};
 
 const App: React.FC = () => {
   const [step, setStep] = useState<Step>('scoping');
@@ -100,8 +114,19 @@ const App: React.FC = () => {
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
-  const referenceText = useMemo(() => 
-    referenceDocs.map(doc => `--- START OF ${doc.file.name} ---\n${doc.text}\n--- END OF ${doc.file.name} ---`).join('\n\n'), 
+  const referenceText = useMemo(() =>
+    referenceDocs.map(doc => {
+      // Enhanced file information with parsing metadata
+      let fileInfo = `--- START OF ${doc.file.name} ---`;
+      if (doc.metadata?.parsingMetadata?.sheets) {
+        fileInfo += `\n[Excel file with sheets: ${doc.metadata.parsingMetadata.sheets.join(', ')}]`;
+      }
+      if (doc.metadata?.parsingMetadata?.pages) {
+        fileInfo += `\n[Document with ${doc.metadata.parsingMetadata.pages} pages]`;
+      }
+      fileInfo += `\n${doc.content}\n--- END OF ${doc.file.name} ---`;
+      return fileInfo;
+    }).join('\n\n'),
   [referenceDocs]);
 
   // Auto-save project when important state changes
