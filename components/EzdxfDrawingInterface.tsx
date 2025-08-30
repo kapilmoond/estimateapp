@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { EzdxfDrawingService, DrawingRequest, DrawingResult } from '../services/ezdxfDrawingService';
+import { DrawingDebugDisplay } from './DrawingDebugDisplay';
 
 interface EzdxfDrawingInterfaceProps {
   userInput: string;
@@ -26,6 +27,21 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
   const [showCode, setShowCode] = useState(false);
   const [serverStatus, setServerStatus] = useState<{ running: boolean; message: string; version?: string } | null>(null);
   const [isCheckingServer, setIsCheckingServer] = useState(false);
+
+  // Debug information
+  const [debugInfo, setDebugInfo] = useState<{
+    llmOutput: string;
+    extractedCode: string;
+    serverRequest: any;
+    serverResponse: any;
+    error: string | null;
+  }>({
+    llmOutput: '',
+    extractedCode: '',
+    serverRequest: null,
+    serverResponse: null,
+    error: null
+  });
 
   // Check server status on component mount
   React.useEffect(() => {
@@ -83,6 +99,15 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
     setCurrentStep('Analyzing requirements...');
 
     try {
+      // Clear previous debug info
+      setDebugInfo({
+        llmOutput: '',
+        extractedCode: '',
+        serverRequest: null,
+        serverResponse: null,
+        error: null
+      });
+
       // Extract title and description from user input
       const title = extractTitle(userInput);
       const description = extractDescription(userInput);
@@ -97,21 +122,41 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
         referenceText
       };
 
-      // Step 1: Generate Python code
+      // Step 1: Generate Python code with debug capture
       setCurrentStep('Generating ezdxf Python code...');
-      const pythonCode = await EzdxfDrawingService.generateDrawingCode(request);
-      setGeneratedCode(pythonCode);
 
-      // Step 2: Execute code and get DXF
-      setCurrentStep('Executing Python code via Google Cloud Function...');
-      const result = await EzdxfDrawingService.executeDrawingCode(pythonCode, title);
+      try {
+        const pythonCode = await EzdxfDrawingService.generateDrawingCode(request);
+        setGeneratedCode(pythonCode);
+        setDebugInfo(prev => ({ ...prev, extractedCode: pythonCode }));
 
-      setCurrentStep('Drawing generated successfully!');
-      onDrawingGenerated(result);
+        // Step 2: Execute code and get DXF with debug capture
+        setCurrentStep('Executing Python code via local server...');
+
+        const serverRequest = {
+          python_code: pythonCode,
+          filename: title.replace(/[^a-zA-Z0-9\s-_]/g, '').replace(/\s+/g, '_').toLowerCase()
+        };
+        setDebugInfo(prev => ({ ...prev, serverRequest }));
+
+        const result = await EzdxfDrawingService.executeDrawingCode(pythonCode, title);
+        setDebugInfo(prev => ({ ...prev, serverResponse: result }));
+
+        setCurrentStep('Drawing generated successfully!');
+        onDrawingGenerated(result);
+
+      } catch (codeError) {
+        console.error('Code generation/execution error:', codeError);
+        const errorMessage = codeError instanceof Error ? codeError.message : 'Failed to generate or execute drawing code';
+        setDebugInfo(prev => ({ ...prev, error: errorMessage }));
+        throw codeError;
+      }
 
     } catch (error) {
       console.error('Drawing generation error:', error);
-      onError(error instanceof Error ? error.message : 'Failed to generate drawing');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to generate drawing';
+      setDebugInfo(prev => ({ ...prev, error: errorMessage }));
+      onError(errorMessage);
     } finally {
       setIsGenerating(false);
       setCurrentStep('');
@@ -335,6 +380,15 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
           <div>✓ CAD Standards</div>
         </div>
       </div>
+
+      {/* Debug Information Display */}
+      <DrawingDebugDisplay
+        llmOutput={debugInfo.llmOutput}
+        extractedCode={debugInfo.extractedCode}
+        serverRequest={debugInfo.serverRequest}
+        serverResponse={debugInfo.serverResponse}
+        error={debugInfo.error}
+      />
     </div>
   );
 };

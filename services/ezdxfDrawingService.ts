@@ -58,26 +58,64 @@ export class EzdxfDrawingService {
   static async executeDrawingCode(pythonCode: string, title: string): Promise<DrawingResult> {
     try {
       console.log('EzdxfDrawingService: Executing Python code via local ezdxf server');
+      console.log('='.repeat(80));
+      console.log('PYTHON CODE BEING SENT TO SERVER:');
+      console.log('='.repeat(80));
+      console.log(pythonCode);
+      console.log('='.repeat(80));
+
+      const requestBody = {
+        python_code: pythonCode,
+        filename: this.sanitizeFilename(title)
+      };
+
+      console.log('Request body:', requestBody);
 
       const response = await fetch(`${this.LOCAL_SERVER_URL}/generate-drawing`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          python_code: pythonCode,
-          filename: this.sanitizeFilename(title)
-        })
+        body: JSON.stringify(requestBody)
       });
 
+      console.log('Server response status:', response.status, response.statusText);
+
       if (!response.ok) {
+        // Get error details from server
+        let errorDetails = '';
+        try {
+          const errorResponse = await response.json();
+          console.log('='.repeat(80));
+          console.log('SERVER ERROR RESPONSE:');
+          console.log('='.repeat(80));
+          console.log(JSON.stringify(errorResponse, null, 2));
+          console.log('='.repeat(80));
+          errorDetails = errorResponse.error || errorResponse.message || 'Unknown server error';
+        } catch (e) {
+          console.log('Could not parse error response as JSON');
+          errorDetails = await response.text();
+          console.log('Raw error response:', errorDetails);
+        }
+
         if (response.status === 0 || !response.status) {
           throw new Error(`🔌 Cannot connect to local ezdxf server at ${this.LOCAL_SERVER_URL}. Please start the local server by running 'start_server.bat' (Windows) or 'start_server.sh' (Linux/Mac) from the local-server folder.`);
         }
-        throw new Error(`Local server error: ${response.status} ${response.statusText}`);
+        throw new Error(`Local server error: ${response.status} ${response.statusText}. Details: ${errorDetails}`);
       }
 
       const result = await response.json();
+      console.log('='.repeat(80));
+      console.log('SERVER SUCCESS RESPONSE:');
+      console.log('='.repeat(80));
+      console.log('Success:', result.success);
+      console.log('File size:', result.file_size);
+      console.log('Execution log:', result.execution_log);
+      console.log('Image success:', result.image_success);
+      if (result.image_error) {
+        console.log('Image error:', result.image_error);
+      }
+      console.log('='.repeat(80));
 
       if (result.error) {
         throw new Error(`Python execution error: ${result.error}`);
@@ -295,19 +333,36 @@ dim = msp.add_angular_dim_2l(
 dim.render()
 \`\`\`
 
-**3.4 DIMENSION CUSTOMIZATION:**
+**3.4 PROFESSIONAL DIMENSION FORMATTING:**
 \`\`\`python
-# Custom dimension with overrides
+# CRITICAL: Always set up dimension style for professional appearance
+dimstyle = doc.dimstyles.get("EZDXF")
+dimstyle.dxf.dimtxt = 100        # Text height (in drawing units)
+dimstyle.dxf.dimasz = 50         # Arrow size
+dimstyle.dxf.dimexe = 50         # Extension beyond dimension line
+dimstyle.dxf.dimexo = 25         # Extension line offset (gap from object)
+dimstyle.dxf.dimgap = 25         # Gap around dimension text
+dimstyle.dxf.dimclrt = colors.RED # Text color
+dimstyle.dxf.dimclrd = colors.RED # Dimension line color
+dimstyle.dxf.dimclre = colors.RED # Extension line color
+
+# Professional dimension with proper gaps and arrows
 dim = msp.add_linear_dim(
-    base=(0, -2), p1=(0, 0), p2=(10, 0),
-    override={
-        "dimtxt": 1.5,           # Text height
-        "dimclrt": colors.RED,   # Text color
-        "dimclrd": colors.BLUE,  # Dimension line color
-        "dimasz": 0.5,           # Arrow size
-        "dimexe": 0.3,           # Extension beyond dimension line
-        "dimexo": 0.2,           # Extension line offset
-    },
+    base=(0, -300),              # Dimension line position (300mm below)
+    p1=(0, 0),                   # First measurement point
+    p2=(2000, 0),                # Second measurement point (2000mm = 2m)
+    text="2000",                 # Dimension text (or "<>" for automatic)
+    dimstyle="EZDXF",            # Use configured dimension style
+    dxfattribs={"layer": "DIMENSIONS"}
+)
+dim.render()  # CRITICAL: Always call render()
+
+# Vertical dimension with proper formatting
+dim = msp.add_linear_dim(
+    base=(-300, 0),              # 300mm to the left
+    p1=(0, 0), p2=(0, 1000),     # 1000mm vertical
+    angle=90,                    # Vertical dimension
+    dimstyle="EZDXF",
     dxfattribs={"layer": "DIMENSIONS"}
 )
 dim.render()
@@ -566,30 +621,49 @@ def create_wall_section_with_stepped_foundation():
 4. **INCLUDE RENDER CALLS** - Always call dim.render() after creating dimensions
 5. **USE PROPER SYNTAX** - Follow exact ezdxf patterns shown above
 
-**EXAMPLE OUTPUT FORMAT:**
+**COMPLETE WORKING EXAMPLE FOR 2M LINE WITH DIMENSIONS:**
 \`\`\`python
 import ezdxf
 from ezdxf import colors
 from ezdxf.enums import TextEntityAlignment
 
+# Create document with setup=True for dimension styles
 doc = ezdxf.new("R2010", setup=True)
 msp = doc.modelspace()
 
-# Create layers
+# Create professional layers
 doc.layers.add("CONSTRUCTION", color=colors.WHITE)
 doc.layers.add("DIMENSIONS", color=colors.RED)
 doc.layers.add("TEXT", color=colors.GREEN)
 
-# Add entities
+# Configure dimension style for professional appearance
+dimstyle = doc.dimstyles.get("EZDXF")
+dimstyle.dxf.dimtxt = 100        # Text height
+dimstyle.dxf.dimasz = 50         # Arrow size
+dimstyle.dxf.dimexe = 50         # Extension beyond dimension line
+dimstyle.dxf.dimexo = 25         # Extension line offset (gap)
+dimstyle.dxf.dimgap = 25         # Gap around text
+
+# Draw 2m line (2000mm in drawing units)
 msp.add_line((0, 0), (2000, 0), dxfattribs={"layer": "CONSTRUCTION"})
 
-# Add dimensions
-dim = msp.add_linear_dim(base=(0, -300), p1=(0, 0), p2=(2000, 0), dimstyle="EZDXF", dxfattribs={"layer": "DIMENSIONS"})
-dim.render()
+# Add dimension with proper gaps and arrows
+dim = msp.add_linear_dim(
+    base=(0, -300),              # 300mm below the line
+    p1=(0, 0),                   # Start point
+    p2=(2000, 0),                # End point
+    text="2000",                 # Dimension text
+    dimstyle="EZDXF",
+    dxfattribs={"layer": "DIMENSIONS"}
+)
+dim.render()  # CRITICAL: Always call render()
 
-# Add text
-msp.add_text("2000mm LINE", dxfattribs={"layer": "TEXT", "height": 150}).set_placement((1000, 300), align=TextEntityAlignment.MIDDLE_CENTER)
+# Add title text
+msp.add_text("2000mm LINE",
+    dxfattribs={"layer": "TEXT", "height": 150}
+).set_placement((1000, 400), align=TextEntityAlignment.MIDDLE_CENTER)
 
+# Save the drawing
 doc.saveas("drawing.dxf")
 \`\`\`
 
