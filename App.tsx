@@ -32,6 +32,7 @@ import { ProjectService, ProjectData } from './services/projectService';
 import { EzdxfDrawingInterface } from './components/EzdxfDrawingInterface';
 import { DrawingResultsDisplay } from './components/DrawingResultsDisplay';
 import { EzdxfDrawingService, DrawingResult } from './services/ezdxfDrawingService';
+import { DrawingService, ProjectDrawing } from './services/drawingService';
 import { CompactFileUpload } from './components/CompactFileUpload';
 import { LLMService } from './services/llmService';
 import { RAGService } from './services/ragService';
@@ -95,6 +96,7 @@ const App: React.FC = () => {
   // Drawing state
   const [drawingResults, setDrawingResults] = useState<DrawingResult[]>([]);
   const [isDrawingGenerating, setIsDrawingGenerating] = useState<boolean>(false);
+  const [savedDrawings, setSavedDrawings] = useState<ProjectDrawing[]>([]);
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
@@ -158,8 +160,29 @@ const App: React.FC = () => {
   };
 
   const loadDrawings = () => {
+    // Load legacy drawings
     const loadedDrawings = DXFStorageService.loadDrawings();
     setDrawings(loadedDrawings);
+
+    // Load new persistent drawings
+    loadSavedDrawings();
+  };
+
+  // Load saved drawings for current project
+  const loadSavedDrawings = () => {
+    try {
+      const projectId = ProjectService.getCurrentProjectId() || 'default';
+      const drawings = DrawingService.loadProjectDrawings(projectId);
+      setSavedDrawings(drawings);
+
+      // Load the latest drawing result if available and no current results
+      const latestDrawing = DrawingService.getLatestProjectDrawing(projectId);
+      if (latestDrawing && drawingResults.length === 0) {
+        setDrawingResults([latestDrawing.result]);
+      }
+    } catch (error) {
+      console.error('Error loading saved drawings:', error);
+    }
   };
 
   const loadProjectData = (project: ProjectData) => {
@@ -724,6 +747,29 @@ const App: React.FC = () => {
       // Generate the drawing using the new service
       const pythonCode = await EzdxfDrawingService.generateDrawingCode(drawingRequest);
       const result = await EzdxfDrawingService.executeDrawingCode(pythonCode, title);
+
+      // Save the drawing to persistence (similar to design system)
+      try {
+        const projectId = ProjectService.getCurrentProjectId() || 'default';
+
+        const savedDrawing = DrawingService.saveDrawing({
+          projectId,
+          title,
+          description: drawingRequest.description,
+          specification: drawingRequest, // Store the drawing request as specification
+          generatedCode: pythonCode,
+          result,
+          settings: {} // Could add drawing settings here if needed
+        });
+
+        console.log('Drawing saved to persistence:', savedDrawing.id);
+
+        // Refresh the saved drawings list
+        loadSavedDrawings();
+      } catch (error) {
+        console.error('Error saving drawing to persistence:', error);
+        // Continue without crashing - drawing still works, just not saved
+      }
 
       // Handle the result
       handleDrawingGenerated(result);
