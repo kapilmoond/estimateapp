@@ -17,10 +17,6 @@ export interface DrawingResult {
   title: string;
   description: string;
   executionLog: string;
-  imagePng?: string;
-  imagePdf?: string;
-  imageSuccess?: boolean;
-  imageError?: string;
 }
 
 export class EzdxfDrawingService {
