@@ -5,8 +5,15 @@ export class DrawingSpecificationParser {
   /**
    * Parse natural language description into structured drawing specification
    */
-  static async parseDescription(description: string): Promise<DrawingSpecification> {
-    const prompt = this.createParsingPrompt(description);
+  static async parseDescription(
+    description: string,
+    isModification: boolean = false,
+    previousSpecification?: DrawingSpecification,
+    modificationRequest?: string
+  ): Promise<DrawingSpecification> {
+    const prompt = isModification && previousSpecification && modificationRequest
+      ? this.createModificationPrompt(previousSpecification, modificationRequest, description)
+      : this.createParsingPrompt(description);
     
     try {
       const response = await LLMService.generateContent(prompt);
@@ -17,6 +24,39 @@ export class DrawingSpecificationParser {
       // Return default specification on error
       return this.getDefaultSpecification();
     }
+  }
+
+  /**
+   * Create modification prompt for existing drawing specification
+   */
+  private static createModificationPrompt(
+    previousSpecification: DrawingSpecification,
+    modificationRequest: string,
+    originalDescription: string
+  ): string {
+    return `MODIFY the existing drawing specification based on the modification request below.
+
+**IMPORTANT: This is a MODIFICATION request, not a new drawing. You must:**
+1. Take the existing specification as your starting point
+2. Apply ONLY the requested modifications
+3. Keep all other elements unchanged unless specifically requested
+4. Maintain the same JSON structure and format
+5. Preserve existing coordinates, dimensions, and properties unless modification affects them
+
+**EXISTING DRAWING SPECIFICATION TO MODIFY:**
+${JSON.stringify(previousSpecification, null, 2)}
+
+**MODIFICATION REQUEST:**
+${modificationRequest}
+
+**ORIGINAL DESCRIPTION CONTEXT:**
+${originalDescription}
+
+**TASK:** Modify the above existing specification according to the modification request. Return the COMPLETE modified specification in the same JSON format, but only change what was specifically requested.
+
+**CRITICAL: Respond with ONLY a JSON object. NO explanations, NO Python code, NO markdown.**
+
+Respond with ONLY the JSON object.`;
   }
 
   private static createParsingPrompt(description: string): string {

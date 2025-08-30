@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { DrawingResult } from '../services/ezdxfDrawingService';
+import { SimpleDxfViewer } from './DxfViewer';
 import { EzdxfDrawingService } from '../services/ezdxfDrawingService';
 
 interface DrawingResultsDisplayProps {
@@ -109,7 +110,7 @@ export const DrawingResultsDisplay: React.FC<DrawingResultsDisplayProps> = ({
         <h4 className="font-medium text-green-900 mb-2">{result.title}</h4>
         <p className="text-sm text-green-800 mb-3">{result.description}</p>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+        <div className="grid grid-cols-3 gap-4 text-xs">
           <div>
             <span className="text-green-600 font-medium">DXF Size:</span>
             <div className="text-green-800">{formatFileSize(result.dxfContent)}</div>
@@ -122,32 +123,16 @@ export const DrawingResultsDisplay: React.FC<DrawingResultsDisplayProps> = ({
             <span className="text-green-600 font-medium">Code Lines:</span>
             <div className="text-green-800">{result.pythonCode.split('\n').length}</div>
           </div>
-          <div>
-            <span className="text-green-600 font-medium">Images:</span>
-            <div className="text-green-800">
-              {result.imageSuccess ? '✅ Available' : '❌ Failed'}
-            </div>
-          </div>
         </div>
       </div>
 
-      {/* Image Preview */}
-      {result.imagePng && result.imageSuccess && (
-        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <h4 className="font-medium text-blue-900 mb-3">🖼️ Drawing Preview</h4>
-          <div className="bg-white p-4 rounded-lg border">
-            <img
-              src={`data:image/png;base64,${result.imagePng}`}
-              alt={result.title}
-              className="max-w-full h-auto mx-auto border rounded shadow-sm"
-              style={{ maxHeight: '400px' }}
-            />
-          </div>
-          <p className="text-xs text-blue-700 mt-2 text-center">
-            High-quality image preview - Download for full resolution
-          </p>
-        </div>
-      )}
+      {/* DXF Viewer */}
+      <div className="mb-6">
+        <SimpleDxfViewer
+          dxfContent={result.dxfContent}
+          title={result.title}
+        />
+      </div>
 
       {/* Image Generation Error */}
       {!result.imageSuccess && result.imageError && (
@@ -163,74 +148,20 @@ export const DrawingResultsDisplay: React.FC<DrawingResultsDisplayProps> = ({
       )}
 
       {/* Action Buttons */}
-      <div className="space-y-4 mb-6">
-        {/* Primary Actions */}
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={handleDownloadDXF}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2"
-          >
-            📥 Download DXF File
-          </button>
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        <button
+          onClick={handleDownloadDXF}
+          className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2"
+        >
+          📥 Download DXF File
+        </button>
 
-          {result.imagePng && result.imageSuccess && (
-            <>
-              <button
-                onClick={handleDownloadPNG}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm flex items-center gap-2"
-              >
-                🖼️ Download PNG Image
-              </button>
-
-              <button
-                onClick={handlePrintImage}
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm flex items-center gap-2"
-              >
-                🖨️ Print Image
-              </button>
-
-              {result.imagePdf && (
-                <button
-                  onClick={handleDownloadPDF}
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm flex items-center gap-2"
-                >
-                  📄 Download PDF
-                </button>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Secondary Actions */}
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={handleDownloadCode}
-            className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm flex items-center gap-2"
-          >
-            💾 Download Python Code
-          </button>
-
-          <button
-            onClick={() => setShowRegenerateForm(!showRegenerateForm)}
-            className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm flex items-center gap-2"
-          >
-            🔄 Modify Drawing
-          </button>
-
-          <button
-            onClick={() => setShowCode(!showCode)}
-            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
-          >
-            {showCode ? 'Hide Code' : 'View Code'}
-          </button>
-
-          <button
-            onClick={() => setShowLog(!showLog)}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm"
-          >
-            {showLog ? 'Hide Log' : 'View Log'}
-          </button>
-        </div>
+        <button
+          onClick={() => setShowRegenerateForm(!showRegenerateForm)}
+          className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm flex items-center gap-2"
+        >
+          🔄 Modify Drawing
+        </button>
       </div>
 
       {/* Regenerate Form */}

@@ -49,7 +49,10 @@ export class DesignService {
     projectScope: string,
     userRequirements: string,
     guidelines: string,
-    referenceText: string
+    referenceText: string,
+    isModification: boolean = false,
+    previousDesign?: ComponentDesign,
+    modificationRequest?: string
   ): Promise<ComponentDesign> {
     // Get existing designs for context
     const existingDesigns = this.loadDesigns();
@@ -65,7 +68,42 @@ export class DesignService {
       existingDesignsContext += 'ENSURE COMPATIBILITY AND INTEGRATION WITH THESE EXISTING DESIGNS.\n';
     }
 
-    const prompt = `Create a detailed component design based on the following requirements.
+    // Handle modification vs new design
+    let prompt: string;
+
+    if (isModification && previousDesign && modificationRequest) {
+      prompt = `MODIFY the existing component design based on the modification request below.
+
+**IMPORTANT: This is a MODIFICATION request, not a new design. You must:**
+1. Take the existing design as your starting point
+2. Apply ONLY the requested modifications
+3. Keep all other aspects of the design unchanged unless specifically requested
+4. Maintain consistency with the existing design structure and format
+
+**EXISTING DESIGN TO MODIFY:**
+Component Name: ${previousDesign.componentName}
+Current Design Content:
+${previousDesign.designContent}
+
+Current Specifications:
+- Materials: ${previousDesign.specifications.materials.join(', ')}
+- Dimensions: ${JSON.stringify(previousDesign.specifications.dimensions)}
+- Load Capacity: ${previousDesign.specifications.loadCapacity}
+- Safety Factor: ${previousDesign.specifications.safetyFactor}
+- Installation Method: ${previousDesign.specifications.installationMethod}
+- Maintenance Requirements: ${previousDesign.specifications.maintenanceRequirements}
+
+**MODIFICATION REQUEST:**
+${modificationRequest}
+
+**ADDITIONAL CONTEXT:**
+Project Scope: ${projectScope}
+Guidelines: ${guidelines}
+Reference Text: ${referenceText}
+
+**TASK:** Modify the above existing design according to the modification request. Return the COMPLETE modified design with all sections updated as needed, but keep unchanged sections exactly as they were.`;
+    } else {
+      prompt = `Create a detailed component design based on the following requirements.
 
 **COMPONENT TO DESIGN:**
 ${userRequirements}
@@ -105,6 +143,7 @@ Provide a comprehensive design document that includes:
 - Safety considerations
 
 Focus on creating a professional, implementable design that integrates seamlessly with the overall project.`;
+    }
 
     try {
       // Create a conversation history for the design request
@@ -268,67 +307,16 @@ Focus on creating a professional, implementable design that integrates seamlessl
     guidelines: string,
     referenceText: string
   ): Promise<ComponentDesign> {
-    const prompt = `Edit and improve the existing component design based on user instructions.
-
-**ORIGINAL DESIGN TO EDIT:**
-Component: ${design.componentName}
-Created: ${new Date(design.createdAt).toLocaleString()}
-
-**CURRENT DESIGN CONTENT:**
-${design.designContent}
-
-**USER EDIT INSTRUCTIONS:**
-${editInstruction}
-
-**PROJECT CONTEXT:**
-Project Scope: ${projectScope}
-
-**DESIGN GUIDELINES:**
-${guidelines}
-
-**REFERENCE DOCUMENTS:**
-${referenceText}
-
-**EDIT REQUIREMENTS:**
-1. Carefully analyze the user's edit instructions
-2. Preserve all good aspects of the original design
-3. Make specific improvements based on user feedback
-4. Update specifications, materials, and calculations as needed
-5. Maintain compatibility with existing project components
-6. Reference relevant Indian building codes (IS codes, NBC)
-7. Ensure the edited design is more comprehensive and accurate
-8. Provide clear explanation of what was changed and why
-
-Focus on creating a professional, implementable design that incorporates the user's feedback while maintaining technical accuracy and project integration.`;
-
-    try {
-      console.log('Design Service: Editing design for component:', design.componentName);
-
-      // Create a conversation history for the edit request
-      const editHistory: ChatMessage[] = [
-        { role: 'user', text: prompt }
-      ];
-
-      // Use the unified LLM service through continueConversation
-      const editedContent = await continueConversation(editHistory, referenceText, 'design');
-
-      if (!editedContent || editedContent.trim().length < 50) {
-        throw new Error('Generated edited design content is too short or empty. Please try again with more specific edit instructions.');
-      }
-
-      // Create updated design
-      const editedDesign: ComponentDesign = {
-        ...design,
-        designContent: editedContent,
-        createdAt: new Date(), // Update timestamp
-      };
-
-      // Update the design in storage
-      this.updateDesign(editedDesign);
-      return editedDesign;
-    } catch (error) {
-      console.error('Design Service Edit Error:', error);
-      throw new Error(`Failed to edit design: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+    // Use the proper modification system
+    return this.generateComponentDesign(
+      design.componentName,
+      projectScope,
+      editInstruction, // This becomes the modification request
+      guidelines,
+      referenceText,
+      true, // isModification = true
+      design, // previousDesign
+      editInstruction // modificationRequest
+    );
   }
 }
