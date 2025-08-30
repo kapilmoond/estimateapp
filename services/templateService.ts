@@ -53,7 +53,7 @@ export class TemplateService {
       ? drawings.map(d => `**${d.title}:**\n${d.description}\nFile: ${d.dxfFilename}`).join('\n\n')
       : 'No technical drawings available.';
 
-    const templatePrompt = `Create a focused master template based ONLY on what was actually accomplished in this construction estimation project. Do not add extra steps or theoretical procedures that weren't part of the actual work.
+    const templatePrompt = `Create a highly detailed master template based ONLY on what was actually accomplished in this construction estimation project. Include complete design and drawing creation processes with exact step-by-step procedures.
 
 **PROJECT INFORMATION:**
 Template Name: ${templateName}
@@ -63,29 +63,66 @@ Project Type: ${projectType}
 **ACTUAL PROJECT PROGRESS:**
 ${this.analyzeActualProgress(conversationHistory, finalizedScope, designs, drawings, finalEstimate)}
 
-**ACTUAL WORK COMPLETED:**
-${this.extractActualWork(conversationHistory)}
+**COMPLETE DESIGN CREATION PROCESS:**
+${this.extractDesignProcess(designs, conversationHistory)}
 
-**COMPLETED COMPONENTS:**
-${this.getCompletedComponents(finalizedScope, keywords, hsrItems, designs, drawings, finalEstimate)}
+**COMPLETE DRAWING CREATION PROCESS:**
+${this.extractDrawingProcess(drawings, conversationHistory)}
 
-**REFERENCE MATERIALS:**
-${referenceText ? 'Reference documents were used during the project' : 'No reference documents were used'}
+**DETAILED CONVERSATION WORKFLOW:**
+${this.extractDetailedWorkflow(conversationHistory)}
+
+**EXACT COMPONENTS CREATED:**
+${this.getDetailedComponents(finalizedScope, keywords, hsrItems, designs, drawings, finalEstimate)}
+
+**REFERENCE MATERIALS USED:**
+${referenceText ? 'Reference documents were consulted and should be included in similar projects' : 'No reference documents were used in this project'}
 
 **CRITICAL TEMPLATE CREATION INSTRUCTIONS:**
-Create a template that captures ONLY the actual steps and procedures that were completed in this project. This template will be used by AI to guide users through similar projects by following the proven path established here.
+Create an extremely detailed, step-by-step master template that captures EVERY aspect of what was actually accomplished in this project. This template will be used by AI to guide users through identical procedures for similar projects.
 
-**FOCUS ON ACTUAL WORK ONLY:**
-1. **Real Steps Taken**: Only include workflow steps that were actually completed in this project
-2. **Proven Methods**: Only document calculation and design methods that were actually used
-3. **Actual Decision Points**: Only include choices that were actually made during this project
-4. **Applied Procedures**: Only the specific sequence that led to success in this project
+**REQUIRED TEMPLATE CONTENT:**
+1. **Exact Conversation Flow**: Document the precise sequence of user inputs and AI responses that led to success
+2. **Complete Design Process**: Include every step of component design creation, from initial request to final specifications
+3. **Full Drawing Workflow**: Document the entire technical drawing creation process, including all parameters and requirements
+4. **Detailed Decision Points**: Specify exactly what decisions were made and when during the project
+5. **Specific Calculation Methods**: Include the exact formulas, standards, and calculation approaches that were used
+6. **Material Specifications**: Document all materials, dimensions, and technical specifications that were determined
+7. **Quality Checkpoints**: Include all validation steps and quality control measures that were applied
 
-**DO NOT INCLUDE:**
-- Steps that weren't taken in this project
-- Theoretical best practices not applied here
-- Extra procedures beyond what was actually done
-- Generic advice not specific to this project's approach
+**TEMPLATE MUST INCLUDE:**
+- Complete design creation procedures with exact prompts and specifications
+- Full drawing generation workflow with technical requirements
+- Specific material lists and calculation methods used
+- Exact sequence of steps from start to finish
+- All decision points with the actual choices made
+- Quality validation procedures that were applied
+- Integration points between different project phases
+
+**TEMPLATE STRUCTURE REQUIREMENTS:**
+- Very detailed step-by-step procedures (not general guidelines)
+- Complete design creation workflow with exact prompts and specifications
+- Full drawing generation process with technical requirements and standards
+- Specific material lists, calculations, and technical specifications used
+- Exact conversation flow and decision points that led to success
+- Clear integration between discussion, design, and drawing phases
+- Complete workflow from initial discussion to final deliverables
+- All context and reference materials that should be included in future projects
+
+**CRITICAL: INCLUDE COMPLETE DESIGN AND DRAWING CONTEXT:**
+- Document the EXACT design creation process used in this project
+- Include ALL material specifications, dimensions, and calculations from designs
+- Document the COMPLETE drawing generation workflow and technical standards
+- Include ALL design and drawing content as examples for future projects
+- Specify how designs and drawings should be integrated into the estimation process
+- Document the EXACT sequence of design → drawing → estimation workflow
+
+**ABSOLUTELY DO NOT INCLUDE:**
+- Any steps that weren't actually performed in this project
+- Theoretical procedures not used here
+- Generic best practices not applied
+- Extra features or capabilities not demonstrated
+- Hypothetical scenarios not encountered
 
 **OUTPUT FORMAT:**
 Create a detailed master template with the following structure:
@@ -305,9 +342,102 @@ Focus on creating a reusable, comprehensive template that captures the essence o
   }
 
   /**
-   * Get completed components summary
+   * Extract complete design creation process
    */
-  private static getCompletedComponents(
+  private static extractDesignProcess(designs: ComponentDesign[], conversationHistory: ChatMessage[]): string {
+    if (designs.length === 0) {
+      return 'No component designs were created in this project.';
+    }
+
+    let designProcess = `COMPLETE DESIGN CREATION PROCESS (${designs.length} designs created):\n\n`;
+
+    designs.forEach((design, index) => {
+      designProcess += `**DESIGN ${index + 1}: ${design.componentName}**\n`;
+      designProcess += `Created: ${design.createdAt.toLocaleString()}\n`;
+      designProcess += `Materials Used: ${design.specifications.materials.join(', ')}\n`;
+      designProcess += `Dimensions: ${JSON.stringify(design.specifications.dimensions)}\n`;
+      designProcess += `Calculations: ${design.specifications.calculations}\n`;
+      designProcess += `Full Design Content:\n${design.designContent}\n`;
+      if (design.htmlContent) {
+        designProcess += `HTML Export: Generated professional HTML document\n`;
+      }
+      designProcess += `Context Inclusion: ${design.includeInContext ? 'Included in future prompts' : 'Not included'}\n\n`;
+    });
+
+    // Find design-related conversations
+    const designConversations = conversationHistory.filter(msg =>
+      msg.text.toLowerCase().includes('design') && msg.text.length > 50
+    );
+
+    if (designConversations.length > 0) {
+      designProcess += `**DESIGN CONVERSATION WORKFLOW:**\n`;
+      designConversations.forEach((msg, index) => {
+        designProcess += `${index + 1}. ${msg.role.toUpperCase()}: ${msg.text.substring(0, 200)}...\n`;
+      });
+    }
+
+    return designProcess;
+  }
+
+  /**
+   * Extract complete drawing creation process
+   */
+  private static extractDrawingProcess(drawings: TechnicalDrawing[], conversationHistory: ChatMessage[]): string {
+    if (drawings.length === 0) {
+      return 'No technical drawings were created in this project.';
+    }
+
+    let drawingProcess = `COMPLETE DRAWING CREATION PROCESS (${drawings.length} drawings created):\n\n`;
+
+    drawings.forEach((drawing, index) => {
+      drawingProcess += `**DRAWING ${index + 1}: ${drawing.title}**\n`;
+      drawingProcess += `Created: ${drawing.createdAt.toLocaleString()}\n`;
+      drawingProcess += `Description: ${drawing.description}\n`;
+      drawingProcess += `DXF File: ${drawing.dxfFilename}\n`;
+      drawingProcess += `File Size: ${drawing.dxfContent.length} characters (base64)\n\n`;
+    });
+
+    // Find drawing-related conversations
+    const drawingConversations = conversationHistory.filter(msg =>
+      msg.text.toLowerCase().includes('drawing') || msg.text.toLowerCase().includes('draw') && msg.text.length > 50
+    );
+
+    if (drawingConversations.length > 0) {
+      drawingProcess += `**DRAWING CONVERSATION WORKFLOW:**\n`;
+      drawingConversations.forEach((msg, index) => {
+        drawingProcess += `${index + 1}. ${msg.role.toUpperCase()}: ${msg.text.substring(0, 200)}...\n`;
+      });
+    }
+
+    return drawingProcess;
+  }
+
+  /**
+   * Extract detailed workflow from conversations
+   */
+  private static extractDetailedWorkflow(conversationHistory: ChatMessage[]): string {
+    const meaningfulMessages = conversationHistory.filter(msg => {
+      const text = msg.text.toLowerCase();
+      return !text.includes('hello') &&
+             !text.includes('hi ') &&
+             !text.includes('please describe') &&
+             text.length > 30; // More substantial content
+    });
+
+    let workflow = `DETAILED PROJECT WORKFLOW (${meaningfulMessages.length} meaningful exchanges):\n\n`;
+
+    meaningfulMessages.forEach((msg, index) => {
+      workflow += `**STEP ${index + 1}** (${msg.role.toUpperCase()}):\n`;
+      workflow += `${msg.text}\n\n`;
+    });
+
+    return workflow;
+  }
+
+  /**
+   * Get detailed components with full specifications
+   */
+  private static getDetailedComponents(
     finalizedScope: string,
     keywords: string[],
     hsrItems: HsrItem[],
@@ -315,33 +445,47 @@ Focus on creating a reusable, comprehensive template that captures the essence o
     drawings: TechnicalDrawing[],
     finalEstimate: string
   ): string {
-    const components = [];
+    let components = `COMPLETE PROJECT COMPONENTS:\n\n`;
 
     if (finalizedScope.trim()) {
-      components.push(`📋 Project Scope: ${finalizedScope.substring(0, 100)}...`);
+      components += `**PROJECT SCOPE (COMPLETE):**\n${finalizedScope}\n\n`;
     }
 
     if (keywords.length > 0) {
-      components.push(`🔑 Keywords: ${keywords.join(', ')}`);
+      components += `**KEYWORDS IDENTIFIED (${keywords.length}):**\n${keywords.join(', ')}\n\n`;
     }
 
     if (hsrItems.length > 0) {
-      components.push(`💰 HSR Items: ${hsrItems.length} items identified`);
+      components += `**HSR ITEMS (${hsrItems.length} items):**\n`;
+      hsrItems.forEach((item, index) => {
+        components += `${index + 1}. ${item.description} - ${item.unit} - Rate: ${item.rate}\n`;
+      });
+      components += '\n';
     }
 
     if (designs.length > 0) {
-      components.push(`🎨 Designs: ${designs.map(d => d.componentName).join(', ')}`);
+      components += `**COMPONENT DESIGNS (${designs.length} designs):**\n`;
+      designs.forEach((design, index) => {
+        components += `${index + 1}. ${design.componentName}\n`;
+        components += `   Materials: ${design.specifications.materials.join(', ')}\n`;
+        components += `   Dimensions: ${JSON.stringify(design.specifications.dimensions)}\n`;
+      });
+      components += '\n';
     }
 
     if (drawings.length > 0) {
-      components.push(`📐 Drawings: ${drawings.map(d => d.title).join(', ')}`);
+      components += `**TECHNICAL DRAWINGS (${drawings.length} drawings):**\n`;
+      drawings.forEach((drawing, index) => {
+        components += `${index + 1}. ${drawing.title}: ${drawing.description}\n`;
+      });
+      components += '\n';
     }
 
     if (finalEstimate.trim()) {
-      components.push(`💵 Final Estimate: Completed`);
+      components += `**FINAL ESTIMATE (COMPLETE):**\n${finalEstimate}\n\n`;
     }
 
-    return components.join('\n');
+    return components;
   }
 
   /**

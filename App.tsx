@@ -29,6 +29,9 @@ import { TemplateManager } from './components/TemplateManager';
 import { CollapsibleControlPanel } from './components/CollapsibleControlPanel';
 import { ProjectManager } from './components/ProjectManager';
 import { ProjectService, ProjectData } from './services/projectService';
+import { EzdxfDrawingInterface } from './components/EzdxfDrawingInterface';
+import { DrawingResultsDisplay } from './components/DrawingResultsDisplay';
+import { EzdxfDrawingService, DrawingResult } from './services/ezdxfDrawingService';
 import { CompactFileUpload } from './components/CompactFileUpload';
 import { LLMService } from './services/llmService';
 import { RAGService } from './services/ragService';
@@ -88,6 +91,10 @@ const App: React.FC = () => {
   // Project management state
   const [currentProject, setCurrentProject] = useState<ProjectData | null>(null);
   const [isProjectManagerOpen, setIsProjectManagerOpen] = useState<boolean>(false);
+
+  // Drawing state
+  const [drawingResults, setDrawingResults] = useState<DrawingResult[]>([]);
+  const [isDrawingGenerating, setIsDrawingGenerating] = useState<boolean>(false);
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
@@ -219,6 +226,34 @@ const App: React.FC = () => {
 
     // Load selected project
     loadProjectData(project);
+  };
+
+  const handleDrawingGenerated = (result: DrawingResult) => {
+    setDrawingResults(prev => [...prev, result]);
+    setIsDrawingGenerating(false);
+
+    // Add to conversation history
+    setConversationHistory(prev => [
+      ...prev,
+      { role: 'model', text: `✅ **Professional CAD Drawing Generated!**\n\n📐 **Drawing:** ${result.title}\n\n📝 **Description:** ${result.description}\n\n💾 **File:** Ready for download as DXF\n\n🔧 **Features:** Complete with dimensions, annotations, and professional CAD standards\n\n📥 **Next Steps:** Download the DXF file to open in AutoCAD, FreeCAD, or any CAD software.` }
+    ]);
+  };
+
+  const handleDrawingError = (error: string) => {
+    setIsDrawingGenerating(false);
+    setError(error);
+
+    // Add error to conversation history
+    setConversationHistory(prev => [
+      ...prev,
+      { role: 'model', text: `❌ **Drawing Generation Failed**\n\n**Error:** ${error}\n\n**Please try again with:**\n• More specific requirements\n• Simpler drawing request\n• Check your internet connection\n\n**Need help?** Describe what type of technical drawing you need and I'll guide you through the process.` }
+    ]);
+  };
+
+  const handleDrawingRegenerate = (instructions: string) => {
+    const enhancedInput = `${currentMessage}\n\nMODIFICATIONS REQUESTED:\n${instructions}`;
+    setCurrentMessage(enhancedInput);
+    handleDrawingRequest();
   };
 
   const handleContextUpdate = () => {
@@ -416,26 +451,33 @@ const App: React.FC = () => {
           newHistory[newHistory.length - 1].text = enhancedPrompt;
         }
 
-        // Add template context if templates are selected
+        // Add comprehensive template context if templates are selected
         if (selectedTemplates.length > 0) {
-          let templateContext = `\n\n**MASTER TEMPLATES ACTIVE:**\n`;
+          let templateContext = `\n\n**MASTER TEMPLATES ACTIVE - COMPLETE GUIDANCE:**\n`;
           selectedTemplates.forEach((template, index) => {
             templateContext += `\n**Template ${index + 1}: ${template.name}**\n`;
             templateContext += `Project Type: ${template.projectType}\n`;
             templateContext += `Description: ${template.description}\n`;
-            templateContext += `Procedure:\n${template.stepByStepProcedure}\n`;
+            templateContext += `\n**COMPLETE STEP-BY-STEP PROCEDURE:**\n${template.stepByStepProcedure}\n`;
+            templateContext += `\n**TEMPLATE TAGS:** ${template.tags.join(', ')}\n`;
+            templateContext += `Created: ${template.createdAt.toLocaleDateString()}\n`;
+            templateContext += `Usage Count: ${template.usageCount}\n`;
           });
 
           if (templateInstructions.trim()) {
             templateContext += `\n**CUSTOM TEMPLATE INSTRUCTIONS:**\n${templateInstructions}\n`;
           }
 
-          templateContext += `\n**TEMPLATE USAGE INSTRUCTIONS:**\n`;
-          templateContext += `- Follow the step-by-step procedures from the selected templates\n`;
-          templateContext += `- Adapt the templates based on project-specific requirements\n`;
-          templateContext += `- Use the proven calculation methods and standards from templates\n`;
-          templateContext += `- Apply the quality checkpoints and best practices\n`;
-          templateContext += `- Customize the approach based on any user-provided instructions\n`;
+          templateContext += `\n**CRITICAL TEMPLATE USAGE INSTRUCTIONS:**\n`;
+          templateContext += `- Follow the EXACT step-by-step procedures from the selected templates\n`;
+          templateContext += `- Use the SPECIFIC design creation processes documented in templates\n`;
+          templateContext += `- Apply the EXACT drawing generation workflows from templates\n`;
+          templateContext += `- Use the PROVEN calculation methods and technical specifications\n`;
+          templateContext += `- Follow the DETAILED decision points and quality checkpoints\n`;
+          templateContext += `- Include ALL design and drawing context as shown in template examples\n`;
+          templateContext += `- Maintain the SAME level of detail and technical accuracy\n`;
+          templateContext += `- Apply the COMPLETE workflow from initial discussion to final deliverables\n`;
+          templateContext += `- Use the template as a COMPREHENSIVE GUIDE for identical project execution\n`;
 
           enhancedReferenceText += templateContext;
         }
@@ -529,6 +571,32 @@ const App: React.FC = () => {
         enhancedUserInput = enhancedPrompt;
       }
 
+      // Add template context for design generation
+      let designReferenceText = referenceText;
+      if (selectedTemplates.length > 0) {
+        let templateContext = `\n\n**MASTER TEMPLATES FOR DESIGN GUIDANCE:**\n`;
+        selectedTemplates.forEach((template, index) => {
+          templateContext += `\n**Template ${index + 1}: ${template.name}**\n`;
+          templateContext += `Project Type: ${template.projectType}\n`;
+          templateContext += `\n**COMPLETE DESIGN PROCEDURE:**\n${template.stepByStepProcedure}\n`;
+        });
+
+        if (templateInstructions.trim()) {
+          templateContext += `\n**CUSTOM TEMPLATE INSTRUCTIONS:**\n${templateInstructions}\n`;
+        }
+
+        templateContext += `\n**DESIGN TEMPLATE USAGE INSTRUCTIONS:**\n`;
+        templateContext += `- Follow the EXACT design creation procedures from the selected templates\n`;
+        templateContext += `- Use the SPECIFIC material specifications and calculation methods shown in templates\n`;
+        templateContext += `- Apply the DETAILED technical standards and quality requirements from templates\n`;
+        templateContext += `- Include ALL design elements and specifications as demonstrated in template examples\n`;
+        templateContext += `- Follow the PROVEN design workflow and decision points from templates\n`;
+        templateContext += `- Maintain the SAME level of technical detail and professional standards\n`;
+        templateContext += `- Create designs that match the template's approach and quality level\n`;
+
+        designReferenceText += templateContext;
+      }
+
       setLoadingMessage('🤖 Generating professional component design...');
 
       await DesignService.generateComponentDesign(
@@ -536,7 +604,7 @@ const App: React.FC = () => {
         scopeContext,
         enhancedUserInput,
         guidelinesText,
-        referenceText
+        designReferenceText
       );
 
       setLoadingMessage('💾 Saving design and updating display...');
@@ -585,172 +653,75 @@ const App: React.FC = () => {
     }
   };
 
-  const handleDrawingRequest = async (userInput: string) => {
-    setLoadingMessage('🔍 Analyzing your drawing requirements...');
+  const handleDrawingRequest = async (userInput?: string) => {
+    const inputText = userInput || currentMessage;
+    if (!inputText.trim()) {
+      setError('Please provide drawing requirements');
+      return;
+    }
+
+    setIsDrawingGenerating(true);
     setIsAiThinking(true);
     setError(null);
 
     try {
-      // Enhanced input validation
-      if (!userInput.trim()) {
-        throw new Error('Please provide specific drawing requirements.');
-      }
+      // Add user message to conversation
+      const newMessage: ChatMessage = { role: 'user', text: inputText };
+      setConversationHistory(prev => [...prev, newMessage]);
+      setCurrentMessage('');
 
-      if (userInput.trim().length < 10) {
-        throw new Error('Please provide more detailed drawing requirements (at least 10 characters).');
-      }
+      // Extract title from input
+      const title = inputText.match(/(?:draw|create|generate)\s+(?:a\s+)?(.+?)(?:\s+for|\s+with|\.|$)/i)?.[1]?.trim() ||
+                   `Technical Drawing ${new Date().toLocaleDateString()}`;
 
-      // Smart title extraction with flexible patterns
-      let title = 'Technical Drawing';
-      const titlePatterns = [
-        /(?:drawing|draw|create|generate|design)\s+(?:for\s+|of\s+|a\s+)?(.+?)(?:\s+(?:drawing|plan|view|section|detail)|$)/i,
-        /(?:plan|elevation|section|detail)\s+(?:for\s+|of\s+)?(.+?)(?:\s|$)/i,
-        /(.+?)\s+(?:drawing|plan|elevation|section|detail)/i
-      ];
+      // Gather context
+      const projectContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
+      const designContext = designs.filter(d => d.includeInContext !== false)
+        .map(d => `**${d.componentName}:**\n${d.designContent}`)
+        .join('\n\n');
 
-      for (const pattern of titlePatterns) {
-        const match = userInput.match(pattern);
-        if (match && match[1].trim().length > 2) {
-          title = match[1].trim();
-          break;
+      const drawingGuidelines = GuidelinesService.getActiveGuidelines();
+      const drawingGuidelinesText = GuidelinesService.formatGuidelinesForPrompt(drawingGuidelines);
+
+      // Add template context if templates are selected
+      let templateContext = '';
+      if (selectedTemplates.length > 0) {
+        templateContext = `\n\n**MASTER TEMPLATES FOR DRAWING GUIDANCE:**\n`;
+        selectedTemplates.forEach((template, index) => {
+          templateContext += `\n**Template ${index + 1}: ${template.name}**\n`;
+          templateContext += `Project Type: ${template.projectType}\n`;
+          templateContext += `\n**COMPLETE DRAWING PROCEDURE:**\n${template.stepByStepProcedure}\n`;
+        });
+
+        if (templateInstructions.trim()) {
+          templateContext += `\n**CUSTOM TEMPLATE INSTRUCTIONS:**\n${templateInstructions}\n`;
         }
       }
 
-      // Gather all available context
-      const activeGuidelines = GuidelinesService.getActiveGuidelines();
-      const drawingGuidelines = GuidelinesService.getActiveGuidelines('drawing');
-      const allGuidelines = [...activeGuidelines, ...drawingGuidelines];
-      const guidelinesText = GuidelinesService.formatGuidelinesForPrompt(allGuidelines);
-
-      const scopeContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
-
-      // Get existing designs that might be relevant
-      const existingDesigns = designs.filter(d => d.includeInContext !== false);
-      const designsContext = existingDesigns.length > 0
-        ? existingDesigns.map(d => `**Design: ${d.componentName}**\n${d.designContent.substring(0, 500)}...`).join('\n\n')
-        : '';
-
-      // Enhance user input with knowledge base if enabled
-      let enhancedUserInput = userInput;
-      if (includeKnowledgeBase) {
-        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
-          userInput,
-          includeKnowledgeBase
-        );
-        enhancedUserInput = enhancedPrompt;
-      }
-
-      // Create comprehensive drawing description using LLM
-      setLoadingMessage('🤖 Generating professional technical drawing description...');
-
-      const drawingPrompt = `You are a professional construction engineer and technical draftsman working within the HSR Construction Estimator application. Create a detailed technical drawing specification based on the user's requirements and all available project context.
-
-**APPLICATION CONTEXT:**
-This drawing is part of a comprehensive construction project that has gone through:
-1. Discussion Section: Complete project scoping and requirements gathering
-2. Design Section: Detailed component designs with specifications and calculations
-3. Drawing Section (CURRENT): Professional technical drawing generation
-
-**PRIMARY DRAWING REQUEST:**
-${enhancedUserInput}
-
-**COMPLETE PROJECT SCOPE:**
-${scopeContext}
-
-**EXISTING COMPONENT DESIGNS FOR INTEGRATION:**
-${designsContext}
-
-**PROJECT GUIDELINES:**
-${guidelinesText}
-
-**REFERENCE DOCUMENTS:**
-${referenceText}
-
-**COMPREHENSIVE DRAWING REQUIREMENTS:**
-1. **Context Integration**: Use all available project context and existing designs
-2. **Technical Accuracy**: Include specific dimensions from component designs
-3. **Drawing Standards**: Follow IS 696, IS 962 standards for technical drawings
-4. **Drawing Type**: Specify appropriate drawing type (plan, elevation, section, detail, assembly)
-5. **Dimensional Accuracy**: Use exact dimensions from component designs where applicable
-6. **Material Representation**: Include proper material symbols and construction details
-7. **Professional Annotations**: Add comprehensive annotations, dimensions, and symbols
-8. **Construction Guidance**: Provide clear construction and assembly guidance
-9. **Integration Notes**: Show relationships with other project components
-10. **Quality Standards**: Ensure drawing is suitable for construction and cost estimation
-
-**OUTPUT REQUIREMENTS:**
-Generate a comprehensive technical drawing specification that will be processed by a Python backend using ezdxf library to create professional DXF files. Include:
-- Detailed geometric specifications
-- Complete dimensioning requirements
-- Material symbols and hatching patterns
-- Layer organization and line types
-- Title block information
-- Drawing scale and units
-- Construction notes and details
-
-**INTEGRATION FOCUS:**
-- Reference existing component designs for accurate dimensions
-- Maintain consistency with project scope and requirements
-- Consider construction sequencing and methodology
-- Ensure compatibility with other project drawings
-- Prepare drawing suitable for quantity takeoff and estimation
-
-Focus on creating exactly what the user requested while leveraging all available project context to enhance accuracy, completeness, and professional quality.`;
-
-      const drawingDescription = await LLMService.generateContent(drawingPrompt);
-
-      if (!drawingDescription || drawingDescription.trim().length < 50) {
-        throw new Error('Generated drawing description is too short. Please try with more specific requirements.');
-      }
-
-      setLoadingMessage('🔧 Creating professional DXF file with Python backend...');
-
-      // Generate the actual DXF drawing using the backend
-      const drawing = await DXFService.generateDXFFromDescription(
+      // Use the new ezdxf drawing service
+      const drawingRequest = {
         title,
-        drawingDescription,
-        enhancedUserInput
-      );
+        description: inputText.substring(0, 200) + (inputText.length > 200 ? '...' : ''),
+        userRequirements: inputText,
+        projectContext,
+        designContext,
+        guidelines: drawingGuidelinesText,
+        referenceText: referenceText + templateContext
+      };
 
-      // Save the drawing
-      DXFStorageService.saveDrawing(drawing);
-      loadDrawings();
+      // Generate the drawing using the new service
+      const pythonCode = await EzdxfDrawingService.generateDrawingCode(drawingRequest);
+      const result = await EzdxfDrawingService.executeDrawingCode(pythonCode, title);
 
-      // Add to conversation history
-      setConversationHistory(prev => [
-        ...prev,
-        { role: 'user', text: userInput },
-        { role: 'model', text: `✅ **PROFESSIONAL TECHNICAL DRAWING GENERATED!**\n\n🏗️ **${title}**\n\n📋 **Drawing Description:**\n${drawingDescription.substring(0, 400)}...\n\n📁 **File:** ${drawing.dxfFilename}\n\n🎯 **Features:**\n• Professional DXF format compatible with AutoCAD, Revit, and other CAD software\n• Construction industry standards and symbols\n• Precise dimensions and annotations\n• Standard layers and line weights\n• Ready for construction use\n\n💾 **Download:** Click the download button in the Drawing Display section below.` }
-      ]);
+      // Handle the result
+      handleDrawingGenerated(result);
 
     } catch (err: any) {
       console.error('Drawing generation error:', err);
-      let errorMessage = 'An error occurred while generating the drawing.';
-
-      // Enhanced error handling with specific messages
-      if (err.message?.includes('backend is not available')) {
-        errorMessage = '🔧 Backend Configuration Required: Please configure your Google Cloud Functions URL in the Backend Configuration section below.';
-      } else if (err.message?.includes('Failed to fetch')) {
-        errorMessage = '🌐 Connection Error: Unable to connect to the drawing generation service. Please check your backend configuration.';
-      } else if (err.message?.includes('timeout') || err.message?.includes('AbortError')) {
-        errorMessage = '⏱️ Request Timeout: The drawing generation is taking longer than expected. Please try again or check your backend configuration.';
-      } else if (err.message?.includes('too short')) {
-        errorMessage = '📝 Insufficient Detail: Please provide more specific drawing requirements. Include details like dimensions, materials, or drawing type.';
-      } else if (err.message) {
-        errorMessage = err.message;
-      }
-
-      setError(errorMessage);
-
-      // Add error to conversation for user visibility
-      setConversationHistory(prev => [
-        ...prev,
-        { role: 'user', text: userInput },
-        { role: 'model', text: `❌ **Drawing Generation Failed**\n\n${errorMessage}\n\nPlease ensure:\n1. Your backend is properly configured\n2. Your requirements are specific and clear\n3. You're connected to the internet\n\nTry again with more detailed requirements.` }
-      ]);
+      handleDrawingError(err instanceof Error ? err.message : 'Failed to generate drawing');
     } finally {
+      setIsDrawingGenerating(false);
       setIsAiThinking(false);
-      setLoadingMessage('');
     }
   };
 
@@ -1114,13 +1085,28 @@ Focus on creating exactly what the user requested while leveraging all available
             />
           )}
 
-          {/* Drawing Display */}
+          {/* Professional CAD Drawing Interface */}
           {outputMode === 'drawing' && (
-            <DrawingDisplay
-              drawings={drawings}
-              onDrawingUpdate={loadDrawings}
-              onContextUpdate={handleContextUpdate}
-            />
+            <div className="space-y-6">
+              <EzdxfDrawingInterface
+                userInput={currentMessage}
+                projectContext={referenceText}
+                designContext={designs.map(d => `${d.componentName}: ${d.designContent}`).join('\n\n')}
+                guidelines={guidelines.filter(g => g.isActive).map(g => g.content).join('\n')}
+                referenceText={referenceText}
+                onDrawingGenerated={handleDrawingGenerated}
+                onError={handleDrawingError}
+              />
+
+              {/* Display Generated Drawings */}
+              {drawingResults.map((result, index) => (
+                <DrawingResultsDisplay
+                  key={index}
+                  result={result}
+                  onRegenerateRequest={handleDrawingRegenerate}
+                />
+              ))}
+            </div>
           )}
 
           {/* Discussion Mode Results */}

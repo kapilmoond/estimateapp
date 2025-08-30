@@ -1,0 +1,233 @@
+import React, { useState } from 'react';
+import { EzdxfDrawingService, DrawingRequest, DrawingResult } from '../services/ezdxfDrawingService';
+
+interface EzdxfDrawingInterfaceProps {
+  userInput: string;
+  projectContext: string;
+  designContext: string;
+  guidelines: string;
+  referenceText: string;
+  onDrawingGenerated: (result: DrawingResult) => void;
+  onError: (error: string) => void;
+}
+
+export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
+  userInput,
+  projectContext,
+  designContext,
+  guidelines,
+  referenceText,
+  onDrawingGenerated,
+  onError
+}) => {
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [currentStep, setCurrentStep] = useState<string>('');
+  const [generatedCode, setGeneratedCode] = useState<string>('');
+  const [showCode, setShowCode] = useState(false);
+
+  const handleGenerateDrawing = async () => {
+    if (!userInput.trim()) {
+      onError('Please provide drawing requirements');
+      return;
+    }
+
+    setIsGenerating(true);
+    setCurrentStep('Analyzing requirements...');
+
+    try {
+      // Extract title and description from user input
+      const title = extractTitle(userInput);
+      const description = extractDescription(userInput);
+
+      const request: DrawingRequest = {
+        title,
+        description,
+        userRequirements: userInput,
+        projectContext,
+        designContext,
+        guidelines,
+        referenceText
+      };
+
+      // Step 1: Generate Python code
+      setCurrentStep('Generating ezdxf Python code...');
+      const pythonCode = await EzdxfDrawingService.generateDrawingCode(request);
+      setGeneratedCode(pythonCode);
+
+      // Step 2: Execute code and get DXF
+      setCurrentStep('Executing Python code via Google Cloud Function...');
+      const result = await EzdxfDrawingService.executeDrawingCode(pythonCode, title);
+
+      setCurrentStep('Drawing generated successfully!');
+      onDrawingGenerated(result);
+
+    } catch (error) {
+      console.error('Drawing generation error:', error);
+      onError(error instanceof Error ? error.message : 'Failed to generate drawing');
+    } finally {
+      setIsGenerating(false);
+      setCurrentStep('');
+    }
+  };
+
+  const extractTitle = (input: string): string => {
+    // Try to extract a meaningful title from user input
+    const lines = input.split('\n');
+    const firstLine = lines[0].trim();
+    
+    // If first line is short and descriptive, use it as title
+    if (firstLine.length > 5 && firstLine.length < 50 && !firstLine.includes('.')) {
+      return firstLine;
+    }
+    
+    // Look for drawing-related keywords
+    const drawingMatch = input.match(/(?:draw|create|generate|design)\s+(?:a\s+)?(.+?)(?:\s+for|\s+with|\.|$)/i);
+    if (drawingMatch && drawingMatch[1]) {
+      return drawingMatch[1].trim();
+    }
+    
+    // Default title
+    return `Technical Drawing ${new Date().toLocaleDateString()}`;
+  };
+
+  const extractDescription = (input: string): string => {
+    // Use the full input as description, cleaned up
+    return input.trim().substring(0, 200) + (input.length > 200 ? '...' : '');
+  };
+
+  const handleDownloadCode = () => {
+    if (!generatedCode) return;
+
+    const blob = new Blob([generatedCode], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'ezdxf_drawing_code.py';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 p-6">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold text-gray-900">
+          🔧 Professional CAD Drawing Generator
+        </h3>
+        <div className="text-sm text-gray-500">
+          Powered by ezdxf + Google Cloud Functions
+        </div>
+      </div>
+
+      <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+        <h4 className="font-medium text-blue-900 mb-2">How it works:</h4>
+        <ol className="text-sm text-blue-800 space-y-1">
+          <li>1. 🤖 AI generates complete ezdxf Python code based on your requirements</li>
+          <li>2. ☁️ Code executes on Google Cloud Functions with full ezdxf library</li>
+          <li>3. 📐 Professional DXF file created with dimensions, text, and annotations</li>
+          <li>4. 💾 Download ready-to-use CAD file for AutoCAD, FreeCAD, etc.</li>
+        </ol>
+      </div>
+
+      <div className="mb-6">
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Drawing Requirements:
+        </label>
+        <div className="p-3 bg-gray-50 border rounded-lg">
+          <div className="text-sm text-gray-700 whitespace-pre-wrap">
+            {userInput || 'No requirements specified'}
+          </div>
+        </div>
+      </div>
+
+      {/* Context Information */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div>
+          <h4 className="text-sm font-medium text-gray-700 mb-2">Project Context:</h4>
+          <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded max-h-20 overflow-y-auto">
+            {projectContext || 'No project context'}
+          </div>
+        </div>
+        <div>
+          <h4 className="text-sm font-medium text-gray-700 mb-2">Design Context:</h4>
+          <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded max-h-20 overflow-y-auto">
+            {designContext || 'No design context'}
+          </div>
+        </div>
+      </div>
+
+      {/* Action Buttons */}
+      <div className="flex items-center gap-3 mb-4">
+        <button
+          onClick={handleGenerateDrawing}
+          disabled={isGenerating || !userInput.trim()}
+          className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 transition-colors font-medium"
+        >
+          {isGenerating ? '⚙️ Generating...' : '🚀 Generate Professional Drawing'}
+        </button>
+
+        {generatedCode && (
+          <>
+            <button
+              onClick={() => setShowCode(!showCode)}
+              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
+            >
+              {showCode ? 'Hide Code' : 'View Code'}
+            </button>
+            <button
+              onClick={handleDownloadCode}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
+            >
+              📥 Download Python Code
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Progress Indicator */}
+      {isGenerating && (
+        <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <div className="flex items-center gap-3">
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+            <span className="text-sm font-medium text-yellow-800">{currentStep}</span>
+          </div>
+          <div className="mt-2 text-xs text-yellow-700">
+            This may take 30-60 seconds for complex drawings...
+          </div>
+        </div>
+      )}
+
+      {/* Generated Code Display */}
+      {showCode && generatedCode && (
+        <div className="mb-4">
+          <h4 className="text-sm font-medium text-gray-700 mb-2">Generated ezdxf Python Code:</h4>
+          <div className="bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto">
+            <pre className="text-xs whitespace-pre-wrap font-mono">
+              {generatedCode}
+            </pre>
+          </div>
+        </div>
+      )}
+
+      {/* Features List */}
+      <div className="mt-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+        <h4 className="font-medium text-gray-900 mb-2">Drawing Features:</h4>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-gray-600">
+          <div>✓ Lines & Polylines</div>
+          <div>✓ Circles & Arcs</div>
+          <div>✓ Linear Dimensions</div>
+          <div>✓ Radius Dimensions</div>
+          <div>✓ Angular Dimensions</div>
+          <div>✓ Text & Labels</div>
+          <div>✓ Centerlines</div>
+          <div>✓ Professional Layers</div>
+          <div>✓ Title Blocks</div>
+          <div>✓ Hatching</div>
+          <div>✓ Blocks & Symbols</div>
+          <div>✓ CAD Standards</div>
+        </div>
+      </div>
+    </div>
+  );
+};
