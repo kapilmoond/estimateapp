@@ -154,6 +154,11 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
     }
   };
 
+  const handleSettingsChange = (newSettings: DrawingSettings) => {
+    setDrawingSettings(newSettings);
+    DrawingSettingsService.saveSettings(newSettings);
+  };
+
 
 
   const extractTitle = (input: string): string => {
@@ -268,13 +273,32 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
         </ol>
       </div>
 
-      {/* Single Mode: Attribute-Based Drawing Generation */}
+      {/* Header with Settings */}
       <div className="mb-6">
-        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <div className="font-medium text-blue-900">🎯 Professional Attribute-Based Drawing</div>
-          <div className="text-sm text-blue-700 mt-1">
-            Describe your drawing requirements. AI will provide precise coordinates and attributes, then the app generates reliable code.
+        <div className="flex items-center justify-between mb-4">
+          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg flex-1 mr-4">
+            <div className="font-medium text-blue-900">🎯 Professional Attribute-Based Drawing</div>
+            <div className="text-sm text-blue-700 mt-1">
+              Describe your drawing requirements. AI will provide precise coordinates and attributes, then the app generates reliable code.
+            </div>
           </div>
+
+          <button
+            onClick={() => setShowSettingsPanel(true)}
+            className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center space-x-2"
+            title="Configure drawing settings"
+          >
+            <span>⚙️</span>
+            <span>Settings</span>
+          </button>
+        </div>
+
+        {/* Current Settings Summary */}
+        <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded border">
+          <strong>Current Settings:</strong> {drawingSettings.units} units,
+          Text: {drawingSettings.dimensions.textHeight}px,
+          Arrows: {drawingSettings.dimensions.arrowSize}px,
+          Format: {drawingSettings.documentFormat}
         </div>
       </div>
 
@@ -393,7 +417,14 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
         error={debugInfo.error}
       />
 
-
+      {/* Drawing Settings Panel */}
+      {showSettingsPanel && (
+        <DrawingSettingsPanel
+          settings={drawingSettings}
+          onSettingsChange={handleSettingsChange}
+          onClose={() => setShowSettingsPanel(false)}
+        />
+      )}
     </div>
   );
 };
