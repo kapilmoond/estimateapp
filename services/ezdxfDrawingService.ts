@@ -335,94 +335,87 @@ dim.render()
 
 **3.4 PROFESSIONAL DIMENSION FORMATTING:**
 \`\`\`python
-# CRITICAL: Always set up dimension style for professional appearance
+# CRITICAL: Proper dimension style setup for visible arrows and text
 dimstyle = doc.dimstyles.get("EZDXF")
-dimstyle.dxf.dimtxt = 100        # Text height (in drawing units)
-dimstyle.dxf.dimasz = 50         # Arrow size
-dimstyle.dxf.dimexe = 50         # Extension beyond dimension line
-dimstyle.dxf.dimexo = 25         # Extension line offset (gap from object)
-dimstyle.dxf.dimgap = 25         # Gap around dimension text
-dimstyle.dxf.dimclrt = colors.RED # Text color
-dimstyle.dxf.dimclrd = colors.RED # Dimension line color
-dimstyle.dxf.dimclre = colors.RED # Extension line color
 
-# Professional dimension with proper gaps and arrows
+# Text settings (smaller, readable sizes)
+dimstyle.dxf.dimtxt = 25         # Text height (25 units = readable size)
+dimstyle.dxf.dimclrt = 1         # Text color (1 = red)
+dimstyle.dxf.dimgap = 5          # Gap around text
+
+# Arrow settings (ensure arrows appear)
+dimstyle.dxf.dimasz = 15         # Arrow size (15 units = visible arrows)
+dimstyle.dxf.dimblk = ""         # Use default arrow blocks
+dimstyle.dxf.dimblk1 = ""        # First arrow block
+dimstyle.dxf.dimblk2 = ""        # Second arrow block
+
+# Extension line settings
+dimstyle.dxf.dimexe = 10         # Extension beyond dimension line
+dimstyle.dxf.dimexo = 5          # Extension line offset (gap from object)
+dimstyle.dxf.dimclre = 1         # Extension line color (1 = red)
+
+# Dimension line settings
+dimstyle.dxf.dimclrd = 1         # Dimension line color (1 = red)
+dimstyle.dxf.dimdec = 0          # No decimal places for whole numbers
+
+# WORKING DIMENSION EXAMPLES:
+# Horizontal dimension with visible arrows and text
 dim = msp.add_linear_dim(
-    base=(0, -300),              # Dimension line position (300mm below)
-    p1=(0, 0),                   # First measurement point
-    p2=(2000, 0),                # Second measurement point (2000mm = 2m)
-    text="2000",                 # Dimension text (or "<>" for automatic)
-    dimstyle="EZDXF",            # Use configured dimension style
+    base=(0, -100),              # 100 units below the line
+    p1=(0, 0),                   # Start point
+    p2=(2000, 0),                # End point (2000mm = 2m)
+    text="<>",                   # Use automatic measurement
+    dimstyle="EZDXF",
     dxfattribs={"layer": "DIMENSIONS"}
 )
 dim.render()  # CRITICAL: Always call render()
 
-# Vertical dimension with proper formatting
+# Vertical dimension
 dim = msp.add_linear_dim(
-    base=(-300, 0),              # 300mm to the left
+    base=(-100, 0),              # 100 units to the left
     p1=(0, 0), p2=(0, 1000),     # 1000mm vertical
-    angle=90,                    # Vertical dimension
+    angle=90,                    # Vertical orientation
     dimstyle="EZDXF",
     dxfattribs={"layer": "DIMENSIONS"}
 )
 dim.render()
 \`\`\`
 
-**4. HATCHING AND MATERIAL REPRESENTATION:**
+**4. PROFESSIONAL HATCHING THAT ACTUALLY WORKS:**
 
-**4.1 SOLID HATCHING:**
+**4.1 WORKING CONCRETE HATCHING:**
 \`\`\`python
-# Solid fill hatch
-hatch = msp.add_hatch(color=colors.CYAN, dxfattribs={"layer": "HATCHING"})
-# Simple rectangular boundary
-hatch.paths.add_polyline_path([(0, 0), (10, 0), (10, 5), (0, 5)], is_closed=True)
-
-# Complex boundary with multiple paths (islands)
-hatch = msp.add_hatch(color=colors.YELLOW, dxfattribs={"layer": "HATCHING"})
-# Outer boundary
-hatch.paths.add_polyline_path(
-    [(0, 0), (20, 0), (20, 15), (0, 15)],
-    is_closed=True,
-    flags=ezdxf.const.BOUNDARY_PATH_EXTERNAL
-)
-# Inner boundary (hole)
-hatch.paths.add_polyline_path(
-    [(5, 5), (15, 5), (15, 10), (5, 10)],
-    is_closed=True,
-    flags=ezdxf.const.BOUNDARY_PATH_OUTERMOST
-)
-\`\`\`
-
-**4.2 PATTERN HATCHING:**
-\`\`\`python
-# Predefined pattern hatch (concrete, steel, etc.)
+# CONCRETE HATCHING - Use simple patterns that work
 hatch = msp.add_hatch(dxfattribs={"layer": "HATCHING"})
-hatch.set_pattern_fill("ANSI31", scale=0.5, angle=0)  # Steel pattern
-hatch.paths.add_polyline_path([(0, 0), (10, 0), (10, 5), (0, 5)], is_closed=True)
-
-# Common construction patterns:
-# "ANSI31" - Steel, iron, brick
-# "ANSI32" - Steel
-# "ANSI33" - Bronze, brass, copper
-# "ANSI34" - Plastic, rubber
-# "ANSI37" - Lead, zinc, magnesium
-# "CONCRETE" - Concrete
-# "EARTH" - Earth, soil
-# "GRAVEL" - Gravel, stone
+hatch.set_pattern_fill("ANSI31", scale=1.0, angle=45)  # Diagonal lines for concrete
+# Add boundary - MUST be closed polyline
+boundary_points = [(0, 0), (1000, 0), (1000, 500), (0, 500)]
+hatch.paths.add_polyline_path(boundary_points, is_closed=True)
 \`\`\`
 
-**4.3 EDGE PATH HATCHING (Complex Boundaries):**
+**4.2 WORKING BRICK/MASONRY HATCHING:**
 \`\`\`python
-# Hatch with curved boundaries
-hatch = msp.add_hatch(color=colors.GREEN, dxfattribs={"layer": "HATCHING"})
-edge_path = hatch.paths.add_edge_path()
+# BRICK HATCHING - Use ANSI31 pattern
+hatch = msp.add_hatch(dxfattribs={"layer": "HATCHING"})
+hatch.set_pattern_fill("ANSI31", scale=2.0, angle=0)   # Horizontal lines for brick
+boundary_points = [(0, 0), (1000, 0), (1000, 500), (0, 500)]
+hatch.paths.add_polyline_path(boundary_points, is_closed=True)
+\`\`\`
 
-# Add different edge types
-edge_path.add_line((0, 0), (10, 0))                    # Straight line
-edge_path.add_arc((10, 0), radius=5, start_angle=270, end_angle=0)  # Arc
-edge_path.add_line((15, 0), (15, 10))                  # Another line
-edge_path.add_line((15, 10), (0, 10))                  # Close with line
-edge_path.add_line((0, 10), (0, 0))                    # Back to start
+**4.3 WORKING EARTH/SOIL HATCHING:**
+\`\`\`python
+# EARTH HATCHING - Use dots pattern
+hatch = msp.add_hatch(dxfattribs={"layer": "HATCHING"})
+hatch.set_pattern_fill("DOTS", scale=50.0, angle=0)    # Dots for earth
+boundary_points = [(0, 0), (1000, 0), (1000, 500), (0, 500)]
+hatch.paths.add_polyline_path(boundary_points, is_closed=True)
+\`\`\`
+
+**CRITICAL HATCHING RULES:**
+- Use simple patterns: "ANSI31", "DOTS", "LINE"
+- Scale between 1.0 to 5.0 for visibility
+- Always use closed polyline paths
+- Test patterns: ANSI31 (diagonal), LINE (horizontal), DOTS (stipple)
 \`\`\`
 
 **5. BLOCKS AND REUSABLE ELEMENTS:**
@@ -601,17 +594,41 @@ def create_wall_section_with_stepped_foundation():
     return doc
 \`\`\`
 
-**CRITICAL REQUIREMENTS FOR ALL DRAWINGS:**
-1. **ALWAYS call dim.render()** after creating each dimension
-2. **Use proper layer organization** - CONSTRUCTION, DIMENSIONS, TEXT, HATCHING, CENTERLINES
-3. **Include comprehensive dimensions** for all important measurements
-4. **Add material hatching** using appropriate patterns (ANSI31 for concrete, etc.)
-5. **Use centerlines** for symmetry and reference
-6. **Include descriptive text** and material specifications
-7. **Use consistent scale** (typically 1:100 for construction drawings)
-8. **Add title and labels** for clarity
-9. **Use proper coordinate system** with logical positioning
-10. **ALWAYS save the file** with doc.saveas("filename.dxf")
+**PROFESSIONAL DRAWING STANDARDS - FOLLOW EXACTLY:**
+
+**1. DIMENSION REQUIREMENTS:**
+- Use smaller text heights (25 units max)
+- Use color index 1 (red) for all dimension elements
+- Always use "<>" for automatic measurement text
+- Set proper gaps: dimexo=5, dimgap=5, dimexe=10
+- Arrow size: dimasz=15 for visibility
+- ALWAYS call dim.render() after each dimension
+
+**2. LAYER ORGANIZATION:**
+- CONSTRUCTION: Main geometry (color=colors.WHITE)
+- DIMENSIONS: All dimensions (color=colors.RED)
+- HATCHING: Material patterns (appropriate colors)
+- NO TEXT LAYER unless specifically requested
+
+**3. HATCHING STANDARDS:**
+- Use simple patterns: "ANSI31", "DOTS", "LINE"
+- Scale between 1.0 to 3.0 for visibility
+- Concrete: ANSI31, scale=1.0, angle=45
+- Brick: ANSI31, scale=2.0, angle=0
+- Earth: DOTS, scale=50.0
+
+**4. PROFESSIONAL APPEARANCE:**
+- NO oversized titles or unnecessary text
+- NO instruction boxes or labels unless requested
+- Clean, minimal design focused on the drawing
+- Proper spacing and proportions
+- Use consistent coordinate system
+
+**5. CRITICAL EXECUTION RULES:**
+- ALWAYS call dim.render() after creating dimensions
+- Use setup=True when creating document
+- Save with doc.saveas("drawing.dxf")
+- Test all patterns and settings for visibility
 
 **CRITICAL OUTPUT REQUIREMENTS:**
 
@@ -621,11 +638,10 @@ def create_wall_section_with_stepped_foundation():
 4. **INCLUDE RENDER CALLS** - Always call dim.render() after creating dimensions
 5. **USE PROPER SYNTAX** - Follow exact ezdxf patterns shown above
 
-**COMPLETE WORKING EXAMPLE FOR 2M LINE WITH DIMENSIONS:**
+**PROFESSIONAL WORKING EXAMPLE - 2M LINE WITH PROPER DIMENSIONS:**
 \`\`\`python
 import ezdxf
 from ezdxf import colors
-from ezdxf.enums import TextEntityAlignment
 
 # Create document with setup=True for dimension styles
 doc = ezdxf.new("R2010", setup=True)
@@ -634,34 +650,32 @@ msp = doc.modelspace()
 # Create professional layers
 doc.layers.add("CONSTRUCTION", color=colors.WHITE)
 doc.layers.add("DIMENSIONS", color=colors.RED)
-doc.layers.add("TEXT", color=colors.GREEN)
 
 # Configure dimension style for professional appearance
 dimstyle = doc.dimstyles.get("EZDXF")
-dimstyle.dxf.dimtxt = 100        # Text height
-dimstyle.dxf.dimasz = 50         # Arrow size
-dimstyle.dxf.dimexe = 50         # Extension beyond dimension line
-dimstyle.dxf.dimexo = 25         # Extension line offset (gap)
-dimstyle.dxf.dimgap = 25         # Gap around text
+dimstyle.dxf.dimtxt = 25         # Text height (readable size)
+dimstyle.dxf.dimasz = 15         # Arrow size (visible arrows)
+dimstyle.dxf.dimexe = 10         # Extension beyond dimension line
+dimstyle.dxf.dimexo = 5          # Extension line offset (gap)
+dimstyle.dxf.dimgap = 5          # Gap around text
+dimstyle.dxf.dimclrt = 1         # Text color (red)
+dimstyle.dxf.dimclrd = 1         # Dimension line color (red)
+dimstyle.dxf.dimclre = 1         # Extension line color (red)
+dimstyle.dxf.dimdec = 0          # No decimal places
 
 # Draw 2m line (2000mm in drawing units)
 msp.add_line((0, 0), (2000, 0), dxfattribs={"layer": "CONSTRUCTION"})
 
 # Add dimension with proper gaps and arrows
 dim = msp.add_linear_dim(
-    base=(0, -300),              # 300mm below the line
+    base=(0, -100),              # 100mm below the line
     p1=(0, 0),                   # Start point
     p2=(2000, 0),                # End point
-    text="2000",                 # Dimension text
+    text="<>",                   # Use automatic measurement
     dimstyle="EZDXF",
     dxfattribs={"layer": "DIMENSIONS"}
 )
 dim.render()  # CRITICAL: Always call render()
-
-# Add title text
-msp.add_text("2000mm LINE",
-    dxfattribs={"layer": "TEXT", "height": 150}
-).set_placement((1000, 400), align=TextEntityAlignment.MIDDLE_CENTER)
 
 # Save the drawing
 doc.saveas("drawing.dxf")
