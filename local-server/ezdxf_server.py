@@ -61,16 +61,22 @@ def analyze_error(error_msg, traceback_str, code):
     suggestions = []
 
     # Common ezdxf errors and solutions
+    if "dimpost" in error_msg.lower() or "invalid dimpost string" in error_msg.lower():
+        suggestions.append("DO NOT set dimpost parameter - it causes 'Invalid dimpost string' errors")
+        suggestions.append("DO NOT add units to dimension text (e.g., text='<> mm')")
+        suggestions.append("Use only text='<>' for automatic measurements")
+        suggestions.append("Remove any dimpost, dimunit, or unit-related parameters")
+
     if "render" in error_msg.lower():
         suggestions.append("Make sure to call dim.render() after creating dimensions")
         suggestions.append("Example: dim = msp.add_linear_dim(...); dim.render()")
 
     if "dimension" in error_msg.lower() and "style" in error_msg.lower():
         suggestions.append("Use setup=True when creating document: doc = ezdxf.new('R2010', setup=True)")
-        suggestions.append("Or specify a valid dimstyle: dimstyle='EZDXF'")
+        suggestions.append("Configure dimstyle before creating dimensions")
 
     if "layer" in error_msg.lower():
-        suggestions.append("Create layers before using them: doc.layers.add('LAYERNAME', color=colors.WHITE)")
+        suggestions.append("Create layers before using them: doc.layers.add(name='LAYERNAME', color=7)")
         suggestions.append("Check layer names in dxfattribs={'layer': 'LAYERNAME'}")
 
     if "saveas" in error_msg.lower() or "save" in error_msg.lower():
@@ -78,7 +84,7 @@ def analyze_error(error_msg, traceback_str, code):
         suggestions.append("Check file permissions and disk space")
 
     if "import" in error_msg.lower():
-        suggestions.append("Check import statements - use: import ezdxf, from ezdxf import colors")
+        suggestions.append("Check import statements - use: import ezdxf")
         suggestions.append("Make sure all required modules are imported")
 
     if "attribute" in error_msg.lower():
@@ -88,6 +94,10 @@ def analyze_error(error_msg, traceback_str, code):
     if "coordinate" in error_msg.lower() or "point" in error_msg.lower():
         suggestions.append("Check coordinate format: use (x, y) tuples for 2D points")
         suggestions.append("Ensure coordinates are numeric values")
+
+    if "leader" in error_msg.lower():
+        suggestions.append("DO NOT use msp.add_leader() - it causes errors")
+        suggestions.append("Use simple lines and text instead of complex leaders")
 
     if not suggestions:
         suggestions.append("Check the ezdxf documentation for correct syntax")

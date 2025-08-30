@@ -332,10 +332,9 @@ dim = msp.add_angular_dim_2l(
 dim.render()
 \`\`\`
 
-**3.4 DIMENSION STYLE FOR VISIBLE TEXT (WORKING SOLUTION):**
+**3.4 DIMENSION STYLE FOR VISIBLE TEXT (ERROR-FREE SOLUTION):**
 \`\`\`python
-# CRITICAL: Configure dimension style for visible text
-# Method 1: Configure Standard dimstyle properly
+# CRITICAL: Configure dimension style for visible text (SAFE METHOD)
 dimstyle = doc.dimstyles.get("Standard")
 dimstyle.dxf.dimtxt = 100        # Text height (proportional to drawing)
 dimstyle.dxf.dimasz = 50         # Arrow size
@@ -348,29 +347,32 @@ dimstyle.dxf.dimclre = 1         # Extension line color (red)
 dimstyle.dxf.dimtad = 1          # Text above dimension line
 dimstyle.dxf.dimjust = 0         # Center text
 
+# CRITICAL: DO NOT set dimpost, dimunit, or other unit parameters
+# These cause "Invalid dimpost string" errors
+
 # Create dimension with configured style
 dim = msp.add_linear_dim(
     base=(0, -200),              # Position dimension line below
     p1=(0, 0),                   # Start measurement point
     p2=(2000, 0),                # End measurement point (2000mm = 2m)
     dimstyle="Standard",         # Use configured Standard dimstyle
-    text="<>",                   # Use automatic measurement text
+    text="<>",                   # Use automatic measurement text (NO UNITS)
     dxfattribs={"layer": "DIMENSIONS"}
 )
 dim.render()  # CRITICAL: Always call render()
 
-# Method 2: Use override dictionary for specific dimensions
+# SAFE OVERRIDE METHOD (only use safe parameters)
 dim = msp.add_linear_dim(
-    base=(0, -200),
+    base=(0, -400),
     p1=(0, 0),
     p2=(2000, 0),
     dimstyle="Standard",
-    text="<>",
+    text="<>",                   # NEVER add units here
     override={
-        "dimtxt": 100,           # Text height
-        "dimasz": 50,            # Arrow size
-        "dimclrt": 1,            # Text color
-        "dimtad": 1,             # Text above line
+        "dimtxt": 100,           # Text height - SAFE
+        "dimasz": 50,            # Arrow size - SAFE
+        "dimclrt": 1,            # Text color - SAFE
+        "dimtad": 1,             # Text above line - SAFE
     },
     dxfattribs={"layer": "DIMENSIONS"}
 )
@@ -649,6 +651,14 @@ def create_wall_section_with_stepped_foundation():
 - Save with doc.saveas("drawing.dxf")
 - Focus on drawing quality, not decoration
 
+**7. FORBIDDEN PARAMETERS (CAUSE RUNTIME ERRORS):**
+- DO NOT set dimpost parameter - causes "Invalid dimpost string" error
+- DO NOT set dimunit parameter - causes unit errors
+- DO NOT add units to text parameter (e.g., text="<> mm") - causes errors
+- DO NOT use msp.add_leader() - causes errors
+- DO NOT use leader.set_text() - method does not exist
+- NEVER set these dimension parameters: dimpost, dimunit, dimaunit, dimdsep
+
 **CRITICAL OUTPUT REQUIREMENTS:**
 
 1. **GENERATE ONLY EXECUTABLE PYTHON CODE** - No explanations, no markdown, no comments outside the code
@@ -700,20 +710,25 @@ dim.render()  # CRITICAL: Always call render()
 doc.saveas("drawing.dxf")
 \`\`\`
 
-**CRITICAL FINAL REQUIREMENTS FOR VISIBLE DIMENSION TEXT:**
+**CRITICAL FINAL REQUIREMENTS FOR ERROR-FREE DIMENSIONS:**
 
 1. **CONFIGURE DIMSTYLE FIRST**: Always configure dimstyle BEFORE creating dimensions
 2. **TEXT SIZE**: Set dimtxt proportional to drawing (e.g., 100 for 2000mm line)
 3. **TEXT POSITION**: Use dimtad=1 (above line) and dimjust=0 (center)
-4. **MEASUREMENT DISPLAY**: Use text="<>" for automatic measurements
-5. **INDIAN FORMAT**: Use text="L=<>" for length with prefix
+4. **MEASUREMENT DISPLAY**: Use text="<>" for automatic measurements (NO UNITS)
+5. **NEVER SET UNITS**: DO NOT set dimpost, dimunit, or add units to text
 6. **ALWAYS CALL dim.render()**: After every dimension creation
 7. **NO TITLES OR LABELS**: Clean drawing only with visible dimension numbers
+
+**CRITICAL: AVOID THESE ERRORS:**
+- DO NOT set dimpost parameter (causes "Invalid dimpost string" error)
+- DO NOT add units to text (e.g., text="<> mm" causes errors)
+- DO NOT set dimunit parameter (causes unit errors)
 
 **RESPOND WITH ONLY THE PYTHON CODE - NO EXPLANATIONS, NO MARKDOWN, NO OTHER TEXT**
 
 Your response must start with "import ezdxf" and end with "doc.saveas('drawing.dxf')".
-ALWAYS configure dimstyle before creating dimensions. Ensure dimension text is visible and properly sized.`;
+Use ONLY safe dimension parameters. NO units, NO dimpost, NO dimunit.`;
   }
 
   /**
