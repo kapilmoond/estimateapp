@@ -27,6 +27,8 @@ import { DiscussionContextManager } from './components/DiscussionContextManager'
 import { TemplateSelector } from './components/TemplateSelector';
 import { TemplateManager } from './components/TemplateManager';
 import { CollapsibleControlPanel } from './components/CollapsibleControlPanel';
+import { ProjectManager } from './components/ProjectManager';
+import { ProjectService, ProjectData } from './services/projectService';
 import { CompactFileUpload } from './components/CompactFileUpload';
 import { LLMService } from './services/llmService';
 import { RAGService } from './services/ragService';
@@ -83,11 +85,26 @@ const App: React.FC = () => {
   const [selectedTemplates, setSelectedTemplates] = useState<MasterTemplate[]>([]);
   const [templateInstructions, setTemplateInstructions] = useState<string>('');
 
+  // Project management state
+  const [currentProject, setCurrentProject] = useState<ProjectData | null>(null);
+  const [isProjectManagerOpen, setIsProjectManagerOpen] = useState<boolean>(false);
+
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
   const referenceText = useMemo(() => 
     referenceDocs.map(doc => `--- START OF ${doc.file.name} ---\n${doc.text}\n--- END OF ${doc.file.name} ---`).join('\n\n'), 
   [referenceDocs]);
+
+  // Auto-save project when important state changes
+  useEffect(() => {
+    if (currentProject && conversationHistory.length > 1) {
+      const timeoutId = setTimeout(() => {
+        saveCurrentProject();
+      }, 2000); // Auto-save after 2 seconds of inactivity
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [conversationHistory, finalizedScope, designs, drawings, finalEstimateText, selectedTemplates]);
 
   useEffect(() => {
     if (chatContainerRef.current) {
@@ -101,10 +118,18 @@ const App: React.FC = () => {
         setApiKey(storedApiKey);
     }
 
-    // Load guidelines and project data
+    // Load guidelines
     loadGuidelines();
-    loadDesigns();
-    loadDrawings();
+
+    // Try to load current project
+    const savedProject = ProjectService.loadCurrentProject();
+    if (savedProject) {
+      loadProjectData(savedProject);
+    } else {
+      // No saved project, load individual data (legacy support)
+      loadDesigns();
+      loadDrawings();
+    }
 
     // Initialize context if not exists
     const existingContext = ContextService.getCurrentContext();
@@ -128,6 +153,72 @@ const App: React.FC = () => {
   const loadDrawings = () => {
     const loadedDrawings = DXFStorageService.loadDrawings();
     setDrawings(loadedDrawings);
+  };
+
+  const loadProjectData = (project: ProjectData) => {
+    setCurrentProject(project);
+    setStep(project.step);
+    setConversationHistory(project.conversationHistory);
+    setCurrentMessage(project.currentMessage);
+    setFinalizedScope(project.finalizedScope);
+    setKeywords(project.keywords);
+    setHsrItems(project.hsrItems);
+    setFinalEstimateText(project.finalEstimateText);
+    setDesigns(project.designs);
+    setDrawings(project.drawings);
+    setReferenceDocs(project.referenceDocs);
+    setOutputMode(project.outputMode);
+    setPurifiedContext(project.purifiedContext);
+    setSelectedTemplates(project.selectedTemplates);
+    setTemplateInstructions(project.templateInstructions);
+
+    console.log('Loaded project:', project.name);
+  };
+
+  const saveCurrentProject = () => {
+    if (!currentProject) return;
+
+    const updatedProject: ProjectData = {
+      ...currentProject,
+      step,
+      conversationHistory,
+      currentMessage,
+      finalizedScope,
+      keywords,
+      hsrItems,
+      finalEstimateText,
+      designs,
+      drawings,
+      referenceDocs,
+      outputMode,
+      purifiedContext,
+      selectedTemplates,
+      templateInstructions
+    };
+
+    ProjectService.saveProject(updatedProject);
+    setCurrentProject(updatedProject);
+  };
+
+  const handleNewProject = (projectName: string) => {
+    // Save current project if exists
+    if (currentProject) {
+      saveCurrentProject();
+    }
+
+    // Create new project
+    const newProject = ProjectService.createProject(projectName);
+    loadProjectData(newProject);
+  };
+
+  const handleProjectSelected = (project: ProjectData) => {
+    // Save current project if exists
+    if (currentProject) {
+      saveCurrentProject();
+    }
+
+    // Load selected project
+    loadProjectData(project);
   };
 
   const handleContextUpdate = () => {
@@ -263,41 +354,13 @@ const App: React.FC = () => {
   }, []);
 
   const resetState = () => {
-    setStep('scoping');
-    setConversationHistory([{ role: 'model', text: 'Hello! Please describe the project you want to build.' }]);
-    setCurrentMessage('');
-    setFinalizedScope('');
-    setKeywords([]);
-    setKeywordsByItem({});
-    setHsrItems([]);
-    setFinalEstimateText('');
-    setEditInstruction('');
-    setError(null);
-    setIsAiThinking(false);
-    setLoadingMessage('');
-    setReferenceDocs([]);
-    setIsFileProcessing(false);
-    setOutputMode('discussion');
-    setCurrentThread(null);
-    setShowProjectData(false);
-
-    // Clear all data for new project
-    ThreadService.clearAllThreads();
-    DesignService.clearAllDesigns();
-    setDesigns([]);
-    setDrawings([]);
-
-    // Reset template data
-    setSelectedTemplates([]);
-    setTemplateInstructions('');
-    setPurifiedContext('');
-
-    console.log('Project reset - all data cleared');
-
-    // Ask user if they want to use templates for new project
-    if (confirm('Would you like to start with a master template for this new project?')) {
-      setIsTemplateSelectorOpen(true);
+    // Save current project before resetting
+    if (currentProject) {
+      saveCurrentProject();
     }
+
+    // Open project manager to create new project or select existing
+    setIsProjectManagerOpen(true);
   };
   
   const handleFileUpload = (newFiles: ReferenceDoc[]) => {
@@ -887,6 +950,7 @@ Focus on creating exactly what the user requested while leveraging all available
           onOpenContextManager={() => setIsContextManagerOpen(true)}
           onOpenTemplateManager={() => setIsTemplateManagerOpen(true)}
           onOpenTemplateSelector={() => setIsTemplateSelectorOpen(true)}
+          onOpenProjectManager={() => setIsProjectManagerOpen(true)}
           guidelinesCount={guidelines.filter(g => g.isActive).length}
           currentProvider={currentProvider}
           outputMode={outputMode}
@@ -1267,6 +1331,16 @@ Focus on creating exactly what the user requested while leveraging all available
             designs={designs}
             drawings={drawings}
             referenceText={referenceText}
+          />
+        )}
+
+        {isProjectManagerOpen && (
+          <ProjectManager
+            isOpen={isProjectManagerOpen}
+            onClose={() => setIsProjectManagerOpen(false)}
+            onProjectSelected={handleProjectSelected}
+            onNewProject={handleNewProject}
+            currentProjectId={currentProject?.id}
           />
         )}
       </div>

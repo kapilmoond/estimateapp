@@ -10,6 +10,7 @@ interface CollapsibleControlPanelProps {
   onOpenContextManager?: () => void;
   onOpenTemplateManager?: () => void;
   onOpenTemplateSelector?: () => void;
+  onOpenProjectManager?: () => void;
 
   // Status Props
   guidelinesCount: number;
@@ -40,6 +41,7 @@ export const CollapsibleControlPanel: React.FC<CollapsibleControlPanelProps> = (
   onOpenContextManager,
   onOpenTemplateManager,
   onOpenTemplateSelector,
+  onOpenProjectManager,
   guidelinesCount,
   currentProvider,
   outputMode,
@@ -65,6 +67,15 @@ export const CollapsibleControlPanel: React.FC<CollapsibleControlPanelProps> = (
         <div className="flex items-center justify-between">
           {/* Primary Actions - Always Visible */}
           <div className="flex items-center gap-3">
+            {onOpenProjectManager && (
+              <button
+                onClick={onOpenProjectManager}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
+              >
+                📁 Projects
+              </button>
+            )}
+
             <button
               onClick={onNewProject}
               className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"

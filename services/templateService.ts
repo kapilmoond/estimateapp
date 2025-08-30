@@ -53,48 +53,39 @@ export class TemplateService {
       ? drawings.map(d => `**${d.title}:**\n${d.description}\nFile: ${d.dxfFilename}`).join('\n\n')
       : 'No technical drawings available.';
 
-    const templatePrompt = `Create a comprehensive master template for construction estimation based on the completed project data.
+    const templatePrompt = `Create a focused master template based ONLY on what was actually accomplished in this construction estimation project. Do not add extra steps or theoretical procedures that weren't part of the actual work.
 
 **PROJECT INFORMATION:**
 Template Name: ${templateName}
 Description: ${templateDescription}
 Project Type: ${projectType}
 
-**COMPLETE PROJECT SCOPE:**
-${finalizedScope}
+**ACTUAL PROJECT PROGRESS:**
+${this.analyzeActualProgress(conversationHistory, finalizedScope, designs, drawings, finalEstimate)}
 
-**CONVERSATION HISTORY:**
-${conversationText}
+**ACTUAL WORK COMPLETED:**
+${this.extractActualWork(conversationHistory)}
 
-**KEYWORDS GENERATED:**
-${keywords.join(', ')}
+**COMPLETED COMPONENTS:**
+${this.getCompletedComponents(finalizedScope, keywords, hsrItems, designs, drawings, finalEstimate)}
 
-**HSR ITEMS IDENTIFIED:**
-${hsrItems.map(item => `${item.description} - ${item.unit} - Rate: ${item.rate}`).join('\n')}
+**REFERENCE MATERIALS:**
+${referenceText ? 'Reference documents were used during the project' : 'No reference documents were used'}
 
-**FINAL ESTIMATE:**
-${finalEstimate}
+**CRITICAL TEMPLATE CREATION INSTRUCTIONS:**
+Create a template that captures ONLY the actual steps and procedures that were completed in this project. This template will be used by AI to guide users through similar projects by following the proven path established here.
 
-**COMPONENT DESIGNS:**
-${designsText}
+**FOCUS ON ACTUAL WORK ONLY:**
+1. **Real Steps Taken**: Only include workflow steps that were actually completed in this project
+2. **Proven Methods**: Only document calculation and design methods that were actually used
+3. **Actual Decision Points**: Only include choices that were actually made during this project
+4. **Applied Procedures**: Only the specific sequence that led to success in this project
 
-**TECHNICAL DRAWINGS:**
-${drawingsText}
-
-**REFERENCE DOCUMENTS:**
-${referenceText}
-
-**MASTER TEMPLATE CREATION REQUIREMENTS:**
-Create a comprehensive, step-by-step procedure that can be used as a master template for similar construction estimation projects. This template should:
-
-1. **Extract Common Patterns**: Identify reusable estimation logic, calculation methods, and decision-making processes
-2. **Create Step-by-Step Guide**: Develop a clear, sequential procedure for similar projects
-3. **Include Decision Points**: Specify where user input or customization is needed
-4. **Standardize Calculations**: Document calculation methods and formulas used
-5. **Material Standards**: Include standard material specifications and alternatives
-6. **Quality Checkpoints**: Define validation steps and quality control measures
-7. **Customization Points**: Identify where template can be adapted for variations
-8. **Best Practices**: Include lessons learned and optimization strategies
+**DO NOT INCLUDE:**
+- Steps that weren't taken in this project
+- Theoretical best practices not applied here
+- Extra procedures beyond what was actually done
+- Generic advice not specific to this project's approach
 
 **OUTPUT FORMAT:**
 Create a detailed master template with the following structure:
@@ -255,8 +246,108 @@ Focus on creating a reusable, comprehensive template that captures the essence o
 
   static getTemplatesByType(projectType: string): MasterTemplate[] {
     const templates = this.loadTemplates();
-    return templates.filter(template => 
+    return templates.filter(template =>
       template.projectType.toLowerCase() === projectType.toLowerCase()
     );
+  }
+
+  /**
+   * Analyze what was actually accomplished in the project
+   */
+  private static analyzeActualProgress(
+    conversationHistory: ChatMessage[],
+    finalizedScope: string,
+    designs: ComponentDesign[],
+    drawings: TechnicalDrawing[],
+    finalEstimate: string
+  ): string {
+    const progress = [];
+
+    if (conversationHistory.length > 1) {
+      progress.push(`✅ Discussion: ${conversationHistory.length} conversation exchanges`);
+    }
+
+    if (finalizedScope.trim()) {
+      progress.push(`✅ Project Scope: Defined and finalized`);
+    }
+
+    if (designs.length > 0) {
+      progress.push(`✅ Component Designs: ${designs.length} design(s) created`);
+    }
+
+    if (drawings.length > 0) {
+      progress.push(`✅ Technical Drawings: ${drawings.length} drawing(s) generated`);
+    }
+
+    if (finalEstimate.trim()) {
+      progress.push(`✅ Cost Estimation: Final estimate completed`);
+    }
+
+    return progress.join('\n');
+  }
+
+  /**
+   * Extract actual work done from conversation
+   */
+  private static extractActualWork(conversationHistory: ChatMessage[]): string {
+    // Filter out generic greetings and focus on actual work
+    const workMessages = conversationHistory.filter(msg => {
+      const text = msg.text.toLowerCase();
+      return !text.includes('hello') &&
+             !text.includes('hi ') &&
+             !text.includes('please describe') &&
+             text.length > 20; // Meaningful content
+    });
+
+    return workMessages
+      .map(msg => `${msg.role.toUpperCase()}: ${msg.text.substring(0, 200)}...`)
+      .join('\n\n');
+  }
+
+  /**
+   * Get completed components summary
+   */
+  private static getCompletedComponents(
+    finalizedScope: string,
+    keywords: string[],
+    hsrItems: HsrItem[],
+    designs: ComponentDesign[],
+    drawings: TechnicalDrawing[],
+    finalEstimate: string
+  ): string {
+    const components = [];
+
+    if (finalizedScope.trim()) {
+      components.push(`📋 Project Scope: ${finalizedScope.substring(0, 100)}...`);
+    }
+
+    if (keywords.length > 0) {
+      components.push(`🔑 Keywords: ${keywords.join(', ')}`);
+    }
+
+    if (hsrItems.length > 0) {
+      components.push(`💰 HSR Items: ${hsrItems.length} items identified`);
+    }
+
+    if (designs.length > 0) {
+      components.push(`🎨 Designs: ${designs.map(d => d.componentName).join(', ')}`);
+    }
+
+    if (drawings.length > 0) {
+      components.push(`📐 Drawings: ${drawings.map(d => d.title).join(', ')}`);
+    }
+
+    if (finalEstimate.trim()) {
+      components.push(`💵 Final Estimate: Completed`);
+    }
+
+    return components.join('\n');
+  }
+
+  /**
+   * Generate unique ID
+   */
+  private static generateId(): string {
+    return Date.now().toString(36) + Math.random().toString(36).substr(2);
   }
 }
