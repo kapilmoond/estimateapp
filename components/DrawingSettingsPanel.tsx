@@ -209,13 +209,15 @@ export const DrawingSettingsPanel: React.FC<DrawingSettingsPanelProps> = ({
 
   const renderLayersTab = () => (
     <div className="space-y-6">
-      <h3 className="text-lg font-semibold text-gray-900">Layer Settings</h3>
-      
-      {Object.entries(localSettings.layers).map(([layerType, layer]) => (
-        <div key={layerType} className="border border-gray-200 rounded-lg p-4">
-          <h4 className="font-medium text-gray-900 mb-3 capitalize">
-            {layerType} Layer
-          </h4>
+      <h3 className="text-lg font-semibold text-gray-900 sticky top-0 bg-white py-2 border-b border-gray-200">Layer Settings</h3>
+
+      <div className="space-y-4">
+        {Object.entries(localSettings.layers).map(([layerType, layer]) => (
+          <div key={layerType} className="border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors">
+            <h4 className="font-medium text-gray-900 mb-4 capitalize flex items-center">
+              <span className="w-4 h-4 rounded mr-2" style={{backgroundColor: `hsl(${layer.color * 360 / 255}, 70%, 50%)`}}></span>
+              {layerType} Layer
+            </h4>
           
           <div className="grid grid-cols-3 gap-4">
             <div>
@@ -260,16 +262,20 @@ export const DrawingSettingsPanel: React.FC<DrawingSettingsPanelProps> = ({
               </select>
             </div>
           </div>
-        </div>
-      ))}
+          </div>
+        ))}
+      </div>
     </div>
   );
 
   const renderDimensionsTab = () => (
-    <div className="space-y-4">
-      <h3 className="text-lg font-semibold text-gray-900">Dimension Settings</h3>
-      
-      <div className="grid grid-cols-2 gap-4">
+    <div className="space-y-6">
+      <h3 className="text-lg font-semibold text-gray-900 sticky top-0 bg-white py-2 border-b border-gray-200">Dimension Settings</h3>
+
+      <div className="space-y-6">
+        <div className="border border-gray-200 rounded-lg p-4">
+          <h4 className="font-medium text-gray-900 mb-4">Text and Arrow Settings</h4>
+          <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Text Height
@@ -427,42 +433,124 @@ export const DrawingSettingsPanel: React.FC<DrawingSettingsPanelProps> = ({
           />
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Dimension Line Offset
-          </label>
-          <input
-            type="number"
-            value={localSettings.spacing.dimensionOffset}
-            onChange={(e) => updateSettings('spacing', 'dimensionOffset', Number(e.target.value))}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md"
-            min="50"
-            max="1000"
-          />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Dimension Line Offset
+            </label>
+            <input
+              type="number"
+              value={localSettings.spacing.dimensionOffset}
+              onChange={(e) => updateSettings('spacing', 'dimensionOffset', Number(e.target.value))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              min="50"
+              max="1000"
+            />
+          </div>
         </div>
       </div>
 
-      <div className="space-y-2">
-        <label className="flex items-center">
-          <input
-            type="checkbox"
-            checked={localSettings.dimensions.showUnits}
-            onChange={(e) => updateSettings('dimensions', 'showUnits', e.target.checked)}
-            className="mr-2"
-          />
-          <span className="text-sm text-gray-700">Show Units in Dimension Text</span>
-        </label>
+      <div className="border border-gray-200 rounded-lg p-4">
+        <h4 className="font-medium text-gray-900 mb-4">Extension Line Settings</h4>
+        <div className="grid grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Extension Beyond Line
+            </label>
+            <input
+              type="number"
+              value={localSettings.dimensions.extensionBeyond}
+              onChange={(e) => updateSettings('dimensions', 'extensionBeyond', Number(e.target.value))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              min="0"
+              max="200"
+            />
+          </div>
 
-        <label className="flex items-center">
-          <input
-            type="checkbox"
-            checked={localSettings.dimensions.suppressZeros}
-            onChange={(e) => updateSettings('dimensions', 'suppressZeros', e.target.checked)}
-            className="mr-2"
-          />
-          <span className="text-sm text-gray-700">Suppress Leading/Trailing Zeros</span>
-        </label>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Extension Line Offset
+            </label>
+            <input
+              type="number"
+              value={localSettings.dimensions.extensionOffset}
+              onChange={(e) => updateSettings('dimensions', 'extensionOffset', Number(e.target.value))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              min="0"
+              max="100"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Text Gap
+            </label>
+            <input
+              type="number"
+              value={localSettings.dimensions.textGap}
+              onChange={(e) => updateSettings('dimensions', 'textGap', Number(e.target.value))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              min="0"
+              max="100"
+            />
+          </div>
+        </div>
       </div>
+
+      <div className="border border-gray-200 rounded-lg p-4">
+        <h4 className="font-medium text-gray-900 mb-4">Number Formatting</h4>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Decimal Places
+            </label>
+            <input
+              type="number"
+              value={localSettings.dimensions.decimalPlaces}
+              onChange={(e) => updateSettings('dimensions', 'decimalPlaces', Number(e.target.value))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              min="0"
+              max="8"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Rounding Value
+            </label>
+            <input
+              type="number"
+              value={localSettings.dimensions.roundingValue}
+              onChange={(e) => updateSettings('dimensions', 'roundingValue', Number(e.target.value))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              min="0"
+              step="0.1"
+            />
+          </div>
+        </div>
+
+        <div className="mt-4 space-y-3">
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              checked={localSettings.dimensions.showUnits}
+              onChange={(e) => updateSettings('dimensions', 'showUnits', e.target.checked)}
+              className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+            />
+            <span className="text-sm text-gray-700">Show Units in Dimension Text</span>
+          </label>
+
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              checked={localSettings.dimensions.suppressZeros}
+              onChange={(e) => updateSettings('dimensions', 'suppressZeros', e.target.checked)}
+              className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+            />
+            <span className="text-sm text-gray-700">Suppress Leading/Trailing Zeros</span>
+          </label>
+        </div>
+      </div>
+    </div>
     </div>
   );
 
@@ -670,76 +758,76 @@ export const DrawingSettingsPanel: React.FC<DrawingSettingsPanelProps> = ({
   ];
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full mx-4 max-h-[90vh] overflow-hidden">
-        <div className="flex flex-col h-full">
-          {/* Header */}
-          <div className="px-6 py-4 border-b border-gray-200">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold text-gray-900">
-                🎛️ Drawing Settings
-              </h2>
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl h-full max-h-[95vh] flex flex-col">
+        {/* Header - Fixed */}
+        <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold text-gray-900">
+              🎛️ Drawing Settings
+            </h2>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+
+        {/* Tab Navigation - Fixed */}
+        <div className="flex-shrink-0 px-6 py-3 border-b border-gray-200 bg-gray-50">
+          <div className="flex space-x-1 overflow-x-auto">
+            {tabs.map((tab) => (
               <button
-                onClick={onClose}
-                className="text-gray-400 hover:text-gray-600"
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`flex-shrink-0 px-4 py-2 rounded-md text-sm font-medium whitespace-nowrap ${
+                  activeTab === tab.id
+                    ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                }`}
               >
-                <span className="text-2xl">×</span>
+                {tab.icon} {tab.label}
               </button>
-            </div>
+            ))}
           </div>
+        </div>
 
-          {/* Tab Navigation */}
-          <div className="px-6 py-2 border-b border-gray-200">
-            <div className="flex space-x-1">
-              {tabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
-                  className={`px-4 py-2 rounded-md text-sm font-medium ${
-                    activeTab === tab.id
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  {tab.icon} {tab.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Tab Content */}
-          <div className="flex-1 overflow-y-auto p-6">
+        {/* Tab Content - Scrollable */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-6">
             {activeTab === 'document' && renderDocumentTab()}
             {activeTab === 'layers' && renderLayersTab()}
             {activeTab === 'dimensions' && renderDimensionsTab()}
             {activeTab === 'text' && renderTextTab()}
             {activeTab === 'advanced' && renderAdvancedTab()}
           </div>
+        </div>
 
-          {/* Footer */}
-          <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
-            <div className="flex justify-between">
+        {/* Footer - Fixed */}
+        <div className="flex-shrink-0 px-6 py-4 border-t border-gray-200 bg-gray-50">
+          <div className="flex justify-between items-center">
+            <button
+              onClick={handleReset}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+            >
+              🔄 Reset to Defaults
+            </button>
+
+            <div className="flex space-x-3">
               <button
-                onClick={handleReset}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                onClick={onClose}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
               >
-                Reset to Defaults
+                Cancel
               </button>
-
-              <div className="flex space-x-3">
-                <button
-                  onClick={onClose}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSave}
-                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700"
-                >
-                  Save Settings
-                </button>
-              </div>
+              <button
+                onClick={handleSave}
+                className="px-6 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 transition-colors"
+              >
+                💾 Save Settings
+              </button>
             </div>
           </div>
         </div>
