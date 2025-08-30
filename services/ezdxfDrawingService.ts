@@ -33,15 +33,22 @@ export class EzdxfDrawingService {
     const prompt = this.buildDrawingPrompt(request);
     
     console.log('EzdxfDrawingService: Generating Python code with LLM');
+    console.log('Prompt length:', prompt.length);
+
     const response = await LLMService.generateContent(prompt);
-    
+    console.log('LLM response received, length:', response.length);
+    console.log('LLM response preview:', response.substring(0, 300));
+
     // Extract Python code from response
     const pythonCode = this.extractPythonCode(response);
-    
+
     if (!pythonCode) {
-      throw new Error('Failed to generate valid Python code for drawing');
+      console.error('Failed to extract Python code from LLM response');
+      console.error('Full LLM response:', response);
+      throw new Error(`Failed to generate valid Python code for drawing. LLM response was: ${response.substring(0, 200)}...`);
     }
-    
+
+    console.log('Successfully extracted Python code, length:', pythonCode.length);
     return pythonCode;
   }
 
@@ -103,7 +110,9 @@ export class EzdxfDrawingService {
    * Build comprehensive prompt for ezdxf code generation
    */
   private static buildDrawingPrompt(request: DrawingRequest): string {
-    return `You are a professional CAD engineer and Python developer specializing in ezdxf library for creating technical drawings. Generate complete, executable Python code that creates a professional DXF technical drawing.
+    return `You are a professional CAD engineer and Python developer specializing in ezdxf library for creating technical drawings.
+
+**CRITICAL INSTRUCTION: You must respond with ONLY executable Python code. No explanations, no markdown formatting, no text before or after the code. Just the raw Python code that can be executed directly.**
 
 **DRAWING REQUEST:**
 Title: ${request.title}
@@ -549,28 +558,168 @@ def create_wall_section_with_stepped_foundation():
 9. **Use proper coordinate system** with logical positioning
 10. **ALWAYS save the file** with doc.saveas("filename.dxf")
 
-**OUTPUT FORMAT:**
-Provide ONLY the complete Python code, properly formatted and ready to execute. Do not include explanations or markdown formatting - just the raw Python code that can be directly executed.
+**CRITICAL OUTPUT REQUIREMENTS:**
 
-The code should create a professional technical drawing that fully satisfies the user's requirements with proper dimensions, annotations, and CAD standards.`;
+1. **GENERATE ONLY EXECUTABLE PYTHON CODE** - No explanations, no markdown, no comments outside the code
+2. **START WITH IMPORTS** - Always begin with the required imports
+3. **END WITH SAVE** - Always end with doc.saveas("drawing.dxf")
+4. **INCLUDE RENDER CALLS** - Always call dim.render() after creating dimensions
+5. **USE PROPER SYNTAX** - Follow exact ezdxf patterns shown above
+
+**EXAMPLE OUTPUT FORMAT:**
+\`\`\`python
+import ezdxf
+from ezdxf import colors
+from ezdxf.enums import TextEntityAlignment
+
+doc = ezdxf.new("R2010", setup=True)
+msp = doc.modelspace()
+
+# Create layers
+doc.layers.add("CONSTRUCTION", color=colors.WHITE)
+doc.layers.add("DIMENSIONS", color=colors.RED)
+doc.layers.add("TEXT", color=colors.GREEN)
+
+# Add entities
+msp.add_line((0, 0), (2000, 0), dxfattribs={"layer": "CONSTRUCTION"})
+
+# Add dimensions
+dim = msp.add_linear_dim(base=(0, -300), p1=(0, 0), p2=(2000, 0), dimstyle="EZDXF", dxfattribs={"layer": "DIMENSIONS"})
+dim.render()
+
+# Add text
+msp.add_text("2000mm LINE", dxfattribs={"layer": "TEXT", "height": 150}).set_placement((1000, 300), align=TextEntityAlignment.MIDDLE_CENTER)
+
+doc.saveas("drawing.dxf")
+\`\`\`
+
+**RESPOND WITH ONLY THE PYTHON CODE - NO EXPLANATIONS, NO MARKDOWN, NO OTHER TEXT**
+
+Your response must start with "import ezdxf" and end with "doc.saveas('drawing.dxf')". Nothing else.`;
   }
 
   /**
-   * Extract Python code from LLM response
+   * Extract Python code from LLM response with enhanced detection
    */
   private static extractPythonCode(response: string): string | null {
-    // Try to extract code from markdown blocks
-    const codeBlockMatch = response.match(/```(?:python)?\s*([\s\S]*?)```/);
-    if (codeBlockMatch) {
-      return codeBlockMatch[1].trim();
+    console.log('EzdxfDrawingService: Extracting Python code from response');
+    console.log('Response length:', response.length);
+    console.log('Response preview:', response.substring(0, 200));
+
+    // Method 1: Try to extract code from markdown blocks
+    const codeBlockPatterns = [
+      /```python\s*([\s\S]*?)```/g,
+      /```\s*([\s\S]*?)```/g,
+      /`{3,}\s*python\s*([\s\S]*?)`{3,}/g,
+      /`{3,}\s*([\s\S]*?)`{3,}/g
+    ];
+
+    for (const pattern of codeBlockPatterns) {
+      const matches = [...response.matchAll(pattern)];
+      for (const match of matches) {
+        const code = match[1].trim();
+        if (this.isValidEzdxfCode(code)) {
+          console.log('EzdxfDrawingService: Found valid code in markdown block');
+          return code;
+        }
+      }
     }
 
-    // If no code blocks, check if the entire response is code
-    if (response.includes('import ezdxf') && response.includes('def ') && response.includes('doc.saveas')) {
-      return response.trim();
+    // Method 2: Check if the entire response is code
+    const cleanResponse = response.trim();
+    if (this.isValidEzdxfCode(cleanResponse)) {
+      console.log('EzdxfDrawingService: Entire response is valid code');
+      return cleanResponse;
     }
 
+    // Method 3: Try to find code between common delimiters
+    const delimiters = [
+      /import ezdxf[\s\S]*?doc\.saveas\([^)]+\)/,
+      /import ezdxf[\s\S]*?\.dxf['"]\)/,
+      /from ezdxf[\s\S]*?doc\.saveas\([^)]+\)/
+    ];
+
+    for (const delimiter of delimiters) {
+      const match = response.match(delimiter);
+      if (match) {
+        const code = match[0].trim();
+        if (this.isValidEzdxfCode(code)) {
+          console.log('EzdxfDrawingService: Found valid code with delimiter pattern');
+          return code;
+        }
+      }
+    }
+
+    // Method 4: Extract lines that look like Python code
+    const lines = response.split('\n');
+    let codeLines: string[] = [];
+    let inCodeBlock = false;
+
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+
+      // Start collecting if we see import ezdxf
+      if (trimmedLine.startsWith('import ezdxf') || trimmedLine.startsWith('from ezdxf')) {
+        inCodeBlock = true;
+        codeLines = [line];
+        continue;
+      }
+
+      // Continue collecting if we're in a code block
+      if (inCodeBlock) {
+        codeLines.push(line);
+
+        // Stop if we see doc.saveas
+        if (trimmedLine.includes('doc.saveas(')) {
+          const extractedCode = codeLines.join('\n').trim();
+          if (this.isValidEzdxfCode(extractedCode)) {
+            console.log('EzdxfDrawingService: Found valid code by line extraction');
+            return extractedCode;
+          }
+        }
+      }
+    }
+
+    console.log('EzdxfDrawingService: No valid Python code found in response');
+    console.log('Full response for debugging:', response);
     return null;
+  }
+
+  /**
+   * Validate if the extracted code is valid ezdxf code
+   */
+  private static isValidEzdxfCode(code: string): boolean {
+    if (!code || code.length < 50) {
+      console.log('Code validation failed: too short or empty');
+      return false;
+    }
+
+    // Must have essential ezdxf elements
+    const hasImport = code.includes('import ezdxf') || code.includes('from ezdxf');
+    const hasNewDoc = code.includes('ezdxf.new(') || code.includes('.new(');
+    const hasModelspace = code.includes('.modelspace()') || code.includes('msp =');
+    const hasSave = code.includes('.saveas(') || code.includes('doc.saveas');
+
+    console.log('Code validation:', {
+      hasImport,
+      hasNewDoc,
+      hasModelspace,
+      hasSave,
+      codeLength: code.length,
+      codePreview: code.substring(0, 100)
+    });
+
+    const isValid = hasImport && hasNewDoc && hasModelspace && hasSave;
+
+    if (!isValid) {
+      console.log('Code validation failed - missing required elements');
+      if (!hasImport) console.log('Missing: import ezdxf');
+      if (!hasNewDoc) console.log('Missing: ezdxf.new()');
+      if (!hasModelspace) console.log('Missing: .modelspace()');
+      if (!hasSave) console.log('Missing: .saveas()');
+    }
+
+    return isValid;
   }
 
   /**
