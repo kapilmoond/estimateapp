@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { EzdxfDrawingService, DrawingRequest, DrawingResult } from '../services/ezdxfDrawingService';
 import { DrawingDebugDisplay } from './DrawingDebugDisplay';
 import { DrawingCodeGenerator } from '../services/drawingCodeGenerator';
 import { DrawingSpecificationParser } from '../services/drawingSpecificationParser';
+import { DrawingSettingsPanel, DrawingSettings } from './DrawingSettingsPanel';
+import { DrawingSettingsService } from '../services/drawingSettingsService';
 
 interface EzdxfDrawingInterfaceProps {
   userInput: string;
