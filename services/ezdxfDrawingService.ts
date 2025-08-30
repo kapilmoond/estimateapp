@@ -148,7 +148,7 @@ export class EzdxfDrawingService {
    * Build comprehensive prompt for ezdxf code generation
    */
   private static buildDrawingPrompt(request: DrawingRequest): string {
-    return `You are a professional CAD engineer and Python developer specializing in ezdxf library for creating technical drawings.
+    return `You are a professional CAD engineer and Python developer specializing in ezdxf library version 1.4.2 for creating technical drawings.
 
 **CRITICAL INSTRUCTION: You must respond with ONLY executable Python code. No explanations, no markdown formatting, no text before or after the code. Just the raw Python code that can be executed directly.**
 
@@ -169,29 +169,29 @@ ${request.guidelines}
 **REFERENCE MATERIALS:**
 ${request.referenceText}
 
-**COMPLETE EZDXF LIBRARY REFERENCE AND DOCUMENTATION:**
+**COMPLETE EZDXF 1.4.2 LIBRARY REFERENCE - OFFICIAL VERIFIED SYNTAX:**
 
-**CRITICAL: This is the complete ezdxf documentation. Use EXACTLY these patterns and methods.**
+**CRITICAL: This is the complete, accurate ezdxf documentation based on official sources. Use EXACTLY these patterns and methods.**
 
-**1. ESSENTIAL IMPORTS AND SETUP:**
+**1. DOCUMENT CREATION AND LAYER SETUP (VERIFIED):**
 \`\`\`python
 import ezdxf
-from ezdxf import colors
 from ezdxf.enums import TextEntityAlignment
-from ezdxf.tools.standards import setup_dimstyle
-import math
 
-# Create new DXF document with setup=True for dimension styles
-doc = ezdxf.new("R2010", setup=True)
-msp = doc.modelspace()
+# CORRECT: Create new DXF document with standard resources
+doc = ezdxf.new("R2010", setup=True)  # Creates standard linetypes and text styles
+msp = doc.modelspace()  # Get modelspace for adding entities
 
-# Create professional layers with proper colors
-doc.layers.add("CONSTRUCTION", color=colors.WHITE)    # Main geometry - white/black
-doc.layers.add("DIMENSIONS", color=colors.RED)        # Dimensions - red
-doc.layers.add("TEXT", color=colors.GREEN)            # Text and labels - green
-doc.layers.add("CENTERLINES", color=colors.CYAN)      # Centerlines - cyan
-doc.layers.add("HATCHING", color=colors.YELLOW)       # Hatching patterns - yellow
-doc.layers.add("HIDDEN", color=colors.BLUE)           # Hidden lines - blue
+# CORRECT: Create layers (verified syntax)
+doc.layers.add(name="CONSTRUCTION", color=7)    # White/black for main geometry
+doc.layers.add(name="DIMENSIONS", color=1)      # Red for dimensions
+doc.layers.add(name="TEXT", color=3)            # Green for text
+doc.layers.add(name="HATCHING", color=2)        # Yellow for hatching
+doc.layers.add(name="CENTERLINES", color=5, linetype="CENTER")  # Blue centerlines
+
+# Standard linetypes available after setup=True:
+# "CONTINUOUS", "DASHED", "DASHDOT", "DOTTED", "CENTER", "PHANTOM"
+# "DASHED2", "DASHDOT2", "DOTTED2", "CENTER2", "PHANTOM2"
 \`\`\`
 
 **2. COMPLETE ENTITY CREATION REFERENCE:**
@@ -231,62 +231,59 @@ ellipse = msp.add_ellipse((0, 0), major_axis=(5, 0), ratio=0.5,
                          dxfattribs={"layer": "CONSTRUCTION"})
 \`\`\`
 
-**2.3 TEXT AND SIMPLE ANNOTATIONS:**
+**2.3 TEXT (VERIFIED OFFICIAL SYNTAX):**
 \`\`\`python
-# Simple text (AVOID COMPLEX LEADERS - USE SIMPLE TEXT)
+# CORRECT: Simple text entity (verified syntax)
 text = msp.add_text("LABEL", dxfattribs={"layer": "TEXT", "height": 25})
 text.set_placement((100, 100), align=TextEntityAlignment.MIDDLE_LEFT)
 
-# PROFESSIONAL ANNOTATION METHOD (NO LEADERS):
+# CORRECT: Text alignment options (from official documentation):
+# TextEntityAlignment.LEFT, TextEntityAlignment.CENTER, TextEntityAlignment.RIGHT
+# TextEntityAlignment.MIDDLE_LEFT, TextEntityAlignment.MIDDLE_CENTER, TextEntityAlignment.MIDDLE_RIGHT
+# TextEntityAlignment.TOP_LEFT, TextEntityAlignment.TOP_CENTER, TextEntityAlignment.TOP_RIGHT
+# TextEntityAlignment.BOTTOM_LEFT, TextEntityAlignment.BOTTOM_CENTER, TextEntityAlignment.BOTTOM_RIGHT
+
+# SIMPLE ANNOTATION METHOD (NO COMPLEX LEADERS):
 # 1. Draw simple line for pointer
 msp.add_line((50, 50), (150, 100), dxfattribs={"layer": "DIMENSIONS"})
 # 2. Add text at end of line
 msp.add_text("CONCRETE M20", dxfattribs={"layer": "TEXT", "height": 20}).set_placement((150, 100))
 
-# Text alignment options (USE THESE ONLY):
-# TextEntityAlignment.LEFT
-# TextEntityAlignment.CENTER
-# TextEntityAlignment.RIGHT
-# TextEntityAlignment.MIDDLE_CENTER
-# TextEntityAlignment.MIDDLE_LEFT
-# TextEntityAlignment.MIDDLE_RIGHT
-
-# AVOID: Complex leaders, MTEXT, rotated text unless specifically needed
-# KEEP IT SIMPLE: Use basic text with simple positioning
+# AVOID: msp.add_leader() - causes errors
+# AVOID: Complex MTEXT unless specifically needed
 \`\`\`
 
-**3. COMPLETE DIMENSIONING SYSTEM:**
+**3. DIMENSIONS (VERIFIED OFFICIAL SYNTAX):**
 
-**3.1 LINEAR DIMENSIONS:**
+**3.1 LINEAR DIMENSIONS (FROM OFFICIAL TUTORIAL):**
 \`\`\`python
-# Horizontal dimension
+# CORRECT: Horizontal dimension (official syntax)
 dim = msp.add_linear_dim(
-    base=(0, -2),        # Dimension line position (any point on the line)
+    base=(3, 2),         # Location of dimension line
     p1=(0, 0),           # First measurement point
-    p2=(10, 0),          # Second measurement point
-    text="<>",           # "<>" = actual measurement, or custom text
-    dimstyle="EZDXF",    # Dimension style
+    p2=(3, 0),           # Second measurement point
+    dimstyle="EZDXF",    # Default dimension style
     dxfattribs={"layer": "DIMENSIONS"}
 )
 dim.render()  # CRITICAL: Always call render() after creating dimensions
 
-# Vertical dimension (angle=90)
+# CORRECT: Vertical dimension (angle=90)
 dim = msp.add_linear_dim(
     base=(-2, 0), p1=(0, 0), p2=(0, 10), angle=90,
     dimstyle="EZDXF", dxfattribs={"layer": "DIMENSIONS"}
 )
 dim.render()
 
-# Aligned dimension (parallel to measured line)
+# CORRECT: Aligned dimension (parallel to measured line)
 dim = msp.add_aligned_dim(
-    p1=(0, 0), p2=(5, 3), distance=1,  # distance = offset from measured line
+    p1=(0, 2), p2=(3, 0), distance=1,  # distance = offset from measured line
     dimstyle="EZDXF", dxfattribs={"layer": "DIMENSIONS"}
 )
 dim.render()
 
-# Rotated dimension (at specific angle)
+# CORRECT: Rotated dimension (at specific angle)
 dim = msp.add_linear_dim(
-    base=(0, -2), p1=(0, 0), p2=(10, 5), angle=30,  # 30° dimension line
+    base=(3, 2), p1=(3, 0), p2=(6, 0), angle=-30,  # angle in degrees
     dimstyle="EZDXF", dxfattribs={"layer": "DIMENSIONS"}
 )
 dim.render()
@@ -383,41 +380,52 @@ dim = msp.add_linear_dim(
 dim.render()
 \`\`\`
 
-**4. PROFESSIONAL HATCHING THAT ACTUALLY WORKS:**
+**4. HATCHING (VERIFIED OFFICIAL SYNTAX):**
 
-**4.1 WORKING CONCRETE HATCHING:**
+**4.1 SOLID FILL HATCH (FROM OFFICIAL TUTORIAL):**
 \`\`\`python
-# CONCRETE HATCHING - Use simple patterns that work
-hatch = msp.add_hatch(dxfattribs={"layer": "HATCHING"})
-hatch.set_pattern_fill("ANSI31", scale=1.0, angle=45)  # Diagonal lines for concrete
-# Add boundary - MUST be closed polyline
-boundary_points = [(0, 0), (1000, 0), (1000, 500), (0, 500)]
-hatch.paths.add_polyline_path(boundary_points, is_closed=True)
+# CORRECT: Solid fill hatch (default color=7, white/black)
+hatch = msp.add_hatch(color=2, dxfattribs={"layer": "HATCHING"})
+# CORRECT: Add boundary path (must be closed)
+hatch.paths.add_polyline_path(
+    [(0, 0), (10, 0), (10, 10), (0, 10)], is_closed=True
+)
 \`\`\`
 
-**4.2 WORKING BRICK/MASONRY HATCHING:**
+**4.2 PATTERN FILL HATCH (VERIFIED PATTERNS):**
 \`\`\`python
-# BRICK HATCHING - Use ANSI31 pattern
+# CORRECT: Pattern hatch for concrete/masonry
 hatch = msp.add_hatch(dxfattribs={"layer": "HATCHING"})
-hatch.set_pattern_fill("ANSI31", scale=2.0, angle=0)   # Horizontal lines for brick
-boundary_points = [(0, 0), (1000, 0), (1000, 500), (0, 500)]
-hatch.paths.add_polyline_path(boundary_points, is_closed=True)
+hatch.set_pattern_fill("ANSI31", scale=0.5)  # ANSI31 = Iron, Brick, Stone masonry
+hatch.paths.add_polyline_path(
+    [(0, 0), (10, 0), (10, 10), (0, 10)], is_closed=True
+)
+
+# CORRECT: Other verified patterns:
+# "ANSI31" - Iron, Brick, Stone masonry
+# "ANSI32" - Steel
+# "ANSI33" - Bronze, Brass, Copper
+# "ANSI34" - Plastic, Rubber
 \`\`\`
 
-**4.3 WORKING EARTH/SOIL HATCHING:**
+**4.3 MULTIPLE BOUNDARY PATHS (ISLANDS):**
 \`\`\`python
-# EARTH HATCHING - Use dots pattern
-hatch = msp.add_hatch(dxfattribs={"layer": "HATCHING"})
-hatch.set_pattern_fill("DOTS", scale=50.0, angle=0)    # Dots for earth
-boundary_points = [(0, 0), (1000, 0), (1000, 500), (0, 500)]
-hatch.paths.add_polyline_path(boundary_points, is_closed=True)
-\`\`\`
+# CORRECT: Hatch with islands (from official tutorial)
+hatch = msp.add_hatch(color=1, dxfattribs={"hatch_style": 0})  # nested style
 
-**CRITICAL HATCHING RULES:**
-- Use simple patterns: "ANSI31", "DOTS", "LINE"
-- Scale between 1.0 to 5.0 for visibility
-- Always use closed polyline paths
-- Test patterns: ANSI31 (diagonal), LINE (horizontal), DOTS (stipple)
+# External boundary
+hatch.paths.add_polyline_path(
+    [(0, 0), (10, 0), (10, 10), (0, 10)],
+    is_closed=True,
+    flags=1  # BOUNDARY_PATH_EXTERNAL
+)
+
+# Internal boundary (island)
+hatch.paths.add_polyline_path(
+    [(2, 2), (8, 2), (8, 8), (2, 8)],
+    is_closed=True,
+    flags=16  # BOUNDARY_PATH_OUTERMOST
+)
 \`\`\`
 
 **5. BLOCKS AND REUSABLE ELEMENTS:**
