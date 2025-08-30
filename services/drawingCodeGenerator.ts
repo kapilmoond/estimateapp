@@ -24,7 +24,14 @@ export class DrawingCodeGenerator {
   private static generateDocumentSetup(): string {
     return '# Create document with setup=True for dimension styles\n' +
            'doc = ezdxf.new("R2010", setup=True)\n' +
-           'msp = doc.modelspace()';
+           'msp = doc.modelspace()\n' +
+           '\n' +
+           '# Ensure Standard text style exists and is properly configured\n' +
+           'if "Standard" not in doc.styles:\n' +
+           '    doc.styles.add("Standard", font="arial.ttf")\n' +
+           'text_style = doc.styles.get("Standard")\n' +
+           'text_style.dxf.height = 0  # Variable height\n' +
+           'text_style.dxf.width = 1.0  # Width factor';
   }
 
   private static generateLayers(layers: any[]): string {
@@ -40,26 +47,43 @@ export class DrawingCodeGenerator {
   }
 
   private static generateDimensionStyle(spec: any): string {
-    const baseTextHeight = 100;
-    const scaledTextHeight = Math.max(50, baseTextHeight / Math.sqrt(spec.scale || 1));
-    const arrowSize = Math.max(25, scaledTextHeight * 0.5);
+    // Use larger text height for better visibility
+    const baseTextHeight = 200;  // Increased from 100
+    const scaledTextHeight = Math.max(100, baseTextHeight / Math.sqrt(spec.scale || 1));
+    const arrowSize = Math.max(50, scaledTextHeight * 0.4);
 
-    return '# Configure dimension style for visible text and arrows\n' +
+    return '# Configure dimension style for VISIBLE text and arrows\n' +
            'dimstyle = doc.dimstyles.get("Standard")\n' +
-           'dimstyle.dxf.dimtxt = ' + scaledTextHeight + '        # Text height\n' +
+           '# CRITICAL: Text visibility settings\n' +
+           'dimstyle.dxf.dimtxt = ' + scaledTextHeight + '        # Text height (LARGE for visibility)\n' +
            'dimstyle.dxf.dimasz = ' + arrowSize + '         # Arrow size\n' +
            'dimstyle.dxf.dimexe = ' + Math.round(arrowSize * 0.5) + '         # Extension beyond dimension line\n' +
-           'dimstyle.dxf.dimexo = ' + Math.round(arrowSize * 0.2) + '          # Extension line offset\n' +
-           'dimstyle.dxf.dimgap = ' + Math.round(arrowSize * 0.2) + '         # Gap around text\n' +
+           'dimstyle.dxf.dimexo = ' + Math.round(arrowSize * 0.3) + '          # Extension line offset\n' +
+           'dimstyle.dxf.dimgap = ' + Math.round(arrowSize * 0.3) + '         # Gap around text\n' +
+           '# Text positioning and visibility\n' +
+           'dimstyle.dxf.dimtad = 1          # Text above dimension line\n' +
+           'dimstyle.dxf.dimjust = 0         # Center text horizontally\n' +
+           'dimstyle.dxf.dimtih = 0          # Text inside horizontal\n' +
+           'dimstyle.dxf.dimtoh = 0          # Text outside horizontal\n' +
+           '# Colors for visibility\n' +
            'dimstyle.dxf.dimclrt = 1         # Text color (red)\n' +
            'dimstyle.dxf.dimclrd = 1         # Dimension line color (red)\n' +
            'dimstyle.dxf.dimclre = 1         # Extension line color (red)\n' +
-           'dimstyle.dxf.dimtad = 1          # Text above dimension line\n' +
-           'dimstyle.dxf.dimjust = 0         # Center text\n' +
+           '# Arrow configuration\n' +
            'dimstyle.dxf.dimblk = ""         # Use default arrow blocks\n' +
            'dimstyle.dxf.dimblk1 = ""        # First arrow block\n' +
            'dimstyle.dxf.dimblk2 = ""        # Second arrow block\n' +
-           'dimstyle.dxf.dimtsz = 0          # Use arrows (not ticks)';
+           'dimstyle.dxf.dimtsz = 0          # Use arrows (not ticks)\n' +
+           '# Force text display\n' +
+           'dimstyle.dxf.dimtxsty = "Standard"  # Use standard text style\n' +
+           'dimstyle.dxf.dimscale = 1.0      # Overall scale factor\n' +
+           '\n' +
+           '# CRITICAL: Force dimension text visibility\n' +
+           'dimstyle.dxf.dimtfac = 1.0       # Text scale factor\n' +
+           'dimstyle.dxf.dimlfac = 1.0       # Linear scale factor\n' +
+           'dimstyle.dxf.dimrnd = 0          # Rounding value\n' +
+           'dimstyle.dxf.dimdec = 0          # Decimal places\n' +
+           'dimstyle.dxf.dimzin = 0          # Zero suppression';
   }
 
   private static generateElements(elements: any[]): string {
