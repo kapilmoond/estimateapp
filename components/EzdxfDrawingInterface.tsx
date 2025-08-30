@@ -31,7 +31,9 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
   const [showCode, setShowCode] = useState(false);
   const [serverStatus, setServerStatus] = useState<{ running: boolean; message: string; version?: string } | null>(null);
   const [isCheckingServer, setIsCheckingServer] = useState(false);
-  // Single mode - attribute-based drawing generation
+  // Settings management
+  const [drawingSettings, setDrawingSettings] = useState<DrawingSettings>(DrawingSettingsService.loadSettings());
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
 
   // Debug information
   const [debugInfo, setDebugInfo] = useState<{
@@ -119,9 +121,9 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
       console.log('LLM Attribute Specification:', specification);
       setDebugInfo(prev => ({ ...prev, llmOutput: JSON.stringify(specification, null, 2) }));
 
-      // Step 2: App generates reliable Python code from attributes
+      // Step 2: App generates reliable Python code from attributes using settings
       setCurrentStep('Generating professional Python code from attributes...');
-      const pythonCode = DrawingCodeGenerator.generatePythonCode(specification);
+      const pythonCode = DrawingCodeGenerator.generatePythonCode(specification, drawingSettings);
       console.log('App-Generated Python Code:', pythonCode);
       setGeneratedCode(pythonCode);
       setDebugInfo(prev => ({ ...prev, extractedCode: pythonCode }));
