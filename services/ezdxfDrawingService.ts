@@ -332,52 +332,41 @@ dim = msp.add_angular_dim_2l(
 dim.render()
 \`\`\`
 
-**3.4 PROFESSIONAL DIMENSION FORMATTING:**
+**3.4 DIMENSION STYLE FOR VISIBLE TEXT (CRITICAL FIX):**
 \`\`\`python
-# CRITICAL: Proper dimension style setup for visible arrows and text
+# CRITICAL: Configure dimension style to ensure text appears
 dimstyle = doc.dimstyles.get("EZDXF")
 
-# Text settings (smaller, readable sizes)
-dimstyle.dxf.dimtxt = 25         # Text height (25 units = readable size)
+# Text settings - CRITICAL for visible dimension text
+dimstyle.dxf.dimtxt = 100        # Text height (larger for visibility)
 dimstyle.dxf.dimclrt = 1         # Text color (1 = red)
-dimstyle.dxf.dimgap = 5          # Gap around text
+dimstyle.dxf.dimgap = 25         # Gap around text
+dimstyle.dxf.dimtad = 1          # Text above dimension line
+dimstyle.dxf.dimjust = 0         # Center text on dimension line
 
-# Arrow settings (ensure arrows appear)
-dimstyle.dxf.dimasz = 15         # Arrow size (15 units = visible arrows)
-dimstyle.dxf.dimblk = ""         # Use default arrow blocks
-dimstyle.dxf.dimblk1 = ""        # First arrow block
-dimstyle.dxf.dimblk2 = ""        # Second arrow block
+# Arrow settings
+dimstyle.dxf.dimasz = 50         # Arrow size
+dimstyle.dxf.dimtsz = 0          # Set to 0 to use arrows (not ticks)
 
 # Extension line settings
-dimstyle.dxf.dimexe = 10         # Extension beyond dimension line
-dimstyle.dxf.dimexo = 5          # Extension line offset (gap from object)
-dimstyle.dxf.dimclre = 1         # Extension line color (1 = red)
+dimstyle.dxf.dimexe = 25         # Extension beyond dimension line
+dimstyle.dxf.dimexo = 10         # Extension line offset from object
+dimstyle.dxf.dimclre = 1         # Extension line color
 
 # Dimension line settings
-dimstyle.dxf.dimclrd = 1         # Dimension line color (1 = red)
-dimstyle.dxf.dimdec = 0          # No decimal places for whole numbers
+dimstyle.dxf.dimclrd = 1         # Dimension line color
+dimstyle.dxf.dimdec = 0          # No decimal places
 
-# WORKING DIMENSION EXAMPLES:
-# Horizontal dimension with visible arrows and text
+# WORKING DIMENSION WITH VISIBLE TEXT:
 dim = msp.add_linear_dim(
-    base=(0, -100),              # 100 units below the line
-    p1=(0, 0),                   # Start point
-    p2=(2000, 0),                # End point (2000mm = 2m)
-    text="<>",                   # Use automatic measurement
-    dimstyle="EZDXF",
+    base=(0, -200),              # Position dimension line
+    p1=(0, 0),                   # Start measurement point
+    p2=(2000, 0),                # End measurement point
+    dimstyle="EZDXF",            # Use configured style
     dxfattribs={"layer": "DIMENSIONS"}
 )
 dim.render()  # CRITICAL: Always call render()
-
-# Vertical dimension
-dim = msp.add_linear_dim(
-    base=(-100, 0),              # 100 units to the left
-    p1=(0, 0), p2=(0, 1000),     # 1000mm vertical
-    angle=90,                    # Vertical orientation
-    dimstyle="EZDXF",
-    dxfattribs={"layer": "DIMENSIONS"}
-)
-dim.render()
+\`\`\`
 \`\`\`
 
 **4. HATCHING (VERIFIED OFFICIAL SYNTAX):**
@@ -603,57 +592,52 @@ def create_wall_section_with_stepped_foundation():
     return doc
 \`\`\`
 
-**PROFESSIONAL DRAWING STANDARDS - FOLLOW EXACTLY:**
+**CRITICAL PROFESSIONAL DRAWING STANDARDS:**
 
-**1. DIMENSION REQUIREMENTS:**
-- Use smaller text heights (25 units max)
-- Use color index 1 (red) for all dimension elements
-- Always use "<>" for automatic measurement text
-- Set proper gaps: dimexo=5, dimgap=5, dimexe=10
-- Arrow size: dimasz=15 for visibility
+**1. DIMENSION TEXT REQUIREMENTS (MUST APPEAR):**
+- Text height: 100 units for visibility
+- Use dimtad=1 (text above dimension line)
+- Use dimjust=0 (center text)
+- Set dimtsz=0 to use arrows (not ticks)
 - ALWAYS call dim.render() after each dimension
+- Use automatic measurement (no custom text)
 
-**2. LAYER ORGANIZATION:**
-- CONSTRUCTION: Main geometry (color=colors.WHITE)
-- DIMENSIONS: All dimensions (color=colors.RED)
-- HATCHING: Material patterns (appropriate colors)
-- NO TEXT LAYER unless specifically requested
+**2. CLEAN DRAWING REQUIREMENTS:**
+- NO TITLES of any kind
+- NO instruction boxes or labels
+- NO unnecessary text elements
+- NO material callouts unless specifically requested
+- ONLY the technical drawing itself
+- Focus purely on geometry and dimensions
 
-**3. HATCHING STANDARDS:**
-- Use simple patterns: "ANSI31", "DOTS", "LINE"
-- Scale between 1.0 to 3.0 for visibility
-- Concrete: ANSI31, scale=1.0, angle=45
-- Brick: ANSI31, scale=2.0, angle=0
-- Earth: DOTS, scale=50.0
+**3. LAYER ORGANIZATION (MINIMAL):**
+- CONSTRUCTION: Main geometry only
+- DIMENSIONS: Dimensions with visible text
+- HATCHING: Material patterns only
+- NO TEXT LAYER unless specifically needed
 
 **4. PROFESSIONAL APPEARANCE:**
-- NO oversized titles or unnecessary text
-- NO instruction boxes or labels unless requested
-- NO LEADERS - use simple text and lines only
-- NO complex annotations - keep it simple
-- Clean, minimal design focused on the drawing
-- Proper spacing and proportions
-- Use consistent coordinate system
+- Clean, minimal design
+- No decorative elements
+- No title blocks
+- No annotation boxes
+- Pure technical drawing only
+- Proper scaling and proportions
 
-**5. CRITICAL EXECUTION RULES:**
+**5. FORBIDDEN ELEMENTS:**
+- NO titles or headers
+- NO instruction text
+- NO material labels (unless specifically requested)
+- NO complex leaders or callouts
+- NO decorative text elements
+- NO unnecessary annotations
+
+**6. CRITICAL EXECUTION:**
 - ALWAYS call dim.render() after creating dimensions
 - Use setup=True when creating document
+- Configure dimension style for visible text
 - Save with doc.saveas("drawing.dxf")
-- Test all patterns and settings for visibility
-
-**6. FORBIDDEN METHODS (WILL CAUSE ERRORS):**
-- DO NOT use msp.add_leader() - causes errors
-- DO NOT use leader.set_text() - method does not exist
-- DO NOT use complex MTEXT unless specifically needed
-- DO NOT use rotated text unless specifically needed
-- AVOID complex annotations - use simple text and lines only
-
-**7. SAFE ANNOTATION METHOD:**
-\`\`\`python
-# CORRECT: Simple annotation with line and text
-msp.add_line((50, 50), (150, 100), dxfattribs={"layer": "DIMENSIONS"})
-msp.add_text("LABEL", dxfattribs={"layer": "TEXT", "height": 20}).set_placement((150, 100))
-\`\`\`
+- Focus on drawing quality, not decoration
 
 **CRITICAL OUTPUT REQUIREMENTS:**
 
@@ -663,52 +647,61 @@ msp.add_text("LABEL", dxfattribs={"layer": "TEXT", "height": 20}).set_placement(
 4. **INCLUDE RENDER CALLS** - Always call dim.render() after creating dimensions
 5. **USE PROPER SYNTAX** - Follow exact ezdxf patterns shown above
 
-**PROFESSIONAL WORKING EXAMPLE - 2M LINE WITH PROPER DIMENSIONS:**
+**WORKING EXAMPLE - CLEAN LINE WITH VISIBLE DIMENSION TEXT:**
 \`\`\`python
 import ezdxf
-from ezdxf import colors
 
 # Create document with setup=True for dimension styles
 doc = ezdxf.new("R2010", setup=True)
 msp = doc.modelspace()
 
-# Create professional layers
-doc.layers.add("CONSTRUCTION", color=colors.WHITE)
-doc.layers.add("DIMENSIONS", color=colors.RED)
+# Create minimal layers
+doc.layers.add(name="CONSTRUCTION", color=7)
+doc.layers.add(name="DIMENSIONS", color=1)
 
-# Configure dimension style for professional appearance
+# CRITICAL: Configure dimension style for visible text
 dimstyle = doc.dimstyles.get("EZDXF")
-dimstyle.dxf.dimtxt = 25         # Text height (readable size)
-dimstyle.dxf.dimasz = 15         # Arrow size (visible arrows)
-dimstyle.dxf.dimexe = 10         # Extension beyond dimension line
-dimstyle.dxf.dimexo = 5          # Extension line offset (gap)
-dimstyle.dxf.dimgap = 5          # Gap around text
+dimstyle.dxf.dimtxt = 100        # Text height (larger for visibility)
+dimstyle.dxf.dimasz = 50         # Arrow size
+dimstyle.dxf.dimexe = 25         # Extension beyond dimension line
+dimstyle.dxf.dimexo = 10         # Extension line offset
+dimstyle.dxf.dimgap = 25         # Gap around text
+dimstyle.dxf.dimtad = 1          # Text above dimension line
+dimstyle.dxf.dimjust = 0         # Center text
+dimstyle.dxf.dimtsz = 0          # Use arrows (not ticks)
 dimstyle.dxf.dimclrt = 1         # Text color (red)
 dimstyle.dxf.dimclrd = 1         # Dimension line color (red)
 dimstyle.dxf.dimclre = 1         # Extension line color (red)
-dimstyle.dxf.dimdec = 0          # No decimal places
 
 # Draw 2m line (2000mm in drawing units)
 msp.add_line((0, 0), (2000, 0), dxfattribs={"layer": "CONSTRUCTION"})
 
-# Add dimension with proper gaps and arrows
+# Add dimension with visible text
 dim = msp.add_linear_dim(
-    base=(0, -100),              # 100mm below the line
+    base=(0, -200),              # Position below the line
     p1=(0, 0),                   # Start point
     p2=(2000, 0),                # End point
-    text="<>",                   # Use automatic measurement
     dimstyle="EZDXF",
     dxfattribs={"layer": "DIMENSIONS"}
 )
 dim.render()  # CRITICAL: Always call render()
 
-# Save the drawing
+# Save the drawing (NO TITLES, NO EXTRA TEXT)
 doc.saveas("drawing.dxf")
 \`\`\`
 
+**CRITICAL FINAL REQUIREMENTS:**
+
+1. **DIMENSION TEXT MUST BE VISIBLE**: Configure dimstyle with dimtxt=100, dimtad=1, dimjust=0
+2. **NO TITLES OR LABELS**: Do not add any title blocks, headers, or unnecessary text
+3. **CLEAN DRAWING ONLY**: Focus purely on geometry and dimensions
+4. **ALWAYS CALL dim.render()**: After every dimension creation
+5. **USE AUTOMATIC MEASUREMENT**: Let ezdxf calculate dimension values
+
 **RESPOND WITH ONLY THE PYTHON CODE - NO EXPLANATIONS, NO MARKDOWN, NO OTHER TEXT**
 
-Your response must start with "import ezdxf" and end with "doc.saveas('drawing.dxf')". Nothing else.`;
+Your response must start with "import ezdxf" and end with "doc.saveas('drawing.dxf')".
+Create ONLY the technical drawing with visible dimension text. NO titles, NO labels, NO extra text.`;
   }
 
   /**
