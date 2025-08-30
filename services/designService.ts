@@ -65,13 +65,13 @@ export class DesignService {
       existingDesignsContext += 'ENSURE COMPATIBILITY AND INTEGRATION WITH THESE EXISTING DESIGNS.\n';
     }
 
-    const prompt = `Create a detailed component design for: ${componentName}
+    const prompt = `Create a detailed component design based on the following requirements.
+
+**COMPONENT TO DESIGN:**
+${userRequirements}
 
 **PROJECT CONTEXT:**
 Project Scope: ${projectScope}
-
-**CURRENT REQUIREMENTS:**
-${userRequirements}
 
 **DESIGN GUIDELINES:**
 ${guidelines}
@@ -80,6 +80,8 @@ ${guidelines}
 ${referenceText}
 
 ${existingDesignsContext}
+
+**IMPORTANT: Start your response with a clear heading that includes the specific component name (e.g., "# Reinforced Concrete Foundation Design" or "## Steel Beam Component Design")**
 
 **DESIGN REQUIREMENTS:**
 1. Provide comprehensive structural calculations and load analysis
@@ -124,9 +126,15 @@ Focus on creating a professional, implementable design that integrates seamlessl
         throw new Error('Generated design content is too short or empty. Please try again with more specific requirements.');
       }
 
+      // Extract better component name from LLM response
+      const extractedName = this.extractComponentNameFromContent(designContent);
+      const finalComponentName = extractedName || componentName;
+
+      console.log('Design Service: Extracted component name:', finalComponentName);
+
       const design: ComponentDesign = {
         id: Date.now().toString(36) + Math.random().toString(36).substr(2),
-        componentName,
+        componentName: finalComponentName,
         designContent,
         specifications: {
           materials: ['concrete', 'steel', 'rebar'],
@@ -216,6 +224,41 @@ Focus on creating a professional, implementable design that integrates seamlessl
   static getDesign(designId: string): ComponentDesign | null {
     const designs = this.loadDesigns();
     return designs.find(d => d.id === designId) || null;
+  }
+
+  private static extractComponentNameFromContent(content: string): string | null {
+    // Try to extract component name from the LLM response content
+    const patterns = [
+      // Look for "Component Design for X" or "Design for X"
+      /(?:component\s+design\s+for|design\s+for)\s+(?:a\s+|an\s+)?(.+?)(?:\n|\.|\s*$)/i,
+      // Look for "X Component" or "X Design"
+      /^(.+?)\s+(?:component|design)(?:\s|:|\n)/i,
+      // Look for headings with component names
+      /^#\s*(.+?)(?:\s+component|\s+design|\s*$)/im,
+      // Look for "Component: X" or "Design: X"
+      /(?:component|design):\s*(.+?)(?:\n|\.|\s*$)/i,
+      // Look for bold text that might be component name
+      /\*\*(.+?)\*\*(?:\s+component|\s+design)/i,
+    ];
+
+    for (const pattern of patterns) {
+      const match = content.match(pattern);
+      if (match && match[1]) {
+        let name = match[1].trim();
+
+        // Clean up the extracted name
+        name = name.replace(/^(the|a|an)\s+/i, ''); // Remove articles
+        name = name.replace(/\s+/g, ' '); // Normalize spaces
+        name = name.replace(/[^\w\s-]/g, ''); // Remove special chars except hyphens
+
+        // Check if it's a meaningful name (not too short, not common words)
+        if (name.length > 2 && !['component', 'design', 'structure', 'element'].includes(name.toLowerCase())) {
+          return name;
+        }
+      }
+    }
+
+    return null;
   }
 
   static async editComponentDesign(

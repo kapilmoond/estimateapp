@@ -294,8 +294,10 @@ const App: React.FC = () => {
 
     console.log('Project reset - all data cleared');
 
-    // Open template selector for new project
-    setIsTemplateSelectorOpen(true);
+    // Ask user if they want to use templates for new project
+    if (confirm('Would you like to start with a master template for this new project?')) {
+      setIsTemplateSelectorOpen(true);
+    }
   };
   
   const handleFileUpload = (newFiles: ReferenceDoc[]) => {
@@ -416,9 +418,30 @@ const App: React.FC = () => {
     setError(null);
 
     try {
-      // Extract component name from user input or use a default
-      const componentMatch = userInput.match(/design\s+(?:for\s+)?(.+?)(?:\s|$)/i);
-      const componentName = componentMatch ? componentMatch[1].trim() : 'Component';
+      // Extract component name from user input with better regex
+      let componentName = 'Component';
+
+      // Try multiple patterns to extract component name
+      const patterns = [
+        /design\s+(?:a\s+|an\s+)?(.+?)(?:\s+for|\s+with|\s*$)/i,
+        /(?:create|make|build)\s+(?:a\s+|an\s+)?(.+?)(?:\s+for|\s+with|\s*$)/i,
+        /(.+?)(?:\s+design|\s+component|\s*$)/i
+      ];
+
+      for (const pattern of patterns) {
+        const match = userInput.match(pattern);
+        if (match && match[1] && match[1].trim().length > 2) {
+          componentName = match[1].trim();
+          // Clean up common words
+          componentName = componentName.replace(/^(the|a|an)\s+/i, '');
+          break;
+        }
+      }
+
+      // If still generic, use a timestamp-based name
+      if (componentName === 'Component' || componentName.length < 3) {
+        componentName = `Component_${new Date().toLocaleDateString().replace(/\//g, '_')}`;
+      }
 
       console.log(`Design Request: Component="${componentName}", Input="${userInput}"`);
 
@@ -863,6 +886,7 @@ Focus on creating exactly what the user requested while leveraging all available
           onOpenKnowledgeBase={() => setIsKnowledgeBaseOpen(true)}
           onOpenContextManager={() => setIsContextManagerOpen(true)}
           onOpenTemplateManager={() => setIsTemplateManagerOpen(true)}
+          onOpenTemplateSelector={() => setIsTemplateSelectorOpen(true)}
           guidelinesCount={guidelines.filter(g => g.isActive).length}
           currentProvider={currentProvider}
           outputMode={outputMode}
@@ -884,6 +908,14 @@ Focus on creating exactly what the user requested while leveraging all available
               setLoadingMessage('');
             }
           }}
+          conversationHistory={conversationHistory}
+          finalizedScope={finalizedScope}
+          keywords={keywords}
+          hsrItems={hsrItems}
+          finalEstimate={finalEstimateText}
+          designs={designs}
+          drawings={drawings}
+          referenceText={referenceText}
         />
 
         {/* Output Mode Selector and Knowledge Base Toggle */}

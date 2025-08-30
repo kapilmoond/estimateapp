@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { ReferenceDoc } from '../types';
-import { FileUpload } from './FileUpload';
-import { KnowledgeBaseDisplay } from './KnowledgeBaseDisplay';
+import { ReferenceDoc, ChatMessage, ComponentDesign, TechnicalDrawing } from '../types';
+import { SaveTemplateButton } from './SaveTemplateButton';
 
 interface CollapsibleControlPanelProps {
   // Settings Props
@@ -10,6 +9,7 @@ interface CollapsibleControlPanelProps {
   onOpenKnowledgeBase: () => void;
   onOpenContextManager?: () => void;
   onOpenTemplateManager?: () => void;
+  onOpenTemplateSelector?: () => void;
 
   // Status Props
   guidelinesCount: number;
@@ -21,6 +21,16 @@ interface CollapsibleControlPanelProps {
   onNewProject: () => void;
   onToggleProjectData: () => void;
   onTestLLM: () => void;
+
+  // Template Props
+  conversationHistory: ChatMessage[];
+  finalizedScope: string;
+  keywords: string[];
+  hsrItems: any[];
+  finalEstimate: string;
+  designs: ComponentDesign[];
+  drawings: TechnicalDrawing[];
+  referenceText: string;
 }
 
 export const CollapsibleControlPanel: React.FC<CollapsibleControlPanelProps> = ({
@@ -29,13 +39,22 @@ export const CollapsibleControlPanel: React.FC<CollapsibleControlPanelProps> = (
   onOpenKnowledgeBase,
   onOpenContextManager,
   onOpenTemplateManager,
+  onOpenTemplateSelector,
   guidelinesCount,
   currentProvider,
   outputMode,
   uploadedFiles,
   onNewProject,
   onToggleProjectData,
-  onTestLLM
+  onTestLLM,
+  conversationHistory,
+  finalizedScope,
+  keywords,
+  hsrItems,
+  finalEstimate,
+  designs,
+  drawings,
+  referenceText
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -52,14 +71,35 @@ export const CollapsibleControlPanel: React.FC<CollapsibleControlPanelProps> = (
             >
               🔄 New Project
             </button>
-            
+
             <button
               onClick={onToggleProjectData}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
             >
               📊 Project Data
             </button>
-            
+
+            {onOpenTemplateSelector && (
+              <button
+                onClick={onOpenTemplateSelector}
+                className="px-3 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-xs"
+                title="Use existing templates"
+              >
+                📋 Use Template
+              </button>
+            )}
+
+            <SaveTemplateButton
+              conversationHistory={conversationHistory}
+              finalizedScope={finalizedScope}
+              keywords={keywords}
+              hsrItems={hsrItems}
+              finalEstimate={finalEstimate}
+              designs={designs}
+              drawings={drawings}
+              referenceText={referenceText}
+            />
+
             <button
               onClick={onTestLLM}
               className="px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-xs"
