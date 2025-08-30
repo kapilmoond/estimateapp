@@ -47,23 +47,58 @@ export class DrawingCodeGenerator {
   }
 
   private static generateDimensionStyle(): string {
-    return '# Configure dimension style for VISIBLE text and arrows\n' +
+    return '# Configure dimension style for VISIBLE text and arrows/ticks\n' +
            'dimstyle = doc.dimstyles.get("Standard")\n' +
-           'dimstyle.dxf.dimtxt = 200        # Text height (LARGE for visibility)\n' +
-           'dimstyle.dxf.dimasz = 80         # Arrow size\n' +
-           'dimstyle.dxf.dimexe = 40         # Extension beyond dimension line\n' +
-           'dimstyle.dxf.dimexo = 24         # Extension line offset\n' +
-           'dimstyle.dxf.dimgap = 24         # Gap around text\n' +
+           '\n' +
+           '# CRITICAL: Text visibility settings\n' +
+           'dimstyle.dxf.dimtxt = 250        # Text height (EXTRA LARGE for visibility)\n' +
            'dimstyle.dxf.dimtad = 1          # Text above dimension line\n' +
            'dimstyle.dxf.dimjust = 0         # Center text horizontally\n' +
+           'dimstyle.dxf.dimtih = 0          # Keep text horizontal inside\n' +
+           'dimstyle.dxf.dimtoh = 0          # Keep text horizontal outside\n' +
+           '\n' +
+           '# CRITICAL: Arrow/Tick configuration (try arrows first, fallback to ticks)\n' +
+           'dimstyle.dxf.dimasz = 100        # Arrow/tick size (LARGE)\n' +
+           'dimstyle.dxf.dimtsz = 50         # Tick size (fallback if arrows fail)\n' +
+           'dimstyle.dxf.dimblk = ""         # Default arrow block\n' +
+           'dimstyle.dxf.dimblk1 = ""        # First arrow block\n' +
+           'dimstyle.dxf.dimblk2 = ""        # Second arrow block\n' +
+           '\n' +
+           '# Extension line settings\n' +
+           'dimstyle.dxf.dimexe = 50         # Extension beyond dimension line\n' +
+           'dimstyle.dxf.dimexo = 30         # Extension line offset\n' +
+           'dimstyle.dxf.dimgap = 30         # Gap around text\n' +
+           '\n' +
+           '# Color settings for visibility\n' +
            'dimstyle.dxf.dimclrt = 1         # Text color (red)\n' +
            'dimstyle.dxf.dimclrd = 1         # Dimension line color (red)\n' +
            'dimstyle.dxf.dimclre = 1         # Extension line color (red)\n' +
-           'dimstyle.dxf.dimblk = ""         # Use default arrow blocks\n' +
-           'dimstyle.dxf.dimblk1 = ""        # First arrow block\n' +
-           'dimstyle.dxf.dimblk2 = ""        # Second arrow block\n' +
-           'dimstyle.dxf.dimtsz = 0          # Use arrows (not ticks)\n' +
-           'dimstyle.dxf.dimtxsty = "Standard"  # Use standard text style';
+           '\n' +
+           '# Force text display\n' +
+           'dimstyle.dxf.dimtxsty = "Standard"  # Use standard text style\n' +
+           'dimstyle.dxf.dimscale = 1.0      # Overall scale factor\n' +
+           'dimstyle.dxf.dimtfac = 1.0       # Text scale factor\n' +
+           'dimstyle.dxf.dimlfac = 1.0       # Linear scale factor\n' +
+           '\n' +
+           '# Ensure dimension values are shown\n' +
+           'dimstyle.dxf.dimzin = 0          # Show all zeros\n' +
+           'dimstyle.dxf.dimdec = 0          # Decimal places\n' +
+           'dimstyle.dxf.dimrnd = 0          # No rounding\n' +
+           '\n' +
+           '# Alternative: If arrows fail, use oblique strokes (slashes)\n' +
+           '# dimstyle.dxf.dimtsz = 100      # Uncomment to force tick marks instead of arrows\n' +
+           '\n' +
+           '# BACKUP: Create tick-based dimension style if arrows fail\n' +
+           'try:\n' +
+           '    # Test if arrow style works\n' +
+           '    test_dim = msp.add_linear_dim(base=(0, -1000), p1=(0, -1000), p2=(100, -1000), dimstyle="Standard")\n' +
+           '    test_dim.render()\n' +
+           '    msp.delete_entity(test_dim)\n' +
+           'except:\n' +
+           '    # If arrows fail, switch to tick marks (slashes)\n' +
+           '    dimstyle.dxf.dimtsz = 100     # Force tick marks\n' +
+           '    dimstyle.dxf.dimasz = 0       # Disable arrows\n' +
+           '    print("Using tick marks instead of arrows for better visibility")';
   }
 
   private static generateLines(lines: any[]): string {
@@ -135,19 +170,25 @@ export class DrawingCodeGenerator {
     if (dimensions.length === 0) return '';
 
     const dimCode = dimensions.map((dim, index) => {
-      const textHeight = dim.textHeight || 200;
-      return 'dim' + (index + 1) + ' = msp.add_linear_dim(\n' +
+      const textHeight = dim.textHeight || 250;
+      return '# Linear dimension ' + (index + 1) + ' - MUST show measurement value\n' +
+             'dim' + (index + 1) + ' = msp.add_linear_dim(\n' +
              '    base=(' + dim.dimensionLinePosition[0] + ', ' + dim.dimensionLinePosition[1] + '),\n' +
              '    p1=(' + dim.point1[0] + ', ' + dim.point1[1] + '),\n' +
              '    p2=(' + dim.point2[0] + ', ' + dim.point2[1] + '),\n' +
              '    dimstyle="Standard",\n' +
-             '    text="<>",\n' +
+             '    text="<>",                    # CRITICAL: Auto measurement text\n' +
              '    dxfattribs={"layer": "' + dim.layer + '", "color": ' + dim.color + '}\n' +
              ')\n' +
-             'dim' + (index + 1) + '.render()';
+             '# CRITICAL: Render dimension to make it visible\n' +
+             'dim' + (index + 1) + '.render()\n' +
+             '\n' +
+             '# Debug: Print dimension info\n' +
+             'print(f"Dimension ' + (index + 1) + ' created: {dim' + (index + 1) + '.dxf.measurement} units")\n' +
+             'print(f"Dimension ' + (index + 1) + ' text height: {dimstyle.dxf.dimtxt}")';
     });
 
-    return '# Add linear dimensions\n' + dimCode.join('\n\n');
+    return '# Add linear dimensions with VISIBLE text and arrows/ticks\n' + dimCode.join('\n\n');
   }
 
   private static generateRadialDimensions(dimensions: any[]): string {
