@@ -43,22 +43,27 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
 
   // Get current project ID
   const getCurrentProjectId = (): string => {
-    const currentProject = ProjectService.getCurrentProject();
-    return currentProject?.id || 'default';
+    const currentProjectId = ProjectService.getCurrentProjectId();
+    return currentProjectId || 'default';
   };
 
   // Load drawings on component mount and when project changes
   useEffect(() => {
-    const projectId = getCurrentProjectId();
-    const drawings = DrawingService.loadProjectDrawings(projectId);
-    setProjectDrawings(drawings);
+    try {
+      const projectId = getCurrentProjectId();
+      const drawings = DrawingService.loadProjectDrawings(projectId);
+      setProjectDrawings(drawings);
 
-    // Load the latest drawing if available
-    const latestDrawing = DrawingService.getLatestProjectDrawing(projectId);
-    if (latestDrawing) {
-      setCurrentDrawing(latestDrawing);
-      // Restore the drawing result to display
-      onDrawingGenerated(latestDrawing.result);
+      // Load the latest drawing if available
+      const latestDrawing = DrawingService.getLatestProjectDrawing(projectId);
+      if (latestDrawing) {
+        setCurrentDrawing(latestDrawing);
+        // Restore the drawing result to display
+        onDrawingGenerated(latestDrawing.result);
+      }
+    } catch (error) {
+      console.error('Error loading drawings:', error);
+      // Continue without crashing the app
     }
   }, []);
 
@@ -170,21 +175,26 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
       setCurrentStep('Drawing generated successfully!');
 
       // Save the drawing to persistence
-      const savedDrawing = DrawingService.saveDrawing({
-        projectId: getCurrentProjectId(),
-        title: extractTitle(userInput),
-        description: extractDescription(userInput),
-        specification,
-        generatedCode: pythonCode,
-        result,
-        settings: drawingSettings
-      });
+      try {
+        const savedDrawing = DrawingService.saveDrawing({
+          projectId: getCurrentProjectId(),
+          title: extractTitle(userInput),
+          description: extractDescription(userInput),
+          specification,
+          generatedCode: pythonCode,
+          result,
+          settings: drawingSettings
+        });
 
-      setCurrentDrawing(savedDrawing);
+        setCurrentDrawing(savedDrawing);
 
-      // Update project drawings list
-      const updatedDrawings = DrawingService.loadProjectDrawings(getCurrentProjectId());
-      setProjectDrawings(updatedDrawings);
+        // Update project drawings list
+        const updatedDrawings = DrawingService.loadProjectDrawings(getCurrentProjectId());
+        setProjectDrawings(updatedDrawings);
+      } catch (error) {
+        console.error('Error saving drawing:', error);
+        // Continue without crashing - drawing still works, just not saved
+      }
 
       onDrawingGenerated(result);
 
@@ -489,9 +499,13 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
                       : 'bg-white hover:bg-gray-100'
                   }`}
                   onClick={() => {
-                    setCurrentDrawing(drawing);
-                    onDrawingGenerated(drawing.result);
-                    setGeneratedCode(drawing.generatedCode);
+                    try {
+                      setCurrentDrawing(drawing);
+                      onDrawingGenerated(drawing.result);
+                      setGeneratedCode(drawing.generatedCode);
+                    } catch (error) {
+                      console.error('Error loading drawing:', error);
+                    }
                   }}
                 >
                   <div className="flex-1">
