@@ -5,6 +5,9 @@ import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
 import * as pdfjsLib from 'pdfjs-dist';
 
+// Set worker path for PDF.js
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.mjs`;
+
 interface KnowledgeBaseManagerProps {
   isOpen: boolean;
   onClose: () => void;
@@ -58,9 +61,15 @@ export const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({
       reader.onload = async (e) => {
         try {
           const data = e.target?.result as ArrayBuffer;
+          if (!data) {
+            throw new Error('Failed to read PDF file data');
+          }
+
+          console.log('PDF.js worker source:', pdfjsLib.GlobalWorkerOptions.workerSrc);
+
           const pdf = await pdfjsLib.getDocument({ data }).promise;
           let fullText = '';
-          
+
           for (let i = 1; i <= pdf.numPages; i++) {
             const page = await pdf.getPage(i);
             const textContent = await page.getTextContent();
@@ -69,8 +78,13 @@ export const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({
           }
           resolve(fullText);
         } catch (err) {
-          reject(err);
+          console.error('PDF processing error:', err);
+          reject(new Error(`Failed to process PDF: ${err instanceof Error ? err.message : 'Unknown error'}`));
         }
+      };
+      reader.onerror = (err) => {
+        console.error('FileReader error:', err);
+        reject(new Error('Failed to read PDF file'));
       };
       reader.readAsArrayBuffer(file);
     });

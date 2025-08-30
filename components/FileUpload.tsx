@@ -54,6 +54,8 @@ const readPdfFile = (file: File): Promise<string> => {
           throw new Error("Failed to read file data.");
         }
 
+        console.log('PDF.js worker source:', pdfjsLib.GlobalWorkerOptions.workerSrc);
+
         const pdf = await pdfjsLib.getDocument({ data }).promise;
         const numPages = pdf.numPages;
         let fullText = '';
@@ -66,11 +68,13 @@ const readPdfFile = (file: File): Promise<string> => {
         }
         resolve(fullText);
       } catch (err) {
-        reject(err);
+        console.error('PDF processing error:', err);
+        reject(new Error(`Failed to process PDF: ${err instanceof Error ? err.message : 'Unknown error'}`));
       }
     };
     reader.onerror = (err) => {
-      reject(err);
+      console.error('FileReader error:', err);
+      reject(new Error('Failed to read PDF file'));
     };
     reader.readAsArrayBuffer(file);
   });

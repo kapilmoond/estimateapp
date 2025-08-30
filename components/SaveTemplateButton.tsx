@@ -31,8 +31,17 @@ export const SaveTemplateButton: React.FC<SaveTemplateButtonProps> = ({
   const [templateDescription, setTemplateDescription] = useState('');
   const [projectType, setProjectType] = useState('');
 
-  const canCreateTemplate = conversationHistory.length > 0 && 
-    (finalizedScope.trim().length > 0 || designs.length > 0 || hsrItems.length > 0);
+  const canCreateTemplate = conversationHistory.length > 2 || // At least some conversation
+    finalizedScope.trim().length > 0 ||
+    designs.length > 0 ||
+    hsrItems.length > 0;
+
+  // Debug logging
+  console.log('SaveTemplateButton - canCreateTemplate:', canCreateTemplate);
+  console.log('SaveTemplateButton - conversationHistory.length:', conversationHistory.length);
+  console.log('SaveTemplateButton - finalizedScope.length:', finalizedScope.trim().length);
+  console.log('SaveTemplateButton - designs.length:', designs.length);
+  console.log('SaveTemplateButton - hsrItems.length:', hsrItems.length);
 
   const handleSaveTemplate = async () => {
     if (!templateName.trim() || !templateDescription.trim() || !projectType.trim()) {
