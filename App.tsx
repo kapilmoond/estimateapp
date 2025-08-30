@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { HsrItem, ChatMessage, KeywordsByItem, OutputMode, UserGuideline, ComponentDesign, ConversationThread, TechnicalDrawing } from './types';
 import { continueConversation, generatePlainTextEstimate, generateKeywordsForItems } from './services/geminiService';
-import { searchHSR } from './services/hsrService';
+import { searchHSR, searchHSREnhanced } from './services/hsrService';
+import { KeywordGenerationResult, KeywordGenerationService } from './services/keywordGenerationService';
+import { KeywordManager } from './components/KeywordManager';
 import { speak } from './services/speechService';
 import { GuidelinesService } from './services/guidelinesService';
 import { ThreadService } from './services/threadService';
@@ -63,6 +65,8 @@ const App: React.FC = () => {
   const [finalizedScope, setFinalizedScope] = useState<string>('');
   const [keywords, setKeywords] = useState<string[]>([]);
   const [keywordsByItem, setKeywordsByItem] = useState<KeywordsByItem>({});
+  const [keywordGenerationResult, setKeywordGenerationResult] = useState<KeywordGenerationResult | null>(null);
+  const [subcomponentItems, setSubcomponentItems] = useState<string[]>([]);
   const [hsrItems, setHsrItems] = useState<HsrItem[]>([]);
   const [finalEstimateText, setFinalEstimateText] = useState<string>('');
   const [editInstruction, setEditInstruction] = useState<string>('');
@@ -819,6 +823,56 @@ const App: React.FC = () => {
     }
   };
 
+  // Extract subcomponent items from project scope
+  const extractSubcomponentItems = async (scope: string): Promise<string[]> => {
+    try {
+      const prompt = `Analyze the following construction project scope and extract individual construction items/activities that need cost estimation.
+
+**PROJECT SCOPE:**
+${scope}
+
+**TASK:**
+Extract INDIVIDUAL construction items/activities from the scope. Each item should be a specific work activity that can be estimated separately.
+
+**EXAMPLES:**
+- "Excavation for foundation up to 1.5m depth"
+- "Brickwork in cement mortar 1:6 for walls"
+- "Plastering with cement mortar 1:4 on internal walls"
+- "Providing and laying RCC pipe 600mm diameter"
+- "Concrete work M25 grade for foundation"
+
+**RULES:**
+1. Each item should be ONE specific construction activity
+2. Include material specifications where mentioned (mortar ratios, grades, sizes)
+3. Include work type and location if specified
+4. Separate different activities even if they're related
+5. Focus on measurable construction work items
+
+**OUTPUT FORMAT:**
+Return ONLY a numbered list of items, one per line:
+1. [Item description]
+2. [Item description]
+...
+
+Extract the construction items:`;
+
+      const response = await LLMService.generateContent(prompt);
+
+      // Parse the response to extract items
+      const lines = response.split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0)
+        .filter(line => /^\d+\./.test(line)) // Lines starting with numbers
+        .map(line => line.replace(/^\d+\.\s*/, '')) // Remove numbering
+        .filter(line => line.length > 10); // Filter out very short items
+
+      return lines.length > 0 ? lines : ['General construction work']; // Fallback
+    } catch (error) {
+      console.error('Error extracting subcomponent items:', error);
+      return ['General construction work']; // Fallback
+    }
+  };
+
   const handleFinalizeScope = async () => {
     if (conversationHistory.length <= 1) {
       setError('Please have a conversation about your project first.');
@@ -837,11 +891,16 @@ const App: React.FC = () => {
       // Add finalized scope to context
       ContextService.addStepSummary('scope', 'Project scope finalized', scope.substring(0, 200));
 
+      // Extract subcomponent items from the scope for the new keyword system
+      const extractedItems = await extractSubcomponentItems(scope);
+      setSubcomponentItems(extractedItems);
+
+      // Legacy keyword generation for backward compatibility
       const generatedKeywords = await generateKeywordsForItems(scope, '', referenceText);
-      // Extract keywords from the returned object
       const keywordsList = Object.keys(generatedKeywords);
       setKeywords(keywordsList);
       setKeywordsByItem(generatedKeywords);
+
       setStep('approvingKeywords');
     } catch (err: any) {
       console.error(err);
@@ -1214,21 +1273,25 @@ const App: React.FC = () => {
               )}
 
                 {step === 'approvingKeywords' && (
-                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                    <h3 className="text-xl font-semibold text-gray-900 mb-4">
-                      🔍 Generated Keywords
-                    </h3>
-                    <KeywordsDisplay keywords={keywords} />
-                    <div className="mt-4 flex gap-2">
-                      <button
-                        onClick={handleKeywordApproval}
-                        disabled={isAiThinking}
-                        className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 transition-colors"
-                      >
-                        ✅ Approve & Search HSR Items
-                      </button>
-                    </div>
-                  </div>
+                  <KeywordManager
+                    subcomponentItems={subcomponentItems}
+                    onKeywordsGenerated={(result) => {
+                      setKeywordGenerationResult(result);
+                      // Convert to legacy format for compatibility
+                      const legacyKeywords = result.keywordSets.flatMap(set => set.keywords);
+                      const legacyKeywordsByItem: KeywordsByItem = {};
+                      result.keywordSets.forEach(set => {
+                        legacyKeywordsByItem[set.itemDescription] = set.keywords;
+                      });
+                      setKeywords(legacyKeywords);
+                      setKeywordsByItem(legacyKeywordsByItem);
+                    }}
+                    onHSRResults={(results) => {
+                      setHsrItems(results);
+                      setStep('approvingHsrItems');
+                    }}
+                    existingKeywords={keywordGenerationResult || undefined}
+                  />
                 )}
 
                 {(step === 'approvingHsrItems' || step === 'approvingRefinedHsrItems') && (
