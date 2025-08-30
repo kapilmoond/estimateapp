@@ -122,138 +122,432 @@ ${request.guidelines}
 **REFERENCE MATERIALS:**
 ${request.referenceText}
 
-**EZDXF LIBRARY COMPLETE REFERENCE:**
+**COMPLETE EZDXF LIBRARY REFERENCE AND DOCUMENTATION:**
 
-**1. BASIC SETUP:**
+**CRITICAL: This is the complete ezdxf documentation. Use EXACTLY these patterns and methods.**
+
+**1. ESSENTIAL IMPORTS AND SETUP:**
 \`\`\`python
 import ezdxf
 from ezdxf import colors
 from ezdxf.enums import TextEntityAlignment
 from ezdxf.tools.standards import setup_dimstyle
+import math
 
-# Create new DXF document
-doc = ezdxf.new("R2010", setup=True)  # setup=True adds standard resources
+# Create new DXF document with setup=True for dimension styles
+doc = ezdxf.new("R2010", setup=True)
 msp = doc.modelspace()
 
-# Create layers
-doc.layers.add("CONSTRUCTION", color=colors.CYAN)
-doc.layers.add("DIMENSIONS", color=colors.RED)
-doc.layers.add("TEXT", color=colors.GREEN)
-doc.layers.add("CENTERLINES", color=colors.YELLOW)
+# Create professional layers with proper colors
+doc.layers.add("CONSTRUCTION", color=colors.WHITE)    # Main geometry - white/black
+doc.layers.add("DIMENSIONS", color=colors.RED)        # Dimensions - red
+doc.layers.add("TEXT", color=colors.GREEN)            # Text and labels - green
+doc.layers.add("CENTERLINES", color=colors.CYAN)      # Centerlines - cyan
+doc.layers.add("HATCHING", color=colors.YELLOW)       # Hatching patterns - yellow
+doc.layers.add("HIDDEN", color=colors.BLUE)           # Hidden lines - blue
 \`\`\`
 
-**2. BASIC ENTITIES:**
+**2. COMPLETE ENTITY CREATION REFERENCE:**
+
+**2.1 LINES AND POLYLINES:**
 \`\`\`python
-# Lines
-msp.add_line((0, 0), (10, 0), dxfattribs={"layer": "CONSTRUCTION"})
-msp.add_line((0, 0), (0, 10), dxfattribs={"color": colors.RED})
+# Simple line from point to point
+line = msp.add_line((0, 0), (10, 0), dxfattribs={"layer": "CONSTRUCTION"})
 
-# Circles
-msp.add_circle((5, 5), radius=2.5, dxfattribs={"layer": "CONSTRUCTION"})
+# Multiple connected lines using LWPolyline (most efficient)
+# Format: [(x, y), (x, y), ...] or [(x, y, bulge), ...]
+points = [(0, 0), (10, 0), (10, 5), (0, 5)]
+polyline = msp.add_lwpolyline(points, close=True, dxfattribs={"layer": "CONSTRUCTION"})
 
-# Arcs (center, radius, start_angle, end_angle in degrees)
-msp.add_arc((0, 0), radius=5, start_angle=0, end_angle=90)
+# Polyline with arcs (bulge values)
+# bulge = tan(angle/4), positive = right turn, negative = left turn
+curved_points = [(0, 0, 0.5), (10, 0, 0), (10, 10, -0.5), (0, 10, 0)]
+msp.add_lwpolyline(curved_points, close=True, dxfattribs={"layer": "CONSTRUCTION"})
 
-# Rectangles
-msp.add_lwpolyline([(0, 0), (10, 0), (10, 5), (0, 5)], close=True)
-
-# Text
-msp.add_text("TITLE", dxfattribs={"layer": "TEXT", "height": 2.5})
-    .set_placement((5, 8), align=TextEntityAlignment.MIDDLE_CENTER)
+# Construction lines (infinite lines)
+msp.add_xline((0, 0), (1, 1), dxfattribs={"layer": "CONSTRUCTION"})  # Through origin at 45°
+msp.add_ray((0, 0), (1, 0), dxfattribs={"layer": "CONSTRUCTION"})    # Ray from origin
 \`\`\`
 
-**3. DIMENSIONS:**
+**2.2 CIRCLES AND ARCS:**
 \`\`\`python
-# Linear dimensions
+# Circle: center point and radius
+circle = msp.add_circle((5, 5), radius=2.5, dxfattribs={"layer": "CONSTRUCTION"})
+
+# Arc: center, radius, start_angle, end_angle (in degrees, counter-clockwise)
+arc = msp.add_arc((10, 10), radius=3, start_angle=30, end_angle=120,
+                  dxfattribs={"layer": "CONSTRUCTION"})
+
+# Ellipse: center, major_axis vector, ratio (minor/major), start/end parameters
+ellipse = msp.add_ellipse((0, 0), major_axis=(5, 0), ratio=0.5,
+                         start_param=0, end_param=math.pi,
+                         dxfattribs={"layer": "CONSTRUCTION"})
+\`\`\`
+
+**2.3 TEXT AND ANNOTATIONS:**
+\`\`\`python
+# Simple text
+text = msp.add_text("TITLE", dxfattribs={"layer": "TEXT", "height": 2.5})
+text.set_placement((5, 8), align=TextEntityAlignment.MIDDLE_CENTER)
+
+# Text with specific alignment options:
+# LEFT, CENTER, RIGHT, ALIGNED, MIDDLE, FIT
+# BASELINE_LEFT, BASELINE_CENTER, BASELINE_RIGHT
+# BOTTOM_LEFT, BOTTOM_CENTER, BOTTOM_RIGHT
+# MIDDLE_LEFT, MIDDLE_CENTER, MIDDLE_RIGHT
+# TOP_LEFT, TOP_CENTER, TOP_RIGHT
+
+# Multiline text (MTEXT) for complex formatting
+mtext = msp.add_mtext("Line 1\\PLine 2\\PLine 3",
+                     dxfattribs={"layer": "TEXT", "char_height": 1.0})
+mtext.set_location((10, 10), rotation=0, attachment_point=1)
+
+# Text with rotation
+rotated_text = msp.add_text("ROTATED", dxfattribs={"layer": "TEXT", "height": 1.0, "rotation": 45})
+\`\`\`
+
+**3. COMPLETE DIMENSIONING SYSTEM:**
+
+**3.1 LINEAR DIMENSIONS:**
+\`\`\`python
+# Horizontal dimension
 dim = msp.add_linear_dim(
-    base=(0, -2),        # Dimension line position
-    p1=(0, 0),           # First extension line
-    p2=(10, 0),          # Second extension line
-    text="<>",           # Use actual measurement
+    base=(0, -2),        # Dimension line position (any point on the line)
+    p1=(0, 0),           # First measurement point
+    p2=(10, 0),          # Second measurement point
+    text="<>",           # "<>" = actual measurement, or custom text
     dimstyle="EZDXF",    # Dimension style
     dxfattribs={"layer": "DIMENSIONS"}
 )
+dim.render()  # CRITICAL: Always call render() after creating dimensions
 
-# Radius dimensions
-msp.add_radius_dim(
+# Vertical dimension (angle=90)
+dim = msp.add_linear_dim(
+    base=(-2, 0), p1=(0, 0), p2=(0, 10), angle=90,
+    dimstyle="EZDXF", dxfattribs={"layer": "DIMENSIONS"}
+)
+dim.render()
+
+# Aligned dimension (parallel to measured line)
+dim = msp.add_aligned_dim(
+    p1=(0, 0), p2=(5, 3), distance=1,  # distance = offset from measured line
+    dimstyle="EZDXF", dxfattribs={"layer": "DIMENSIONS"}
+)
+dim.render()
+
+# Rotated dimension (at specific angle)
+dim = msp.add_linear_dim(
+    base=(0, -2), p1=(0, 0), p2=(10, 5), angle=30,  # 30° dimension line
+    dimstyle="EZDXF", dxfattribs={"layer": "DIMENSIONS"}
+)
+dim.render()
+\`\`\`
+
+**3.2 RADIAL DIMENSIONS:**
+\`\`\`python
+# Radius dimension
+dim = msp.add_radius_dim(
+    center=(5, 5),       # Circle/arc center
+    radius=2.5,          # Radius value
+    angle=45,            # Angle for dimension line placement
+    dimstyle="EZDXF", dxfattribs={"layer": "DIMENSIONS"}
+)
+dim.render()
+
+# Diameter dimension
+dim = msp.add_diameter_dim(
     center=(5, 5),       # Circle center
-    radius=2.5,          # Circle radius
-    angle=45,            # Angle for dimension line
+    radius=2.5,          # Radius (diameter = 2 * radius)
+    angle=135,           # Angle for dimension line
+    dimstyle="EZDXF", dxfattribs={"layer": "DIMENSIONS"}
+)
+dim.render()
+\`\`\`
+
+**3.3 ANGULAR DIMENSIONS:**
+\`\`\`python
+# Angular dimension from 3 points
+dim = msp.add_angular_dim_3p(
+    base=(0, 0),         # Vertex point
+    line1=(5, 0),        # End of first line
+    line2=(0, 5),        # End of second line
+    text="<>",           # Angle measurement
+    dimstyle="EZDXF", dxfattribs={"layer": "DIMENSIONS"}
+)
+dim.render()
+
+# Angular dimension from 2 lines
+dim = msp.add_angular_dim_2l(
+    line1=((0, 0), (5, 0)),    # First line (start, end)
+    line2=((0, 0), (0, 5)),    # Second line (start, end)
+    location=(3, 3),           # Dimension arc location
+    dimstyle="EZDXF", dxfattribs={"layer": "DIMENSIONS"}
+)
+dim.render()
+\`\`\`
+
+**3.4 DIMENSION CUSTOMIZATION:**
+\`\`\`python
+# Custom dimension with overrides
+dim = msp.add_linear_dim(
+    base=(0, -2), p1=(0, 0), p2=(10, 0),
+    override={
+        "dimtxt": 1.5,           # Text height
+        "dimclrt": colors.RED,   # Text color
+        "dimclrd": colors.BLUE,  # Dimension line color
+        "dimasz": 0.5,           # Arrow size
+        "dimexe": 0.3,           # Extension beyond dimension line
+        "dimexo": 0.2,           # Extension line offset
+    },
     dxfattribs={"layer": "DIMENSIONS"}
 )
+dim.render()
+\`\`\`
 
-# Angular dimensions
-msp.add_angular_dim_3p(
-    base=(0, 0),         # Vertex
-    line1=(5, 0),        # First line end
-    line2=(0, 5),        # Second line end
-    text="<>",
-    dxfattribs={"layer": "DIMENSIONS"}
+**4. HATCHING AND MATERIAL REPRESENTATION:**
+
+**4.1 SOLID HATCHING:**
+\`\`\`python
+# Solid fill hatch
+hatch = msp.add_hatch(color=colors.CYAN, dxfattribs={"layer": "HATCHING"})
+# Simple rectangular boundary
+hatch.paths.add_polyline_path([(0, 0), (10, 0), (10, 5), (0, 5)], is_closed=True)
+
+# Complex boundary with multiple paths (islands)
+hatch = msp.add_hatch(color=colors.YELLOW, dxfattribs={"layer": "HATCHING"})
+# Outer boundary
+hatch.paths.add_polyline_path(
+    [(0, 0), (20, 0), (20, 15), (0, 15)],
+    is_closed=True,
+    flags=ezdxf.const.BOUNDARY_PATH_EXTERNAL
+)
+# Inner boundary (hole)
+hatch.paths.add_polyline_path(
+    [(5, 5), (15, 5), (15, 10), (5, 10)],
+    is_closed=True,
+    flags=ezdxf.const.BOUNDARY_PATH_OUTERMOST
 )
 \`\`\`
 
-**4. ADVANCED FEATURES:**
+**4.2 PATTERN HATCHING:**
 \`\`\`python
-# Polylines with bulges (for arcs)
-points = [(0, 0), (10, 0, 0.5), (10, 10), (0, 10)]  # Third value is bulge
-msp.add_lwpolyline(points, close=True)
+# Predefined pattern hatch (concrete, steel, etc.)
+hatch = msp.add_hatch(dxfattribs={"layer": "HATCHING"})
+hatch.set_pattern_fill("ANSI31", scale=0.5, angle=0)  # Steel pattern
+hatch.paths.add_polyline_path([(0, 0), (10, 0), (10, 5), (0, 5)], is_closed=True)
 
-# Hatching
-hatch = msp.add_hatch(color=colors.CYAN)
-hatch.paths.add_polyline_path([(0, 0), (10, 0), (10, 10), (0, 10)], is_closed=True)
-
-# Blocks (for repeated elements)
-block = doc.blocks.new("BOLT")
-block.add_circle((0, 0), radius=0.5)
-block.add_circle((0, 0), radius=0.25)
-# Insert block
-msp.add_blockref("BOLT", (5, 5))
-
-# Centerlines
-msp.add_line((0, 5), (10, 5), dxfattribs={"layer": "CENTERLINES", "linetype": "CENTER"})
+# Common construction patterns:
+# "ANSI31" - Steel, iron, brick
+# "ANSI32" - Steel
+# "ANSI33" - Bronze, brass, copper
+# "ANSI34" - Plastic, rubber
+# "ANSI37" - Lead, zinc, magnesium
+# "CONCRETE" - Concrete
+# "EARTH" - Earth, soil
+# "GRAVEL" - Gravel, stone
 \`\`\`
 
-**5. COMPLETE EXAMPLE STRUCTURE:**
+**4.3 EDGE PATH HATCHING (Complex Boundaries):**
 \`\`\`python
-import ezdxf
-from ezdxf import colors
-from ezdxf.enums import TextEntityAlignment
+# Hatch with curved boundaries
+hatch = msp.add_hatch(color=colors.GREEN, dxfattribs={"layer": "HATCHING"})
+edge_path = hatch.paths.add_edge_path()
 
-def create_technical_drawing():
-    # Setup
+# Add different edge types
+edge_path.add_line((0, 0), (10, 0))                    # Straight line
+edge_path.add_arc((10, 0), radius=5, start_angle=270, end_angle=0)  # Arc
+edge_path.add_line((15, 0), (15, 10))                  # Another line
+edge_path.add_line((15, 10), (0, 10))                  # Close with line
+edge_path.add_line((0, 10), (0, 0))                    # Back to start
+\`\`\`
+
+**5. BLOCKS AND REUSABLE ELEMENTS:**
+
+**5.1 CREATING AND USING BLOCKS:**
+\`\`\`python
+# Create a block definition (reusable symbol)
+bolt_block = doc.blocks.new("BOLT_M12")
+# Add geometry to block
+bolt_block.add_circle((0, 0), radius=6, dxfattribs={"layer": "CONSTRUCTION"})
+bolt_block.add_circle((0, 0), radius=3, dxfattribs={"layer": "CONSTRUCTION"})
+bolt_block.add_text("M12", dxfattribs={"layer": "TEXT", "height": 2})
+
+# Insert block instances
+msp.add_blockref("BOLT_M12", (10, 10), dxfattribs={"layer": "CONSTRUCTION"})
+msp.add_blockref("BOLT_M12", (20, 10), dxfattribs={"layer": "CONSTRUCTION", "xscale": 1.5})
+
+# Block with attributes (for title blocks, etc.)
+title_block = doc.blocks.new("TITLE_BLOCK")
+title_block.add_rectangle((0, 0), 100, 50, dxfattribs={"layer": "CONSTRUCTION"})
+title_block.add_text("DRAWING TITLE", dxfattribs={"layer": "TEXT", "height": 5})
+\`\`\`
+
+**5.2 CENTERLINES AND CONSTRUCTION LINES:**
+\`\`\`python
+# Centerlines (dashed lines for symmetry)
+msp.add_line((0, 5), (20, 5), dxfattribs={"layer": "CENTERLINES", "linetype": "CENTER"})
+msp.add_line((10, 0), (10, 10), dxfattribs={"layer": "CENTERLINES", "linetype": "CENTER"})
+
+# Hidden lines (for internal features)
+msp.add_line((5, 0), (5, 10), dxfattribs={"layer": "HIDDEN", "linetype": "HIDDEN"})
+
+# Construction lines (infinite reference lines)
+msp.add_xline((0, 0), (1, 1), dxfattribs={"layer": "CONSTRUCTION"})  # 45° line through origin
+
+# Leader lines (for annotations)
+leader = msp.add_leader([
+    (15, 15),    # Arrow point
+    (20, 20),    # Elbow point
+    (25, 20)     # Text point
+], dxfattribs={"layer": "DIMENSIONS"})
+\`\`\`
+
+**5.3 LINETYPES AND STYLES:**
+\`\`\`python
+# Standard linetypes (must be loaded)
+doc.linetypes.load_linetypes_from_file()  # Load standard linetypes
+
+# Available standard linetypes:
+# "CONTINUOUS" - Solid line (default)
+# "DASHED" - Dashed line
+# "HIDDEN" - Hidden line (short dashes)
+# "CENTER" - Centerline (long-short-long)
+# "PHANTOM" - Phantom line (long-short-short-long)
+# "DOT" - Dotted line
+# "DASHDOT" - Dash-dot line
+
+# Apply linetypes
+msp.add_line((0, 0), (10, 0), dxfattribs={"linetype": "DASHED"})
+msp.add_line((0, 2), (10, 2), dxfattribs={"linetype": "CENTER"})
+\`\`\`
+
+**6. COMPLETE CONSTRUCTION DRAWING EXAMPLES:**
+
+**6.1 FOUNDATION SECTION EXAMPLE:**
+\`\`\`python
+def create_foundation_section():
     doc = ezdxf.new("R2010", setup=True)
     msp = doc.modelspace()
-    
+
     # Create layers
-    doc.layers.add("OBJECT", color=colors.WHITE)
+    doc.layers.add("CONSTRUCTION", color=colors.WHITE)
     doc.layers.add("DIMENSIONS", color=colors.RED)
     doc.layers.add("TEXT", color=colors.GREEN)
-    doc.layers.add("CENTERLINES", color=colors.CYAN)
-    
-    # Main drawing code here
-    # ... add entities, dimensions, text ...
-    
-    # Save
-    doc.saveas("drawing.dxf")
-    return doc
+    doc.layers.add("HATCHING", color=colors.YELLOW)
 
-# Execute
-if __name__ == "__main__":
-    doc = create_technical_drawing()
-    print("Drawing created successfully")
+    # Ground line
+    msp.add_line((0, 0), (20, 0), dxfattribs={"layer": "CONSTRUCTION"})
+
+    # Foundation outline
+    foundation = [(2, 0), (2, -2), (18, -2), (18, 0)]
+    msp.add_lwpolyline(foundation, close=False, dxfattribs={"layer": "CONSTRUCTION"})
+
+    # Wall above foundation
+    wall = [(6, 0), (6, 8), (14, 8), (14, 0)]
+    msp.add_lwpolyline(wall, close=False, dxfattribs={"layer": "CONSTRUCTION"})
+
+    # Hatching for concrete
+    hatch = msp.add_hatch(dxfattribs={"layer": "HATCHING"})
+    hatch.set_pattern_fill("ANSI31", scale=0.3)
+    hatch.paths.add_polyline_path([(2, 0), (2, -2), (18, -2), (18, 0)], is_closed=True)
+
+    # Dimensions
+    dim1 = msp.add_linear_dim(base=(0, -3), p1=(2, 0), p2=(18, 0), dimstyle="EZDXF")
+    dim1.render()
+
+    dim2 = msp.add_linear_dim(base=(19, 0), p1=(18, 0), p2=(18, -2), angle=90, dimstyle="EZDXF")
+    dim2.render()
+
+    # Labels
+    msp.add_text("CONCRETE FOUNDATION", dxfattribs={"layer": "TEXT", "height": 1.0}).set_placement((10, -1), align=TextEntityAlignment.MIDDLE_CENTER)
+    msp.add_text("GROUND LEVEL", dxfattribs={"layer": "TEXT", "height": 0.8}).set_placement((1, 0.5))
+
+    doc.saveas("foundation_section.dxf")
+    return doc
 \`\`\`
 
-**CRITICAL REQUIREMENTS:**
-1. **Generate COMPLETE, EXECUTABLE Python code** that creates the requested technical drawing
-2. **Include ALL necessary imports** (ezdxf, colors, enums, etc.)
-3. **Create appropriate layers** for different element types (construction, dimensions, text, centerlines)
-4. **Add comprehensive dimensions** with proper positioning and formatting
-5. **Include descriptive text** and labels for all important features
-6. **Use proper coordinate system** with clear, logical positioning
-7. **Add centerlines** for circular features and symmetry
-8. **Include title block** with drawing information
-9. **Use professional CAD standards** for line types, colors, and text sizes
-10. **Ensure the code is ready to execute** without any modifications
+**6.2 WALL SECTION WITH STEPPED FOUNDATION:**
+\`\`\`python
+def create_wall_section_with_stepped_foundation():
+    doc = ezdxf.new("R2010", setup=True)
+    msp = doc.modelspace()
+
+    # Setup layers
+    doc.layers.add("CONSTRUCTION", color=colors.WHITE)
+    doc.layers.add("DIMENSIONS", color=colors.RED)
+    doc.layers.add("TEXT", color=colors.GREEN)
+    doc.layers.add("HATCHING", color=colors.CYAN)
+    doc.layers.add("CENTERLINES", color=colors.BLUE)
+
+    # Ground level reference
+    msp.add_line((0, 0), (25, 0), dxfattribs={"layer": "CONSTRUCTION"})
+
+    # Stepped foundation
+    foundation_points = [
+        (2, 0), (2, -1), (4, -1), (4, -2), (21, -2), (21, -1), (23, -1), (23, 0)
+    ]
+    msp.add_lwpolyline(foundation_points, close=False, dxfattribs={"layer": "CONSTRUCTION"})
+
+    # Wall above ground (2.5m high)
+    wall_height = 2.5 * 1000  # Convert to mm for 1:100 scale
+    wall_points = [(6, 0), (6, wall_height), (19, wall_height), (19, 0)]
+    msp.add_lwpolyline(wall_points, close=False, dxfattribs={"layer": "CONSTRUCTION"})
+
+    # Hatching for foundation
+    hatch = msp.add_hatch(dxfattribs={"layer": "HATCHING"})
+    hatch.set_pattern_fill("ANSI31", scale=0.5)
+    foundation_hatch = [(2, 0), (2, -1), (4, -1), (4, -2), (21, -2), (21, -1), (23, -1), (23, 0)]
+    hatch.paths.add_polyline_path(foundation_hatch, is_closed=True)
+
+    # Centerline for wall
+    msp.add_line((12.5, -2), (12.5, wall_height + 500),
+                dxfattribs={"layer": "CENTERLINES", "linetype": "CENTER"})
+
+    # Comprehensive dimensions
+    # Foundation width
+    dim1 = msp.add_linear_dim(base=(0, -3), p1=(2, 0), p2=(23, 0), dimstyle="EZDXF")
+    dim1.render()
+
+    # Foundation depths
+    dim2 = msp.add_linear_dim(base=(24, 0), p1=(23, 0), p2=(23, -1), angle=90, dimstyle="EZDXF")
+    dim2.render()
+
+    dim3 = msp.add_linear_dim(base=(25, 0), p1=(21, -1), p2=(21, -2), angle=90, dimstyle="EZDXF")
+    dim3.render()
+
+    # Wall height
+    dim4 = msp.add_linear_dim(base=(20, 0), p1=(19, 0), p2=(19, wall_height), angle=90, dimstyle="EZDXF")
+    dim4.render()
+
+    # Wall thickness
+    dim5 = msp.add_linear_dim(base=(0, wall_height + 200), p1=(6, wall_height), p2=(19, wall_height), dimstyle="EZDXF")
+    dim5.render()
+
+    # Labels and annotations
+    msp.add_text("BOUNDARY WALL SECTION", dxfattribs={"layer": "TEXT", "height": 150}).set_placement((12.5, wall_height + 800), align=TextEntityAlignment.MIDDLE_CENTER)
+    msp.add_text("2.5m ABOVE GROUND", dxfattribs={"layer": "TEXT", "height": 100}).set_placement((12.5, wall_height/2), align=TextEntityAlignment.MIDDLE_CENTER)
+    msp.add_text("STEPPED FOUNDATION", dxfattribs={"layer": "TEXT", "height": 80}).set_placement((12.5, -1500), align=TextEntityAlignment.MIDDLE_CENTER)
+    msp.add_text("GROUND LEVEL", dxfattribs={"layer": "TEXT", "height": 80}).set_placement((1, 200))
+
+    # Material specifications
+    msp.add_text("CONCRETE M20", dxfattribs={"layer": "TEXT", "height": 60}).set_placement((12.5, -500), align=TextEntityAlignment.MIDDLE_CENTER)
+    msp.add_text("REINFORCEMENT AS PER DESIGN", dxfattribs={"layer": "TEXT", "height": 50}).set_placement((12.5, -800), align=TextEntityAlignment.MIDDLE_CENTER)
+
+    doc.saveas("boundary_wall_section.dxf")
+    return doc
+\`\`\`
+
+**CRITICAL REQUIREMENTS FOR ALL DRAWINGS:**
+1. **ALWAYS call dim.render()** after creating each dimension
+2. **Use proper layer organization** - CONSTRUCTION, DIMENSIONS, TEXT, HATCHING, CENTERLINES
+3. **Include comprehensive dimensions** for all important measurements
+4. **Add material hatching** using appropriate patterns (ANSI31 for concrete, etc.)
+5. **Use centerlines** for symmetry and reference
+6. **Include descriptive text** and material specifications
+7. **Use consistent scale** (typically 1:100 for construction drawings)
+8. **Add title and labels** for clarity
+9. **Use proper coordinate system** with logical positioning
+10. **ALWAYS save the file** with doc.saveas("filename.dxf")
 
 **OUTPUT FORMAT:**
 Provide ONLY the complete Python code, properly formatted and ready to execute. Do not include explanations or markdown formatting - just the raw Python code that can be directly executed.

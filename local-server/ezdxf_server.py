@@ -54,6 +54,57 @@ CORS(app)  # Enable CORS for frontend integration
 SERVER_PORT = 8080
 SERVER_HOST = '127.0.0.1'
 
+def analyze_error(error_msg, traceback_str, code):
+    """
+    Analyze common ezdxf errors and provide helpful suggestions
+    """
+    suggestions = []
+
+    # Common ezdxf errors and solutions
+    if "render" in error_msg.lower():
+        suggestions.append("Make sure to call dim.render() after creating dimensions")
+        suggestions.append("Example: dim = msp.add_linear_dim(...); dim.render()")
+
+    if "dimension" in error_msg.lower() and "style" in error_msg.lower():
+        suggestions.append("Use setup=True when creating document: doc = ezdxf.new('R2010', setup=True)")
+        suggestions.append("Or specify a valid dimstyle: dimstyle='EZDXF'")
+
+    if "layer" in error_msg.lower():
+        suggestions.append("Create layers before using them: doc.layers.add('LAYERNAME', color=colors.WHITE)")
+        suggestions.append("Check layer names in dxfattribs={'layer': 'LAYERNAME'}")
+
+    if "saveas" in error_msg.lower() or "save" in error_msg.lower():
+        suggestions.append("Make sure to save the document: doc.saveas('filename.dxf')")
+        suggestions.append("Check file permissions and disk space")
+
+    if "import" in error_msg.lower():
+        suggestions.append("Check import statements - use: import ezdxf, from ezdxf import colors")
+        suggestions.append("Make sure all required modules are imported")
+
+    if "attribute" in error_msg.lower():
+        suggestions.append("Check object method names and attributes")
+        suggestions.append("Verify ezdxf syntax - refer to documentation")
+
+    if "coordinate" in error_msg.lower() or "point" in error_msg.lower():
+        suggestions.append("Check coordinate format: use (x, y) tuples for 2D points")
+        suggestions.append("Ensure coordinates are numeric values")
+
+    if not suggestions:
+        suggestions.append("Check the ezdxf documentation for correct syntax")
+        suggestions.append("Verify all required parameters are provided")
+        suggestions.append("Make sure the code follows ezdxf patterns")
+
+    return {
+        'suggestions': suggestions,
+        'error_type': type(error_msg).__name__,
+        'common_fixes': [
+            "Add doc = ezdxf.new('R2010', setup=True) at the beginning",
+            "Create layers before using them",
+            "Call dim.render() after creating dimensions",
+            "Add doc.saveas('filename.dxf') at the end"
+        ]
+    }
+
 def dxf_to_image(dxf_file_path, output_format='PNG', dpi=300, width_inches=11, height_inches=8.5):
     """
     Convert DXF file to high-quality image with proper scaling
@@ -244,18 +295,57 @@ def generate_drawing():
             
             try:
                 print("⚙️ Executing ezdxf code...")
-                
-                # Execute the Python code
-                exec(python_code, execution_globals)
-                
+                print(f"📝 Code preview: {python_code[:200]}...")
+
+                # Validate code before execution
+                try:
+                    compile(python_code, '<string>', 'exec')
+                    print("✅ Code syntax validation passed")
+                except SyntaxError as e:
+                    print(f"❌ Syntax error in generated code: {e}")
+                    return jsonify({
+                        'error': f'Syntax error in generated Python code: {str(e)}',
+                        'execution_log': f'Syntax validation failed at line {e.lineno}: {e.text}',
+                        'code_preview': python_code[:500]
+                    }), 400
+
+                # Execute the Python code with enhanced error handling
+                try:
+                    exec(python_code, execution_globals)
+                    print("✅ Code execution completed")
+                except Exception as exec_error:
+                    print(f"❌ Runtime error during execution: {exec_error}")
+                    return jsonify({
+                        'error': f'Runtime error during code execution: {str(exec_error)}',
+                        'execution_log': stdout_capture.getvalue(),
+                        'traceback': traceback.format_exc(),
+                        'code_preview': python_code[:500]
+                    }), 400
+
                 # Look for generated DXF files
                 dxf_files = [f for f in os.listdir('.') if f.endswith('.dxf')]
-                
+                print(f"📁 Found {len(dxf_files)} DXF files: {dxf_files}")
+
                 if not dxf_files:
-                    return jsonify({
-                        'error': 'No DXF file was generated. Make sure your code calls doc.saveas("filename.dxf")',
-                        'execution_log': stdout_capture.getvalue()
-                    }), 400
+                    # Check if doc variable exists but wasn't saved
+                    if 'doc' in execution_globals:
+                        print("⚠️ Document created but not saved, attempting auto-save...")
+                        try:
+                            doc = execution_globals['doc']
+                            auto_filename = f"auto_generated_{datetime.now().strftime('%Y%m%d_%H%M%S')}.dxf"
+                            doc.saveas(auto_filename)
+                            dxf_files = [auto_filename]
+                            print(f"✅ Auto-saved as {auto_filename}")
+                        except Exception as save_error:
+                            print(f"❌ Auto-save failed: {save_error}")
+
+                    if not dxf_files:
+                        return jsonify({
+                            'error': 'No DXF file was generated. Make sure your code calls doc.saveas("filename.dxf")',
+                            'execution_log': stdout_capture.getvalue(),
+                            'suggestion': 'Add doc.saveas("drawing.dxf") at the end of your code',
+                            'code_preview': python_code[:500]
+                        }), 400
                 
                 # Use the first DXF file found
                 dxf_filename = dxf_files[0]
@@ -319,14 +409,19 @@ def generate_drawing():
             except Exception as e:
                 error_msg = str(e)
                 error_traceback = traceback.format_exc()
-                
+
                 print(f"❌ Execution error: {error_msg}")
                 print(f"📋 Traceback: {error_traceback}")
-                
+
+                # Provide helpful error analysis
+                error_analysis = analyze_error(error_msg, error_traceback, python_code)
+
                 return jsonify({
                     'error': f'Python execution error: {error_msg}',
                     'traceback': error_traceback,
-                    'execution_log': stdout_capture.getvalue()
+                    'execution_log': stdout_capture.getvalue(),
+                    'error_analysis': error_analysis,
+                    'code_preview': python_code[:500]
                 }), 400
                 
             finally:
