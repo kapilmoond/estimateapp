@@ -288,6 +288,7 @@ export class LLMService {
   private static async generateOpenRouterContent(prompt: string, modelName: string, apiKey: string): Promise<string> {
     try {
       console.log(`LLMService: Calling OpenRouter API with model: ${modelName}`);
+      console.log(`LLMService: API Key format: ${apiKey.substring(0, 10)}...`);
 
       const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
@@ -313,6 +314,9 @@ export class LLMService {
         })
       });
 
+      console.log(`OpenRouter Response Status: ${response.status}`);
+      console.log(`OpenRouter Response Headers:`, Object.fromEntries(response.headers.entries()));
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         console.error('OpenRouter API Error:', response.status, errorData);
@@ -321,10 +325,12 @@ export class LLMService {
           throw new Error('Invalid OpenRouter API key. Please check your API key in LLM settings.');
         } else if (response.status === 402) {
           throw new Error('OpenRouter API quota exceeded. Please check your account balance.');
+        } else if (response.status === 404) {
+          throw new Error(`OpenRouter model "${modelName}" not found. Please check the model name or try a different model. Available models: anthropic/claude-3-5-sonnet-20241022, openai/gpt-4o, google/gemini-2.0-flash-exp:free`);
         } else if (response.status === 429) {
           throw new Error('OpenRouter API rate limit exceeded. Please try again in a moment.');
         } else {
-          throw new Error(`OpenRouter API error: ${response.status} ${response.statusText}`);
+          throw new Error(`OpenRouter API error: ${response.status} ${response.statusText} - ${JSON.stringify(errorData)}`);
         }
       }
 

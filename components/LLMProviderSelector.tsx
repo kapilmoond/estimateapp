@@ -198,7 +198,7 @@ export const LLMProviderSelector: React.FC<LLMProviderSelectorProps> = ({ isOpen
                 />
               </div>
               <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
-                <h4 className="font-medium text-blue-900 mb-2">Popular OpenRouter Models:</h4>
+                <h4 className="font-medium text-blue-900 mb-2">Popular OpenRouter Models (Updated 2024):</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                   <button
                     type="button"
@@ -209,6 +209,13 @@ export const LLMProviderSelector: React.FC<LLMProviderSelectorProps> = ({ isOpen
                   </button>
                   <button
                     type="button"
+                    onClick={() => setCustomModelName('anthropic/claude-3-5-haiku-20241022')}
+                    className="text-left text-blue-700 hover:text-blue-900 hover:underline"
+                  >
+                    anthropic/claude-3-5-haiku-20241022
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setCustomModelName('openai/gpt-4o')}
                     className="text-left text-blue-700 hover:text-blue-900 hover:underline"
                   >
@@ -216,10 +223,10 @@ export const LLMProviderSelector: React.FC<LLMProviderSelectorProps> = ({ isOpen
                   </button>
                   <button
                     type="button"
-                    onClick={() => setCustomModelName('meta-llama/llama-3.1-405b-instruct')}
+                    onClick={() => setCustomModelName('openai/gpt-4o-mini')}
                     className="text-left text-blue-700 hover:text-blue-900 hover:underline"
                   >
-                    meta-llama/llama-3.1-405b-instruct
+                    openai/gpt-4o-mini
                   </button>
                   <button
                     type="button"
@@ -230,18 +237,34 @@ export const LLMProviderSelector: React.FC<LLMProviderSelectorProps> = ({ isOpen
                   </button>
                   <button
                     type="button"
+                    onClick={() => setCustomModelName('google/gemini-pro-1.5')}
+                    className="text-left text-blue-700 hover:text-blue-900 hover:underline"
+                  >
+                    google/gemini-pro-1.5
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCustomModelName('meta-llama/llama-3.1-405b-instruct')}
+                    className="text-left text-blue-700 hover:text-blue-900 hover:underline"
+                  >
+                    meta-llama/llama-3.1-405b-instruct
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setCustomModelName('mistralai/mistral-large')}
                     className="text-left text-blue-700 hover:text-blue-900 hover:underline"
                   >
                     mistralai/mistral-large
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setCustomModelName('cohere/command-r-plus')}
-                    className="text-left text-blue-700 hover:text-blue-900 hover:underline"
-                  >
-                    cohere/command-r-plus
-                  </button>
+                </div>
+                <div className="bg-yellow-50 border border-yellow-200 rounded p-2 mt-3">
+                  <p className="text-xs text-yellow-800">
+                    <strong>⚠️ Troubleshooting 404 errors:</strong><br/>
+                    • Check model name spelling exactly<br/>
+                    • Some models have limited availability<br/>
+                    • Try a different model if one doesn't work<br/>
+                    • Check your OpenRouter account balance
+                  </p>
                 </div>
                 <p className="text-xs text-blue-600 mt-2">
                   📋 <strong>Copy & Paste:</strong> Visit <a href="https://openrouter.ai/models" target="_blank" rel="noopener noreferrer" className="underline font-medium">openrouter.ai/models</a> and copy any model name to paste above
@@ -285,9 +308,11 @@ export const LLMProviderSelector: React.FC<LLMProviderSelectorProps> = ({ isOpen
                   </button>
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  {provider.id === 'gemini' 
+                  {provider.id === 'gemini'
                     ? 'Get your API key from Google AI Studio (https://aistudio.google.com/app/apikey)'
-                    : 'Get your API key from Moonshot AI Platform (https://platform.moonshot.ai/console/api-keys)'
+                    : provider.id === 'moonshot'
+                    ? 'Get your API key from Moonshot AI Platform (https://platform.moonshot.ai/console/api-keys)'
+                    : 'Get your API key from OpenRouter (https://openrouter.ai/keys) - Check your account balance if getting 404 errors'
                   }
                 </p>
               </div>
