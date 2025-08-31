@@ -4,6 +4,10 @@ import { continueConversation, generatePlainTextEstimate, generateKeywordsForIte
 import { searchHSR, searchHSREnhanced } from './services/hsrService';
 import { KeywordGenerationResult, KeywordGenerationService } from './services/keywordGenerationService';
 import { KeywordManager } from './components/KeywordManager';
+import { StepNavigation } from './components/StepNavigation';
+import { BackgroundHSRService, BackgroundHSRProgress } from './services/backgroundHSRService';
+import { BackgroundHSRProgressComponent } from './components/BackgroundHSRProgress';
+import { NSRateAnalysis } from './components/NSRateAnalysis';
 import { speak } from './services/speechService';
 import { GuidelinesService } from './services/guidelinesService';
 import { ThreadService } from './services/threadService';
@@ -67,6 +71,10 @@ const App: React.FC = () => {
   const [keywordsByItem, setKeywordsByItem] = useState<KeywordsByItem>({});
   const [keywordGenerationResult, setKeywordGenerationResult] = useState<KeywordGenerationResult | null>(null);
   const [subcomponentItems, setSubcomponentItems] = useState<string[]>([]);
+  const [useHsrForRemake, setUseHsrForRemake] = useState<boolean>(false);
+  const [backgroundHSRProgress, setBackgroundHSRProgress] = useState<BackgroundHSRProgress | null>(null);
+  const [isBackgroundProcessing, setIsBackgroundProcessing] = useState<boolean>(false);
+  const [showNSRateAnalysis, setShowNSRateAnalysis] = useState<boolean>(false);
   const [hsrItems, setHsrItems] = useState<HsrItem[]>([]);
   const [finalEstimateText, setFinalEstimateText] = useState<string>('');
   const [editInstruction, setEditInstruction] = useState<string>('');
@@ -204,10 +212,12 @@ const App: React.FC = () => {
       const drawings = DrawingService.loadProjectDrawings(projectId);
       setSavedDrawings(drawings);
 
-      // Load the latest drawing result if available and no current results
+      // Load the latest drawing result if available
       const latestDrawing = DrawingService.getLatestProjectDrawing(projectId);
-      if (latestDrawing && drawingResults.length === 0) {
+      if (latestDrawing) {
         setDrawingResults([latestDrawing.result]);
+      } else {
+        setDrawingResults([]);
       }
     } catch (error) {
       console.error('Error loading saved drawings:', error);
@@ -293,7 +303,8 @@ const App: React.FC = () => {
   };
 
   const handleDrawingGenerated = (result: DrawingResult) => {
-    setDrawingResults(prev => [...prev, result]);
+    // Replace existing results instead of adding to prevent duplication
+    setDrawingResults([result]);
     setIsDrawingGenerating(false);
 
     // Add to conversation history
@@ -503,7 +514,24 @@ const App: React.FC = () => {
       try {
         // Add context from previous steps
         const contextPrompt = ContextService.generateContextPrompt();
+
+        // Add design context with quantities to discussions
+        const designContext = designs.filter(d => d.includeInContext !== false)
+          .map(d => {
+            // Extract quantities from design content
+            const quantityMatches = d.designContent.match(/(\d+(?:\.\d+)?)\s*(m³|m²|m|kg|nos?|units?|pieces?|sq\.?\s*m|cu\.?\s*m|linear\s*m)/gi) || [];
+            const quantities = quantityMatches.length > 0 ? `\nQuantities: ${quantityMatches.join(', ')}` : '';
+
+            return `**DESIGN REFERENCE - ${d.componentName}:**\n${d.designContent}${quantities}\n---`;
+          })
+          .join('\n\n');
+
         let enhancedReferenceText = referenceText + contextPrompt;
+
+        // Include design context in discussions
+        if (designContext) {
+          enhancedReferenceText += `\n\n**AVAILABLE COMPONENT DESIGNS:**\n${designContext}`;
+        }
 
         // Add knowledge base context if enabled
         if (includeKnowledgeBase) {
@@ -546,7 +574,14 @@ const App: React.FC = () => {
           enhancedReferenceText += templateContext;
         }
 
-        const modelResponse = await continueConversation(newHistory, enhancedReferenceText, outputMode);
+        // Add instruction to reference designs if available
+        let conversationPrompt = newHistory;
+        if (designs.length > 0) {
+          const lastMessage = conversationPrompt[conversationPrompt.length - 1];
+          lastMessage.text += `\n\n**IMPORTANT:** Reference the available component designs and their quantities when relevant to this discussion. Include specific quantities and specifications from the designs when discussing costs, materials, or construction details.`;
+        }
+
+        const modelResponse = await continueConversation(conversationPrompt, enhancedReferenceText, outputMode);
         setConversationHistory(prev => [...prev, { role: 'model', text: modelResponse }]);
 
         // Extract and save LLM summary
@@ -983,6 +1018,103 @@ Extract the construction items:`;
     }
   };
 
+  // Handle abstract remake with or without HSR
+  const handleAbstractRemake = async () => {
+    if (!editInstruction.trim()) {
+      setError('Please provide remake instructions.');
+      return;
+    }
+
+    setIsAiThinking(true);
+    setError(null);
+
+    try {
+      if (useHsrForRemake) {
+        // Remake with HSR: Use background processing
+        setIsBackgroundProcessing(true);
+        setLoadingMessage('Starting background HSR processing...');
+
+        const result = await BackgroundHSRService.processHSRInBackground(
+          editInstruction,
+          finalizedScope,
+          (progress) => {
+            setBackgroundHSRProgress(progress);
+            setLoadingMessage(progress.message);
+          }
+        );
+
+        if (result.success) {
+          setLoadingMessage('Generating new cost abstract with HSR data...');
+
+          // Generate new estimate with HSR data
+          const remakePrompt = `Remake the cost abstract based on the user's instructions and new HSR data.
+
+**REMAKE INSTRUCTIONS:**
+${editInstruction}
+
+**ORIGINAL ESTIMATE:**
+${finalEstimateText}
+
+**NEW HSR DATA:**
+${result.hsrItems.map(item => `${item['HSR No.']}: ${item.Description} - ${item.Unit} - ₹${item['Current Rate']}`).join('\n')}
+
+**PROJECT CONTEXT:**
+${referenceText}
+
+**TASK:**
+Create a completely new cost abstract that addresses the remake instructions while incorporating the relevant HSR data.`;
+
+          const newEstimate = await generatePlainTextEstimate(remakePrompt, result.hsrItems, conversationHistory, finalEstimateText, editInstruction, referenceText);
+          setFinalEstimateText(newEstimate);
+          setHsrItems(result.hsrItems);
+        } else {
+          throw new Error(result.error || 'Background HSR processing failed');
+        }
+
+      } else {
+        // Remake without HSR: Use existing context only
+        setLoadingMessage('Remaking cost abstract without HSR...');
+
+        const remakePrompt = `Remake the cost abstract based on the user's instructions using existing context.
+
+**REMAKE INSTRUCTIONS:**
+${editInstruction}
+
+**ORIGINAL ESTIMATE:**
+${finalEstimateText}
+
+**PROJECT CONTEXT:**
+${referenceText}
+
+**TASK:**
+Create a new cost abstract that addresses the remake instructions using the existing project context and knowledge.`;
+
+        const newEstimate = await generatePlainTextEstimate(remakePrompt, hsrItems, conversationHistory, finalEstimateText, editInstruction, referenceText);
+        setFinalEstimateText(newEstimate);
+      }
+
+      // Clear instructions and reset checkbox
+      setEditInstruction('');
+      setUseHsrForRemake(false);
+      setIsBackgroundProcessing(false);
+      setBackgroundHSRProgress(null);
+
+      // Add to conversation history
+      setConversationHistory(prev => [
+        ...prev,
+        { role: 'user', text: `Remake request: ${editInstruction}` },
+        { role: 'model', text: `✅ **Cost Abstract Remade!**\n\n🔄 **Method:** ${useHsrForRemake ? 'With new HSR data' : 'Without HSR data'}\n\n📝 **Instructions Applied:** ${editInstruction}\n\n💰 **Result:** Updated cost abstract generated successfully.` }
+      ]);
+
+    } catch (err: any) {
+      console.error('Abstract remake error:', err);
+      setError(err.message || 'An error occurred while remaking the abstract.');
+    } finally {
+      setIsAiThinking(false);
+      setLoadingMessage('');
+    }
+  };
+
   const handleEstimateEdit = async () => {
     if (!editInstruction.trim()) {
       setError('Please provide edit instructions.');
@@ -1254,6 +1386,16 @@ Extract the construction items:`;
           {/* Discussion Mode Results */}
           {outputMode === 'discussion' && (
             <>
+              {/* Step Navigation */}
+              <StepNavigation
+                currentStep={step}
+                onStepChange={(newStep) => setStep(newStep)}
+                hasScope={!!finalizedScope}
+                hasKeywords={keywords.length > 0}
+                hasHsrItems={hsrItems.length > 0}
+                hasEstimate={!!finalEstimateText}
+              />
+
               {step === 'scoping' && (
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                   <h3 className="text-xl font-semibold text-gray-900 mb-4">
@@ -1318,22 +1460,76 @@ Extract the construction items:`;
                       💰 Cost Estimate
                     </h3>
                     <ResultDisplay textContent={finalEstimateText} />
-                    {step === 'reviewingEstimate' && (
-                      <div className="mt-4 space-y-2">
-                        <textarea
-                          value={editInstruction}
-                          onChange={(e) => setEditInstruction(e.target.value)}
-                          placeholder="Enter edit instructions..."
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          rows={3}
+                    {/* Background HSR Processing Display */}
+                    {isBackgroundProcessing && backgroundHSRProgress && (
+                      <div className="mt-4">
+                        <BackgroundHSRProgressComponent
+                          progress={backgroundHSRProgress}
+                          onCancel={() => {
+                            setIsBackgroundProcessing(false);
+                            setBackgroundHSRProgress(null);
+                            setIsAiThinking(false);
+                          }}
                         />
+                      </div>
+                    )}
+
+                    {step === 'reviewingEstimate' && (
+                      <div className="mt-4 space-y-4">
+                        {/* Remake Instructions */}
+                        <div className="bg-gray-50 rounded-lg p-4">
+                          <h4 className="font-medium text-gray-900 mb-3">🔄 Remake Cost Abstract</h4>
+                          <textarea
+                            value={editInstruction}
+                            onChange={(e) => setEditInstruction(e.target.value)}
+                            placeholder="Enter instructions for remaking the cost abstract (e.g., 'Focus more on labor costs', 'Add detailed material breakdown', 'Include equipment costs')"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            rows={3}
+                          />
+
+                          {/* HSR Option Checkbox */}
+                          <div className="mt-3 flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              id="useHsrForRemake"
+                              checked={useHsrForRemake}
+                              onChange={(e) => setUseHsrForRemake(e.target.checked)}
+                              className="rounded"
+                            />
+                            <label htmlFor="useHsrForRemake" className="text-sm text-gray-700">
+                              <strong>Include HSR Data:</strong> Generate new keywords and fetch fresh HSR items for remake
+                            </label>
+                          </div>
+
+                          <div className="text-xs text-gray-600 mt-2">
+                            {useHsrForRemake
+                              ? "✅ Will generate new keywords → fetch HSR items → remake abstract with HSR data"
+                              : "📝 Will remake abstract using existing context and user instructions only"
+                            }
+                          </div>
+                        </div>
+
+                        {/* Action Buttons */}
                         <div className="flex gap-2">
+                          <button
+                            onClick={handleAbstractRemake}
+                            disabled={isAiThinking || !editInstruction.trim()}
+                            className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:bg-gray-400 transition-colors"
+                          >
+                            {useHsrForRemake ? '🔄 Remake with HSR' : '🔄 Remake without HSR'}
+                          </button>
                           <button
                             onClick={handleEstimateEdit}
                             disabled={isAiThinking || !editInstruction.trim()}
                             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 transition-colors"
                           >
-                            ✏️ Edit Estimate
+                            ✏️ Quick Edit
+                          </button>
+                          <button
+                            onClick={() => setShowNSRateAnalysis(true)}
+                            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                          >
+                            📊 NS Rate Analysis
                           </button>
                           <button
                             onClick={() => setStep('done')}
@@ -1385,7 +1581,7 @@ Extract the construction items:`;
 
               <div>
                 <h4 className="font-medium text-gray-700 mb-2">Drawings</h4>
-                <p className="text-2xl font-bold text-purple-600">{drawings.length}</p>
+                <p className="text-2xl font-bold text-purple-600">{savedDrawings.length + drawingResults.length}</p>
                 <p className="text-sm text-gray-500">Technical drawings</p>
               </div>
 
@@ -1476,6 +1672,15 @@ Extract the construction items:`;
           />
         )}
       </div>
+
+      {/* NS Rate Analysis Modal */}
+      {showNSRateAnalysis && (
+        <NSRateAnalysis
+          projectContext={finalizedScope || ''}
+          hsrItems={hsrItems}
+          onClose={() => setShowNSRateAnalysis(false)}
+        />
+      )}
     </div>
   );
 };

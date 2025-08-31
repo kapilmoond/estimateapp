@@ -140,7 +140,7 @@ Tags: ${template.tags.join(', ')}
           </p>
         </div>
 
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
+        <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
           {/* Create New Template */}
           <div className="mb-8 p-6 bg-gray-50 rounded-lg border">
             <h3 className="text-lg font-medium text-gray-900 mb-4">Create New Master Template</h3>
@@ -213,7 +213,7 @@ Tags: ${template.tags.join(', ')}
                 <p className="text-sm">Complete a project and create your first master template!</p>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
                 {templates.map(template => (
                   <div key={template.id} className="border rounded-lg bg-white">
                     <div className="p-4 border-b bg-gray-50">

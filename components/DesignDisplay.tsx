@@ -29,6 +29,13 @@ export const DesignDisplay: React.FC<DesignDisplayProps> = ({
     }
   };
 
+  const handleDeleteDesign = (designId: string, componentName: string) => {
+    if (confirm(`Are you sure you want to delete the design for "${componentName}"? This action cannot be undone.`)) {
+      DesignService.deleteDesign(designId);
+      onDesignUpdate();
+    }
+  };
+
   const toggleExpanded = (designId: string) => {
     const newExpanded = new Set(expandedDesigns);
     if (newExpanded.has(designId)) {
@@ -181,6 +188,14 @@ ${design.specifications.calculations}
                         title="Download design as text file"
                       >
                         📄 Download
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteDesign(design.id, design.componentName)}
+                        className="px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+                        title="Delete this design"
+                      >
+                        🗑️ Delete
                       </button>
 
                       <button
