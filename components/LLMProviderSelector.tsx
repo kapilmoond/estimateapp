@@ -11,6 +11,7 @@ export const LLMProviderSelector: React.FC<LLMProviderSelectorProps> = ({ isOpen
   const [providers] = useState<LLMProvider[]>(LLMService.getProviders());
   const [currentProvider, setCurrentProvider] = useState<string>(LLMService.getCurrentProvider());
   const [currentModel, setCurrentModel] = useState<string>(LLMService.getCurrentModel());
+  const [customModelName, setCustomModelName] = useState<string>(LLMService.getCustomModelName());
   const [apiKeys, setApiKeys] = useState<{ [key: string]: string }>({});
   const [providerStatus, setProviderStatus] = useState<{ [key: string]: boolean }>({});
   const [testingProvider, setTestingProvider] = useState<string | null>(null);
@@ -45,7 +46,12 @@ export const LLMProviderSelector: React.FC<LLMProviderSelectorProps> = ({ isOpen
   const handleSave = () => {
     // Save provider and model selection
     LLMService.setProvider(currentProvider, currentModel);
-    
+
+    // Save custom model name for OpenRouter
+    if (currentProvider === 'openrouter') {
+      LLMService.setCustomModelName(customModelName.trim());
+    }
+
     // Save API keys
     Object.entries(apiKeys).forEach(([providerId, apiKey]) => {
       if (apiKey.trim()) {
@@ -170,6 +176,77 @@ export const LLMProviderSelector: React.FC<LLMProviderSelectorProps> = ({ isOpen
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* OpenRouter Custom Model Input */}
+        {selectedProvider && selectedProvider.id === 'openrouter' && (
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold mb-3">OpenRouter Model Name</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Model Name (paste any OpenRouter model)
+                </label>
+                <input
+                  type="text"
+                  value={customModelName}
+                  onChange={(e) => setCustomModelName(e.target.value)}
+                  placeholder="e.g., anthropic/claude-3.5-sonnet, openai/gpt-4, meta-llama/llama-3.1-405b"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+                <h4 className="font-medium text-blue-900 mb-2">Popular OpenRouter Models:</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                  <button
+                    type="button"
+                    onClick={() => setCustomModelName('anthropic/claude-3.5-sonnet')}
+                    className="text-left text-blue-700 hover:text-blue-900 hover:underline"
+                  >
+                    anthropic/claude-3.5-sonnet
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCustomModelName('openai/gpt-4')}
+                    className="text-left text-blue-700 hover:text-blue-900 hover:underline"
+                  >
+                    openai/gpt-4
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCustomModelName('meta-llama/llama-3.1-405b')}
+                    className="text-left text-blue-700 hover:text-blue-900 hover:underline"
+                  >
+                    meta-llama/llama-3.1-405b
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCustomModelName('google/gemini-2.0-flash-exp')}
+                    className="text-left text-blue-700 hover:text-blue-900 hover:underline"
+                  >
+                    google/gemini-2.0-flash-exp
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCustomModelName('mistralai/mistral-large')}
+                    className="text-left text-blue-700 hover:text-blue-900 hover:underline"
+                  >
+                    mistralai/mistral-large
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCustomModelName('cohere/command-r-plus')}
+                    className="text-left text-blue-700 hover:text-blue-900 hover:underline"
+                  >
+                    cohere/command-r-plus
+                  </button>
+                </div>
+                <p className="text-xs text-blue-600 mt-2">
+                  Visit <a href="https://openrouter.ai/models" target="_blank" rel="noopener noreferrer" className="underline">openrouter.ai/models</a> for the complete list
+                </p>
+              </div>
             </div>
           </div>
         )}

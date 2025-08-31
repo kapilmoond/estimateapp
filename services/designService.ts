@@ -251,14 +251,7 @@ Focus on creating a professional, implementable design that integrates seamlessl
     localStorage.removeItem(this.STORAGE_KEY);
   }
 
-  static updateDesign(updatedDesign: ComponentDesign): void {
-    const designs = this.loadDesigns();
-    const index = designs.findIndex(d => d.id === updatedDesign.id);
-    if (index !== -1) {
-      designs[index] = updatedDesign;
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(designs));
-    }
-  }
+
 
   static getDesign(designId: string): ComponentDesign | null {
     const designs = this.loadDesigns();
