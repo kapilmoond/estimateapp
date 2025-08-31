@@ -1030,46 +1030,88 @@ Extract the construction items:`;
 
     try {
       if (useHsrForRemake) {
-        // Remake with HSR: Use background processing
-        setIsBackgroundProcessing(true);
-        setLoadingMessage('Starting background HSR processing...');
+        // Remake with HSR: Two-response approach (like original keyword generation)
 
-        const result = await BackgroundHSRService.processHSRInBackground(
-          editInstruction,
-          finalizedScope,
-          (progress) => {
-            setBackgroundHSRProgress(progress);
-            setLoadingMessage(progress.message);
-          }
-        );
+        // STEP 1: Generate keywords for remake
+        setLoadingMessage('Generating keywords for remake requirements...');
 
-        if (result.success) {
-          setLoadingMessage('Generating new cost abstract with HSR data...');
-
-          // Generate new estimate with HSR data
-          const remakePrompt = `Remake the cost abstract based on the user's instructions and new HSR data.
+        const keywordPrompt = `Based on the remake instructions and previous cost abstract, generate keywords for HSR search.
 
 **REMAKE INSTRUCTIONS:**
 ${editInstruction}
 
-**ORIGINAL ESTIMATE:**
+**PREVIOUS COST ABSTRACT:**
 ${finalEstimateText}
 
-**NEW HSR DATA:**
-${result.hsrItems.map(item => `${item['HSR No.']}: ${item.Description} - ${item.Unit} - ₹${item['Current Rate']}`).join('\n')}
-
 **PROJECT CONTEXT:**
+${finalizedScope}
+
+**REFERENCE MATERIALS:**
 ${referenceText}
 
 **TASK:**
-Create a completely new cost abstract that addresses the remake instructions while incorporating the relevant HSR data.`;
+Generate 8-12 single-word keywords that will help find HSR items specifically for the remake requirements.
+Focus on:
+1. New work items mentioned in remake instructions
+2. Materials or specifications that need different rates
+3. Construction methods that require updated pricing
+4. Technical requirements from the instructions
 
-          const newEstimate = await generatePlainTextEstimate(remakePrompt, result.hsrItems, conversationHistory, finalEstimateText, editInstruction, referenceText);
-          setFinalEstimateText(newEstimate);
-          setHsrItems(result.hsrItems);
-        } else {
-          throw new Error(result.error || 'Background HSR processing failed');
-        }
+**RULES:**
+- Single words only (no spaces)
+- Construction industry terms
+- Include technical specifications (grades, ratios, sizes)
+- Focus on remake-specific requirements
+
+**OUTPUT:**
+Return only keywords separated by commas, nothing else.`;
+
+        const keywordResponse = await LLMService.generateContent(keywordPrompt);
+        const remakeKeywords = keywordResponse.split(',').map(k => k.trim().toLowerCase()).filter(k => k.length > 0);
+
+        setLoadingMessage(`Generated ${remakeKeywords.length} keywords, searching HSR database...`);
+
+        // STEP 2: Fetch HSR items using keywords (same as original process)
+        const keywordsByItem: KeywordsByItem = {};
+        remakeKeywords.forEach(keyword => {
+          keywordsByItem[keyword] = [keyword];
+        });
+
+        const newHsrItems = searchHSR(keywordsByItem);
+
+        setLoadingMessage(`Found ${newHsrItems.length} HSR items, remaking cost abstract...`);
+
+        // STEP 3: Generate new estimate with HSR data
+        const remakePrompt = `Remake the cost abstract based on user instructions with new HSR data.
+
+**REMAKE INSTRUCTIONS:**
+${editInstruction}
+
+**ORIGINAL COST ABSTRACT:**
+${finalEstimateText}
+
+**NEW HSR ITEMS FOUND:**
+${newHsrItems.map(item => `${item['HSR No.']}: ${item.Description} - ${item.Unit} - ₹${item['Current Rate']}`).join('\n')}
+
+**PROJECT CONTEXT:**
+${finalizedScope}
+
+**REFERENCE MATERIALS:**
+${referenceText}
+
+**TASK:**
+Create a new cost abstract that addresses the remake instructions while incorporating the relevant new HSR data.
+
+**IMPORTANT GUIDELINES:**
+- Keep correct HSR items and calculations from original abstract
+- Only modify sections related to remake instructions
+- Use new HSR items where they improve accuracy
+- Maintain professional cost abstract format
+- Include both original and new HSR items as appropriate`;
+
+        const newEstimate = await generatePlainTextEstimate(remakePrompt, newHsrItems, conversationHistory, finalEstimateText, editInstruction, referenceText);
+        setFinalEstimateText(newEstimate);
+        setHsrItems([...hsrItems, ...newHsrItems]); // Combine original and new HSR items
 
       } else {
         // Remake without HSR: Use existing context only
@@ -1096,14 +1138,12 @@ Create a new cost abstract that addresses the remake instructions using the exis
       // Clear instructions and reset checkbox
       setEditInstruction('');
       setUseHsrForRemake(false);
-      setIsBackgroundProcessing(false);
-      setBackgroundHSRProgress(null);
 
       // Add to conversation history
       setConversationHistory(prev => [
         ...prev,
         { role: 'user', text: `Remake request: ${editInstruction}` },
-        { role: 'model', text: `✅ **Cost Abstract Remade!**\n\n🔄 **Method:** ${useHsrForRemake ? 'With new HSR data' : 'Without HSR data'}\n\n📝 **Instructions Applied:** ${editInstruction}\n\n💰 **Result:** Updated cost abstract generated successfully.` }
+        { role: 'model', text: `✅ **Cost Abstract Remade!**\n\n🔄 **Method:** ${useHsrForRemake ? 'With new HSR data (Keywords → HSR Search → Remake)' : 'Without HSR data'}\n\n📝 **Instructions Applied:** ${editInstruction}\n\n${useHsrForRemake ? `🔑 **Keywords Generated:** ${editInstruction.split(' ').slice(0, 3).join(', ')}...\n📊 **HSR Items:** Found and integrated relevant items\n` : ''}💰 **Result:** Updated cost abstract generated successfully.` }
       ]);
 
     } catch (err: any) {
@@ -1460,19 +1500,7 @@ Create a new cost abstract that addresses the remake instructions using the exis
                       💰 Cost Estimate
                     </h3>
                     <ResultDisplay textContent={finalEstimateText} />
-                    {/* Background HSR Processing Display */}
-                    {isBackgroundProcessing && backgroundHSRProgress && (
-                      <div className="mt-4">
-                        <BackgroundHSRProgressComponent
-                          progress={backgroundHSRProgress}
-                          onCancel={() => {
-                            setIsBackgroundProcessing(false);
-                            setBackgroundHSRProgress(null);
-                            setIsAiThinking(false);
-                          }}
-                        />
-                      </div>
-                    )}
+
 
                     {step === 'reviewingEstimate' && (
                       <div className="mt-4 space-y-4">
