@@ -187,13 +187,13 @@ export const LLMProviderSelector: React.FC<LLMProviderSelectorProps> = ({ isOpen
             <div className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Model Name (paste any OpenRouter model)
+                  Model Name (paste from OpenRouter models list)
                 </label>
                 <input
                   type="text"
                   value={customModelName}
                   onChange={(e) => setCustomModelName(e.target.value)}
-                  placeholder="e.g., anthropic/claude-3.5-sonnet, openai/gpt-4, meta-llama/llama-3.1-405b"
+                  placeholder="Paste any OpenRouter model name here (e.g., anthropic/claude-3-5-sonnet-20241022)"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -202,31 +202,31 @@ export const LLMProviderSelector: React.FC<LLMProviderSelectorProps> = ({ isOpen
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                   <button
                     type="button"
-                    onClick={() => setCustomModelName('anthropic/claude-3.5-sonnet')}
+                    onClick={() => setCustomModelName('anthropic/claude-3-5-sonnet-20241022')}
                     className="text-left text-blue-700 hover:text-blue-900 hover:underline"
                   >
-                    anthropic/claude-3.5-sonnet
+                    anthropic/claude-3-5-sonnet-20241022
                   </button>
                   <button
                     type="button"
-                    onClick={() => setCustomModelName('openai/gpt-4')}
+                    onClick={() => setCustomModelName('openai/gpt-4o')}
                     className="text-left text-blue-700 hover:text-blue-900 hover:underline"
                   >
-                    openai/gpt-4
+                    openai/gpt-4o
                   </button>
                   <button
                     type="button"
-                    onClick={() => setCustomModelName('meta-llama/llama-3.1-405b')}
+                    onClick={() => setCustomModelName('meta-llama/llama-3.1-405b-instruct')}
                     className="text-left text-blue-700 hover:text-blue-900 hover:underline"
                   >
-                    meta-llama/llama-3.1-405b
+                    meta-llama/llama-3.1-405b-instruct
                   </button>
                   <button
                     type="button"
-                    onClick={() => setCustomModelName('google/gemini-2.0-flash-exp')}
+                    onClick={() => setCustomModelName('google/gemini-2.0-flash-exp:free')}
                     className="text-left text-blue-700 hover:text-blue-900 hover:underline"
                   >
-                    google/gemini-2.0-flash-exp
+                    google/gemini-2.0-flash-exp:free
                   </button>
                   <button
                     type="button"
@@ -244,7 +244,7 @@ export const LLMProviderSelector: React.FC<LLMProviderSelectorProps> = ({ isOpen
                   </button>
                 </div>
                 <p className="text-xs text-blue-600 mt-2">
-                  Visit <a href="https://openrouter.ai/models" target="_blank" rel="noopener noreferrer" className="underline">openrouter.ai/models</a> for the complete list
+                  📋 <strong>Copy & Paste:</strong> Visit <a href="https://openrouter.ai/models" target="_blank" rel="noopener noreferrer" className="underline font-medium">openrouter.ai/models</a> and copy any model name to paste above
                 </p>
               </div>
             </div>

@@ -552,7 +552,7 @@ const App: React.FC = () => {
             templateContext += `Description: ${template.description}\n`;
             templateContext += `\n**COMPLETE STEP-BY-STEP PROCEDURE:**\n${template.stepByStepProcedure}\n`;
             templateContext += `\n**TEMPLATE TAGS:** ${template.tags.join(', ')}\n`;
-            templateContext += `Created: ${template.createdAt.toLocaleDateString()}\n`;
+            templateContext += `Created: ${new Date(template.createdAt).toLocaleDateString()}\n`;
             templateContext += `Usage Count: ${template.usageCount}\n`;
           });
 

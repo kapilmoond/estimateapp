@@ -63,8 +63,17 @@ export const ProjectManager: React.FC<ProjectManagerProps> = ({
     p.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const formatDate = (date: Date) => {
-    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const formatDate = (date: Date | string) => {
+    try {
+      const dateObj = date instanceof Date ? date : new Date(date);
+      if (isNaN(dateObj.getTime())) {
+        return 'Invalid Date';
+      }
+      return dateObj.toLocaleDateString() + ' ' + dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch (error) {
+      console.error('Error formatting date:', error, date);
+      return 'Invalid Date';
+    }
   };
 
   const getProgressIcon = (progress: ProjectSummary['progress']) => {

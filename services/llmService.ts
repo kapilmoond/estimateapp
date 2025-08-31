@@ -77,12 +77,12 @@ export class LLMService {
     const provider = this.getCurrentProvider();
     const defaultModel = provider === 'gemini' ? 'gemini-2.5-pro' :
                         provider === 'moonshot' ? 'kimi-k2-0711-preview' :
-                        'anthropic/claude-3.5-sonnet';
+                        'anthropic/claude-3-5-sonnet-20241022';
     return localStorage.getItem('llm-model') || defaultModel;
   }
 
   static getCustomModelName(): string {
-    return localStorage.getItem('openrouter-custom-model') || 'anthropic/claude-3.5-sonnet';
+    return localStorage.getItem('openrouter-custom-model') || 'anthropic/claude-3-5-sonnet-20241022';
   }
 
   static setCustomModelName(modelName: string): void {
