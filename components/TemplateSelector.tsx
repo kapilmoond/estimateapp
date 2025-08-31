@@ -72,7 +72,7 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full mx-4 max-h-[90vh] overflow-hidden">
+      <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full mx-4 max-h-[90vh] flex flex-col">
         <div className="p-6 border-b bg-blue-50">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold text-gray-900">
@@ -90,7 +90,7 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
           </p>
         </div>
 
-        <div className="p-6">
+        <div className="flex-1 overflow-y-auto p-6">
           {/* Search and Filter */}
           <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -150,7 +150,7 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-96 overflow-y-auto">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {filteredTemplates.map(template => (
                   <div
                     key={template.id}
@@ -194,8 +194,10 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
               </div>
             )}
           </div>
+        </div>
 
-          {/* Action Buttons */}
+        {/* Fixed Action Buttons Footer */}
+        <div className="border-t bg-gray-50 p-6">
           <div className="flex justify-between items-center">
             <div className="text-sm text-gray-600">
               {selectedTemplates.size > 0 && (

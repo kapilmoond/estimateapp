@@ -53,7 +53,15 @@ export class EzdxfDrawingService {
    */
   static async executeDrawingCode(pythonCode: string, title: string): Promise<DrawingResult> {
     try {
-      console.log('EzdxfDrawingService: Executing Python code via local ezdxf server');
+      // Validate code for invalid DXF attributes before execution
+      const validation = this.validateDXFCode(pythonCode);
+      if (!validation.isValid) {
+        console.error('EzdxfDrawingService: Code validation failed');
+        validation.errors.forEach(error => console.error('Validation Error:', error));
+        throw new Error(`Code validation failed: ${validation.errors.join('; ')}`);
+      }
+
+      console.log('EzdxfDrawingService: Code validation passed - executing Python code via local ezdxf server');
       console.log('='.repeat(80));
       console.log('PYTHON CODE BEING SENT TO SERVER:');
       console.log('='.repeat(80));
@@ -169,6 +177,14 @@ ${request.referenceText}
 
 **CRITICAL: This is the complete, accurate ezdxf documentation based on official sources. Use EXACTLY these patterns and methods.**
 
+**⚠️ INVALID ATTRIBUTE ERROR PREVENTION ⚠️**
+- **NEVER use "linetypescale" attribute** - causes "Invalid DXF attribute linetypescale for entity LINE" error
+- **NEVER use "lineweight" attribute** - causes "Invalid DXF attribute lineweight for entity LINE" error
+- **For LINE entities ONLY use**: {"layer": "name", "color": number, "linetype": "name"}
+- **For CIRCLE entities ONLY use**: {"layer": "name", "color": number, "linetype": "name"}
+- **For TEXT entities ONLY use**: {"layer": "name", "color": number, "height": number, "style": "name"}
+- **STICK TO BASIC ATTRIBUTES ONLY** - layer, color, linetype are safe for all entities
+
 **1. DOCUMENT CREATION AND LAYER SETUP (VERIFIED):**
 \`\`\`python
 import ezdxf
@@ -194,8 +210,15 @@ doc.layers.add(name="CENTERLINES", color=5, linetype="CENTER")  # Blue centerlin
 
 **2.1 LINES AND POLYLINES:**
 \`\`\`python
-# Simple line from point to point
+# Simple line from point to point - CORRECT ATTRIBUTES ONLY
 line = msp.add_line((0, 0), (10, 0), dxfattribs={"layer": "CONSTRUCTION"})
+
+# Line with color and linetype - SAFE ATTRIBUTES
+line = msp.add_line((0, 0), (10, 0), dxfattribs={"layer": "CONSTRUCTION", "color": 1, "linetype": "DASHED"})
+
+# ❌ NEVER DO THIS - CAUSES ERRORS:
+# line = msp.add_line((0, 0), (10, 0), dxfattribs={"layer": "CONSTRUCTION", "linetypescale": 1.0})  # ERROR!
+# line = msp.add_line((0, 0), (10, 0), dxfattribs={"layer": "CONSTRUCTION", "lineweight": 0.5})     # ERROR!
 
 # Multiple connected lines using LWPolyline (most efficient)
 # Format: [(x, y), (x, y), ...] or [(x, y, bulge), ...]
@@ -725,6 +748,44 @@ doc.saveas("drawing.dxf")
 
 Your response must start with "import ezdxf" and end with "doc.saveas('drawing.dxf')".
 Use ONLY safe dimension parameters. NO units, NO dimpost, NO dimunit.`;
+  }
+
+  /**
+   * Validate Python code for invalid DXF attributes
+   */
+  private static validateDXFCode(code: string): { isValid: boolean; errors: string[] } {
+    const errors: string[] = [];
+    const lines = code.split('\n');
+
+    // Check for invalid attributes that cause runtime errors
+    const invalidAttributes = [
+      'linetypescale',
+      'lineweight',
+      'thickness',
+      'elevation',
+      'extrusion'
+    ];
+
+    lines.forEach((line, index) => {
+      const lineNumber = index + 1;
+
+      // Check for invalid attributes in dxfattribs
+      invalidAttributes.forEach(attr => {
+        if (line.includes(`"${attr}"`) || line.includes(`'${attr}'`)) {
+          errors.push(`Line ${lineNumber}: Invalid DXF attribute "${attr}" detected. This will cause runtime errors.`);
+        }
+      });
+
+      // Check for common problematic patterns
+      if (line.includes('add_line') && (line.includes('linetypescale') || line.includes('lineweight'))) {
+        errors.push(`Line ${lineNumber}: LINE entity with invalid attributes. Use only layer, color, linetype.`);
+      }
+    });
+
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
   }
 
   /**
