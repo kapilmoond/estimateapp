@@ -289,6 +289,25 @@ export class LLMService {
     try {
       console.log(`LLMService: Calling OpenRouter API with model: ${modelName}`);
       console.log(`LLMService: API Key format: ${apiKey.substring(0, 10)}...`);
+      console.log(`LLMService: API Key length: ${apiKey.length}`);
+      console.log(`LLMService: Model name length: ${modelName.length}`);
+
+      const requestBody = {
+        model: modelName,
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        max_tokens: 4000,
+        temperature: 0.7,
+        top_p: 0.9,
+        frequency_penalty: 0,
+        presence_penalty: 0
+      };
+
+      console.log('LLMService: Request body:', JSON.stringify(requestBody, null, 2));
 
       const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
@@ -298,20 +317,7 @@ export class LLMService {
           'HTTP-Referer': window.location.origin,
           'X-Title': 'HSR Construction Estimator'
         },
-        body: JSON.stringify({
-          model: modelName,
-          messages: [
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          max_tokens: 4000,
-          temperature: 0.7,
-          top_p: 0.9,
-          frequency_penalty: 0,
-          presence_penalty: 0
-        })
+        body: JSON.stringify(requestBody)
       });
 
       console.log(`OpenRouter Response Status: ${response.status}`);
