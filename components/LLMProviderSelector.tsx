@@ -73,24 +73,37 @@ export const LLMProviderSelector: React.FC<LLMProviderSelectorProps> = ({ isOpen
     }
 
     setTestingProvider(providerId);
-    
+
     try {
       // Temporarily save the API key for testing
       LLMService.setApiKey(providerId, apiKey);
       const originalProvider = LLMService.getCurrentProvider();
       const originalModel = LLMService.getCurrentModel();
-      
+      const originalCustomModel = LLMService.getCustomModelName();
+
       // Set test provider
       const provider = LLMService.getProvider(providerId);
       if (provider) {
         LLMService.setProvider(providerId, provider.models[0].id);
-        
+
+        // For OpenRouter, use the current input model name even before saving
+        if (providerId === 'openrouter') {
+          const modelToTest = (customModelName || originalCustomModel).trim();
+          if (!modelToTest) {
+            throw new Error('Please enter an OpenRouter model name (e.g., anthropic/claude-3.5-sonnet)');
+          }
+          LLMService.setCustomModelName(modelToTest);
+        }
+
         // Test with a simple prompt
-        await LLMService.generateContent('Hello, please respond with "Connection successful"');
-        
+        await LLMService.generateContent('Ping. Reply exactly: Connection successful');
+
         // Restore original settings
         LLMService.setProvider(originalProvider, originalModel);
-        
+        if (providerId === 'openrouter') {
+          LLMService.setCustomModelName(originalCustomModel);
+        }
+
         alert('✅ Connection successful!');
         setProviderStatus(prev => ({ ...prev, [providerId]: true }));
       }
@@ -202,17 +215,17 @@ export const LLMProviderSelector: React.FC<LLMProviderSelectorProps> = ({ isOpen
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                   <button
                     type="button"
-                    onClick={() => setCustomModelName('anthropic/claude-3-5-sonnet-20241022')}
+                    onClick={() => setCustomModelName('anthropic/claude-3.5-sonnet')}
                     className="text-left text-blue-700 hover:text-blue-900 hover:underline"
                   >
-                    anthropic/claude-3-5-sonnet-20241022
+                    anthropic/claude-3.5-sonnet
                   </button>
                   <button
                     type="button"
-                    onClick={() => setCustomModelName('anthropic/claude-3-5-haiku-20241022')}
+                    onClick={() => setCustomModelName('anthropic/claude-3.5-haiku')}
                     className="text-left text-blue-700 hover:text-blue-900 hover:underline"
                   >
-                    anthropic/claude-3-5-haiku-20241022
+                    anthropic/claude-3.5-haiku
                   </button>
                   <button
                     type="button"
