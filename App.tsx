@@ -43,6 +43,7 @@ import { CompactFileUpload } from './components/CompactFileUpload';
 import { LLMService } from './services/llmService';
 import { RAGService } from './services/ragService';
 
+import { SystemStatus } from './components/SystemStatus';
 type Step = 'scoping' | 'generatingKeywords' | 'approvingKeywords' | 'approvingHsrItems' | 'approvingRefinedHsrItems' | 'generatingEstimate' | 'reviewingEstimate' | 'done';
 type ReferenceDoc = {
   file: File;
@@ -197,6 +198,7 @@ const App: React.FC = () => {
   };
 
   const loadDrawings = () => {
+  const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState<boolean>(false);
     // Load legacy drawings
     const loadedDrawings = DXFStorageService.loadDrawings();
     setDrawings(loadedDrawings);
@@ -472,7 +474,7 @@ const App: React.FC = () => {
     // Open project manager to create new project or select existing
     setIsProjectManagerOpen(true);
   };
-  
+
   const handleFileUpload = (newFiles: ReferenceDoc[]) => {
     setReferenceDocs(prevDocs => {
       const existingFileNames = new Set(prevDocs.map(doc => doc.file.name));
@@ -1185,7 +1187,24 @@ Create a new cost abstract that addresses the remake instructions using the exis
     }
   };
 
+  const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState<boolean>(false);
 
+
+
+          <div className="flex items-center justify-end gap-3 mb-4">
+            <button
+              onClick={() => setIsLLMSettingsOpen(true)}
+              className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50"
+            >
+              LLM Settings
+            </button>
+            <button
+              onClick={() => setIsDiagnosticsOpen(true)}
+              className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50"
+            >
+              Diagnostics
+            </button>
+          </div>
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1698,6 +1717,10 @@ Create a new cost abstract that addresses the remake instructions using the exis
             onNewProject={handleNewProject}
             currentProjectId={currentProject?.id}
           />
+        )}
+
+        {isDiagnosticsOpen && (
+          <SystemStatus isOpen={isDiagnosticsOpen} onClose={() => setIsDiagnosticsOpen(false)} />
         )}
       </div>
 

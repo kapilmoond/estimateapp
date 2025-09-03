@@ -40,6 +40,35 @@ export class LLMService {
       ]
     },
     {
+      id: 'openai',
+      name: 'OpenAI (ChatGPT)',
+      apiKeyLabel: 'OpenAI API Key',
+      description: 'Official OpenAI Chat Completions API (ChatGPT models)',
+      models: [
+        {
+          id: 'gpt-4o',
+          name: 'GPT-4o',
+          description: 'Multimodal flagship model optimized for speed and quality',
+          maxTokens: 128000,
+          costPer1kTokens: 0.005
+        },
+        {
+          id: 'gpt-4o-mini',
+          name: 'GPT-4o mini',
+          description: 'Fast and cost-effective reasoning model',
+          maxTokens: 128000,
+          costPer1kTokens: 0.001
+        },
+        {
+          id: 'custom-model',
+          name: 'Custom OpenAI Model',
+          description: 'Enter any OpenAI chat model ID (e.g., gpt-4.1, gpt-4.1-mini, gpt-5 if available)',
+          maxTokens: 128000,
+          costPer1kTokens: 0.005
+        }
+      ]
+    },
+    {
       id: 'openrouter',
       name: 'OpenRouter',
       apiKeyLabel: 'OpenRouter API Key',
@@ -97,6 +126,7 @@ export class LLMService {
   static getApiKey(providerId: string): string | null {
     const keyName = providerId === 'gemini' ? 'gemini-api-key' :
                    providerId === 'moonshot' ? 'moonshot-api-key' :
+                   providerId === 'openai' ? 'openai-api-key' :
                    'openrouter-api-key';
     return localStorage.getItem(keyName);
   }
@@ -104,6 +134,7 @@ export class LLMService {
   static setApiKey(providerId: string, apiKey: string): void {
     const keyName = providerId === 'gemini' ? 'gemini-api-key' :
                    providerId === 'moonshot' ? 'moonshot-api-key' :
+                   providerId === 'openai' ? 'openai-api-key' :
                    'openrouter-api-key';
     localStorage.setItem(keyName, apiKey);
   }
@@ -128,6 +159,10 @@ export class LLMService {
           break;
         case 'moonshot':
           result = await this.generateMoonshotContent(prompt, modelId, apiKey);
+          break;
+        case 'openai':
+          const openaiModel = modelId === 'custom-model' ? this.getCustomOpenAIModelName() : modelId;
+          result = await this.generateOpenAIContent(prompt, openaiModel, apiKey);
           break;
         case 'openrouter':
           const customModel = this.getCustomModelName();
@@ -267,6 +302,8 @@ export class LLMService {
         return apiKey.startsWith('AIza') && apiKey.length > 30;
       case 'moonshot':
         return apiKey.startsWith('sk-') && apiKey.length > 40;
+      case 'openai':
+        return apiKey.startsWith('sk-') && apiKey.length > 40;
       case 'openrouter':
         return apiKey.startsWith('sk-or-') && apiKey.length > 50;
       default:
@@ -285,21 +322,43 @@ export class LLMService {
     return status;
   }
 
+  // Helper: fetch with timeout and single retry on network/5xx
+  private static async fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 30000): Promise<Response> {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { ...options, signal: controller.signal });
+      return res;
+    } finally {
+      clearTimeout(id);
+    }
+  }
+
+  private static async postJsonWithRetry(url: string, body: any, headers: Record<string, string>, timeoutMs = 30000): Promise<Response> {
+    const attempt = async () => {
+      return await this.fetchWithTimeout(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify(body)
+      }, timeoutMs);
+    };
+
+    let res = await attempt();
+    if (!res.ok && (res.status >= 500 || res.status === 0)) {
+      // one retry after short delay
+      await new Promise(r => setTimeout(r, 500));
+      res = await attempt();
+    }
+    return res;
+  }
+
   private static async generateOpenRouterContent(prompt: string, modelName: string, apiKey: string): Promise<string> {
     try {
       console.log(`LLMService: Calling OpenRouter API with model: ${modelName}`);
-      console.log(`LLMService: API Key format: ${apiKey.substring(0, 10)}...`);
-      console.log(`LLMService: API Key length: ${apiKey.length}`);
-      console.log(`LLMService: Model name length: ${modelName.length}`);
 
       const requestBody = {
         model: modelName,
-        messages: [
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
+        messages: [{ role: 'user', content: prompt }],
         max_tokens: 4000,
         temperature: 0.7,
         top_p: 0.9,
@@ -307,32 +366,25 @@ export class LLMService {
         presence_penalty: 0
       };
 
-      console.log('LLMService: Request body:', JSON.stringify(requestBody, null, 2));
-
-      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
+      const response = await this.postJsonWithRetry(
+        'https://openrouter.ai/api/v1/chat/completions',
+        requestBody,
+        {
           'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
           'HTTP-Referer': window.location.origin,
           'X-Title': 'HSR Construction Estimator'
         },
-        body: JSON.stringify(requestBody)
-      });
-
-      console.log(`OpenRouter Response Status: ${response.status}`);
-      console.log(`OpenRouter Response Headers:`, Object.fromEntries(response.headers.entries()));
+        45000
+      );
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        console.error('OpenRouter API Error:', response.status, errorData);
-
         if (response.status === 401) {
           throw new Error('Invalid OpenRouter API key. Please check your API key in LLM settings.');
         } else if (response.status === 402) {
           throw new Error('OpenRouter API quota exceeded. Please check your account balance.');
         } else if (response.status === 404) {
-          throw new Error(`OpenRouter model "${modelName}" not found. Please check the model name or try a different model. Available models: anthropic/claude-3-5-sonnet-20241022, openai/gpt-4o, google/gemini-2.0-flash-exp:free`);
+          throw new Error(`OpenRouter model "${modelName}" not found. Please check the model name or try a different model.`);
         } else if (response.status === 429) {
           throw new Error('OpenRouter API rate limit exceeded. Please try again in a moment.');
         } else {
@@ -341,25 +393,57 @@ export class LLMService {
       }
 
       const data = await response.json();
-      console.log('OpenRouter API Response:', data);
-
-      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-        console.error('Invalid OpenRouter response structure:', data);
-        throw new Error('Invalid response from OpenRouter API');
-      }
-
-      const content = data.choices[0].message.content;
+      const content = data.choices?.[0]?.message?.content;
       if (!content || content.trim().length === 0) {
         throw new Error('Empty response from OpenRouter API');
       }
-
       return content.trim();
     } catch (error) {
       console.error('OpenRouter API Error:', error);
-      if (error instanceof Error) {
-        throw error;
-      }
+      if (error instanceof Error) throw error;
       throw new Error('Failed to communicate with OpenRouter API');
+    }
+  }
+
+  static getCustomOpenAIModelName(): string {
+    return localStorage.getItem('openai-custom-model') || 'gpt-4o';
+  }
+
+  static setCustomOpenAIModelName(modelName: string): void {
+    localStorage.setItem('openai-custom-model', modelName);
+  }
+
+  private static async generateOpenAIContent(prompt: string, model: string, apiKey: string): Promise<string> {
+    try {
+      const response = await this.postJsonWithRetry(
+        'https://api.openai.com/v1/chat/completions',
+        { model, messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 4000 },
+        { 'Authorization': `Bearer ${apiKey}` },
+        45000
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        if (response.status === 401) {
+          throw new Error('Invalid OpenAI API key. Please check your API key in LLM settings.');
+        } else if (response.status === 429) {
+          throw new Error('OpenAI API rate limit exceeded. Please try again later.');
+        } else if (response.status === 402) {
+          throw new Error('OpenAI billing required or quota exceeded. Please check your account.');
+        }
+        throw new Error(`OpenAI API error: ${response.status} ${response.statusText} - ${JSON.stringify(errorData)}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content;
+      if (!content) {
+        throw new Error('Empty response from OpenAI API');
+      }
+      return content;
+    } catch (error) {
+      console.error('OpenAI API Error:', error);
+      if (error instanceof Error) throw error;
+      throw new Error('Failed to communicate with OpenAI API');
     }
   }
 }

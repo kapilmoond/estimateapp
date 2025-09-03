@@ -47,9 +47,11 @@ export const LLMProviderSelector: React.FC<LLMProviderSelectorProps> = ({ isOpen
     // Save provider and model selection
     LLMService.setProvider(currentProvider, currentModel);
 
-    // Save custom model name for OpenRouter
+    // Save custom model name for OpenRouter/OpenAI
     if (currentProvider === 'openrouter') {
       LLMService.setCustomModelName(customModelName.trim());
+    } else if (currentProvider === 'openai' && currentModel === 'custom-model') {
+      LLMService.setCustomOpenAIModelName(customModelName.trim());
     }
 
     // Save API keys
@@ -61,7 +63,7 @@ export const LLMProviderSelector: React.FC<LLMProviderSelectorProps> = ({ isOpen
 
     // Update status
     setProviderStatus(LLMService.getProviderStatus());
-    
+
     onClose();
   };
 
@@ -86,13 +88,21 @@ export const LLMProviderSelector: React.FC<LLMProviderSelectorProps> = ({ isOpen
       if (provider) {
         LLMService.setProvider(providerId, provider.models[0].id);
 
-        // For OpenRouter, use the current input model name even before saving
+        // For OpenRouter or OpenAI custom models, use current input even before saving
         if (providerId === 'openrouter') {
           const modelToTest = (customModelName || originalCustomModel).trim();
           if (!modelToTest) {
             throw new Error('Please enter an OpenRouter model name (e.g., anthropic/claude-3.5-sonnet)');
           }
           LLMService.setCustomModelName(modelToTest);
+        } else if (providerId === 'openai') {
+          const modelToTest = (customModelName || LLMService.getCustomOpenAIModelName()).trim();
+          if (currentModel === 'custom-model' && !modelToTest) {
+            throw new Error('Please enter an OpenAI model ID (e.g., gpt-4o)');
+          }
+          if (currentModel === 'custom-model') {
+            LLMService.setCustomOpenAIModelName(modelToTest);
+          }
         }
 
         // Test with a simple prompt
@@ -283,6 +293,35 @@ export const LLMProviderSelector: React.FC<LLMProviderSelectorProps> = ({ isOpen
                   📋 <strong>Copy & Paste:</strong> Visit <a href="https://openrouter.ai/models" target="_blank" rel="noopener noreferrer" className="underline font-medium">openrouter.ai/models</a> and copy any model name to paste above
                 </p>
               </div>
+        {/* OpenAI Custom Model Input */}
+        {selectedProvider && selectedProvider.id === 'openai' && (
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold mb-3">OpenAI Model (ChatGPT)</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Model ID (optional: custom model)
+                </label>
+                <input
+                  type="text"
+                  value={customModelName}
+                  onChange={(e) => setCustomModelName(e.target.value)}
+                  placeholder="e.g., gpt-4o, gpt-4o-mini, gpt-4.1, gpt-4.1-mini"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+                <h4 className="font-medium text-blue-900 mb-2">Popular OpenAI Models:</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                  <button type="button" onClick={() => setCustomModelName('gpt-4o')} className="text-left text-blue-700 hover:text-blue-900 hover:underline">gpt-4o</button>
+                  <button type="button" onClick={() => setCustomModelName('gpt-4o-mini')} className="text-left text-blue-700 hover:text-blue-900 hover:underline">gpt-4o-mini</button>
+                  <button type="button" onClick={() => setCustomModelName('gpt-4.1')} className="text-left text-blue-700 hover:text-blue-900 hover:underline">gpt-4.1</button>
+                  <button type="button" onClick={() => setCustomModelName('gpt-4.1-mini')} className="text-left text-blue-700 hover:text-blue-900 hover:underline">gpt-4.1-mini</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
             </div>
           </div>
         )}
@@ -325,6 +364,8 @@ export const LLMProviderSelector: React.FC<LLMProviderSelectorProps> = ({ isOpen
                     ? 'Get your API key from Google AI Studio (https://aistudio.google.com/app/apikey)'
                     : provider.id === 'moonshot'
                     ? 'Get your API key from Moonshot AI Platform (https://platform.moonshot.ai/console/api-keys)'
+                    : provider.id === 'openai'
+                    ? 'Get your API key from OpenAI (https://platform.openai.com/api-keys). Ensure billing is enabled.'
                     : 'Get your API key from OpenRouter (https://openrouter.ai/keys) - Check your account balance if getting 404 errors'
                   }
                 </p>

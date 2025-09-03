@@ -126,12 +126,27 @@ export const DrawingResultsDisplay: React.FC<DrawingResultsDisplayProps> = ({
         </div>
       </div>
 
-      {/* DXF Viewer */}
+      {/* Preferred Image Preview if available, fallback to simple DXF viewer */}
       <div className="mb-6">
-        <SimpleDxfViewer
-          dxfContent={result.dxfContent}
-          title={result.title}
-        />
+        {result.imagePng ? (
+          <div className="border border-gray-200 rounded-lg p-3 bg-white">
+            <div className="text-sm text-gray-600 mb-2">PNG Preview (auto-scaled to fit)</div>
+            <img
+              src={`data:image/png;base64,${result.imagePng}`}
+              alt={result.title}
+              className="w-full h-auto rounded"
+            />
+            <div className="mt-2 flex gap-2">
+              <button onClick={handleDownloadPNG} className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">Download PNG</button>
+              {result.imagePdf && (
+                <button onClick={handleDownloadPDF} className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">Download PDF</button>
+              )}
+              <button onClick={handlePrintImage} className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50">Print Image</button>
+            </div>
+          </div>
+        ) : (
+          <SimpleDxfViewer dxfContent={result.dxfContent} title={result.title} />
+        )}
       </div>
 
       {/* Image Generation Error */}
