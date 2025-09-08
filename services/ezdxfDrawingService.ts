@@ -47,8 +47,13 @@ export class EzdxfDrawingService {
       throw new Error(`Failed to generate valid Python code for drawing. LLM response was: ${response.substring(0, 200)}...`);
     }
 
+    // Sanitize and auto-repair common issues in generated code
+    const sanitized = this.sanitizePythonCode(pythonCode);
     console.log('Successfully extracted Python code, length:', pythonCode.length);
-    return pythonCode;
+    if (sanitized !== pythonCode) {
+      console.log('Applied code sanitization and repairs. New length:', sanitized.length);
+    }
+    return sanitized;
   }
 
   /**
@@ -180,9 +185,7 @@ export class EzdxfDrawingService {
    * Build comprehensive prompt for ezdxf code generation
    */
   private static async buildDrawingPrompt(request: DrawingRequest): Promise<string> {
-    // Always use the bundled local tutorial (single text file) – no external fetch
-    const tutorialsText = await EzdxfDrawingService.loadLocalTutorialText();
-
+    // Keep prompt compact per user instruction: do NOT inline large tutorials in the prompt.
 
     return `You are a professional CAD engineer and Python developer specializing in ezdxf library version 1.4.2 for creating technical drawings (target DXF R2018).
 
@@ -207,7 +210,7 @@ ${request.guidelines}
 **REFERENCE MATERIALS:**
 ${request.referenceText}
 
-OFFICIAL TUTORIALS (VERBATIM EXCERPTS):\n${tutorialsText}\n\n-- END OFFICIAL TUTORIALS --\n\nADDITIONAL QUICK REFERENCE (curated for drawing generation):
+ADDITIONAL QUICK REFERENCE (curated for drawing generation):
 
 **CRITICAL: This is the complete, accurate ezdxf documentation based on official sources. Use EXACTLY these patterns and methods.**
 
@@ -820,6 +823,63 @@ Use ONLY safe dimension parameters. NO units, NO dimpost, NO dimunit.`;
       isValid: errors.length === 0,
       errors
     };
+  }
+
+  /**
+   * Sanitize and auto-repair common LLM code issues to reduce failures
+   */
+  private static sanitizePythonCode(code: string): string {
+    let fixed = code.trim();
+
+    // Ensure import ezdxf at top
+    if (!/^import\s+ezdxf/m.test(fixed)) {
+      fixed = `import ezdxf\n` + fixed;
+    }
+
+    // Ensure a document is created (prefer R2018 with setup=True)
+    if (!/ezdxf\.new\(/.test(fixed)) {
+      fixed = fixed.replace(/^(import\s+ezdxf.*?$)/m, `$1\n\ndoc = ezdxf.new("R2018", setup=True)\nmsp = doc.modelspace()`);
+    } else {
+      // Upgrade doc creation to include setup=True for reliable resources
+      fixed = fixed.replace(/ezdxf\.new\(([^\)]*)\)/, (m, p1) => {
+        const hasSetup = /setup\s*=\s*True/.test(m);
+        if (hasSetup) return m;
+        if (/R\d+/.test(p1)) return `ezdxf.new(${p1}, setup=True)`;
+        return `ezdxf.new("R2018", setup=True)`;
+      });
+      // Ensure modelspace assignment exists
+      if (!/modelspace\(\)/.test(fixed)) {
+        fixed = fixed.replace(/(ezdxf\.new\([^\)]*\).*)/s, `$1\n\nmsp = doc.modelspace()`);
+      }
+    }
+
+    // Remove forbidden/invalid DXF attributes
+    const forbidden = ["linetypescale", "lineweight", "thickness", "elevation", "extrusion"];
+    forbidden.forEach(attr => {
+      const attrRegex = new RegExp(`([\"\']${attr}[\"\']\s*:\s*[^,}\n]+,?)`, 'gi');
+      fixed = fixed.replace(attrRegex, '');
+    });
+
+    // Patch dimension creation: ensure render() is called
+    // Add dim.render() after add_*_dim() if missing
+    fixed = fixed.replace(/(dim\s*=\s*msp\.add_[a-z_]*dim\([\s\S]*?\)\s*)(?!\n\s*dim\.render\(\))/g, `$1\nDimRenderPlaceholder`);
+    fixed = fixed.replace(/DimRenderPlaceholder/g, 'dim.render()');
+
+    // Avoid dangerous dim overrides by removing blacklisted keys
+    fixed = fixed.replace(/override\s*=\s*\{[\s\S]*?\}/g, (match) => {
+      const blacklist = [/dimpost\s*:/i, /dimunit\s*:/i, /dimaunit\s*:/i, /dimdsep\s*:/i];
+      if (blacklist.some(rx => rx.test(match))) {
+        return 'override={}';
+      }
+      return match;
+    });
+
+    // Ensure final save exists
+    if (!/doc\.saveas\(/.test(fixed)) {
+      fixed += `\n\n# Ensure drawing is saved\ntry:\n    doc.saveas("drawing.dxf")\nexcept Exception:\n    pass`;
+    }
+
+    return fixed;
   }
 
   /**

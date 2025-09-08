@@ -42,6 +42,7 @@ import { DrawingService, ProjectDrawing } from './services/drawingService';
 import { CompactFileUpload } from './components/CompactFileUpload';
 import { LLMService } from './services/llmService';
 import { RAGService } from './services/ragService';
+import { DrawingContextSelector } from './components/DrawingContextSelector';
 
 import { SystemStatus } from './components/SystemStatus';
 type Step = 'scoping' | 'generatingKeywords' | 'approvingKeywords' | 'approvingHsrItems' | 'approvingRefinedHsrItems' | 'generatingEstimate' | 'reviewingEstimate' | 'done';
@@ -709,6 +710,16 @@ const App: React.FC = () => {
         templateContext += `- Create designs that match the template's approach and quality level\n`;
 
         designReferenceText += templateContext;
+
+	      // Include summaries of selected drawings as context for DESIGN prompts
+	      const drawingsContextForDesign = savedDrawings
+	        .filter(d => d.includeInContext !== false)
+	        .map(d => `• ${d.title}: ${d.description}`)
+	        .join('\n');
+	      if (drawingsContextForDesign) {
+	        designReferenceText += `\n\n**AVAILABLE TECHNICAL DRAWINGS:**\n${drawingsContextForDesign}`;
+	      }
+
       }
 
       setLoadingMessage('🤖 Generating professional component design...');
@@ -1421,6 +1432,11 @@ Create a new cost abstract that addresses the remake instructions using the exis
               </button>
             </div>
           </form>
+
+          {/* Drawing Context Selector - choose which drawings to include in prompts */}
+          <div className="p-4 border-t border-gray-200">
+            <DrawingContextSelector drawings={savedDrawings} onChange={loadSavedDrawings} />
+          </div>
         </div>
 
         {/* Results and Displays Area */}

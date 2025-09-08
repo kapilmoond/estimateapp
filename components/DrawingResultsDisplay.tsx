@@ -263,7 +263,7 @@ export const DrawingResultsDisplay: React.FC<DrawingResultsDisplayProps> = ({
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs text-gray-600">
           <div>
             <span className="font-medium">DXF Version:</span>
-            <div>AutoCAD R2010</div>
+            <div>AutoCAD R2018</div>
           </div>
           <div>
             <span className="font-medium">Units:</span>
