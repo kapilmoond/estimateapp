@@ -15,9 +15,11 @@ export const LLMProviderSelector: React.FC<LLMProviderSelectorProps> = ({ isOpen
   const [apiKeys, setApiKeys] = useState<{ [key: string]: string }>({});
   const [providerStatus, setProviderStatus] = useState<{ [key: string]: boolean }>({});
   const [testingProvider, setTestingProvider] = useState<string | null>(null);
+  const [openRouterModels, setOpenRouterModels] = useState<string[]>([]);
+  const [newOpenRouterModel, setNewOpenRouterModel] = useState<string>('');
 
   useEffect(() => {
-    // Load existing API keys
+    // Load existing API keys and provider status
     const keys: { [key: string]: string } = {};
     providers.forEach(provider => {
       const key = LLMService.getApiKey(provider.id);
@@ -26,6 +28,17 @@ export const LLMProviderSelector: React.FC<LLMProviderSelectorProps> = ({ isOpen
     setApiKeys(keys);
     setProviderStatus(LLMService.getProviderStatus());
   }, [providers]);
+
+  // Load OpenRouter saved models when OpenRouter is selected
+  useEffect(() => {
+    if (currentProvider === 'openrouter') {
+      const list = LLMService.getOpenRouterSavedModels();
+      setOpenRouterModels(list);
+      // Ensure the input reflects the saved current model
+      const current = LLMService.getCustomModelName();
+      if (current) setCustomModelName(current);
+    }
+  }, [currentProvider]);
 
   const handleProviderChange = (providerId: string) => {
     setCurrentProvider(providerId);
@@ -203,96 +216,81 @@ export const LLMProviderSelector: React.FC<LLMProviderSelectorProps> = ({ isOpen
           </div>
         )}
 
-        {/* OpenRouter Custom Model Input */}
+        {/* OpenRouter Models Selection */}
         {selectedProvider && selectedProvider.id === 'openrouter' && (
           <div className="mb-6">
-            <h3 className="text-lg font-semibold mb-3">OpenRouter Model Name</h3>
-            <div className="space-y-3">
+            <h3 className="text-lg font-semibold mb-3">OpenRouter Models</h3>
+            <div className="space-y-4">
+              {/* Saved models dropdown */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Model Name (paste from OpenRouter models list)
-                </label>
-                <input
-                  type="text"
+                <label className="block text-sm font-medium text-gray-700 mb-2">Select a saved model</label>
+                <select
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   value={customModelName}
                   onChange={(e) => setCustomModelName(e.target.value)}
-                  placeholder="Paste any OpenRouter model name here (e.g., anthropic/claude-3-5-sonnet-20241022)"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                >
+                  {openRouterModels.length === 0 && (
+                    <option value="">No saved models yet</option>
+                  )}
+                  {openRouterModels.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">Models are stored in your browser and persist across sessions.</p>
               </div>
-              <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
-                <h4 className="font-medium text-blue-900 mb-2">Popular OpenRouter Models (Updated 2024):</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+
+              {/* Add new model */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Add a model (paste from OpenRouter)</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newOpenRouterModel}
+                    onChange={(e) => setNewOpenRouterModel(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        const updated = LLMService.addOpenRouterModel(newOpenRouterModel);
+                        setOpenRouterModels(updated);
+                        setCustomModelName(newOpenRouterModel.trim());
+                        setNewOpenRouterModel('');
+                      }
+                    }}
+                    placeholder="e.g., anthropic/claude-3.5-sonnet"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
                   <button
                     type="button"
-                    onClick={() => setCustomModelName('anthropic/claude-3.5-sonnet')}
-                    className="text-left text-blue-700 hover:text-blue-900 hover:underline"
+                    onClick={() => {
+                      const updated = LLMService.addOpenRouterModel(newOpenRouterModel);
+                      setOpenRouterModels(updated);
+                      setCustomModelName(newOpenRouterModel.trim());
+                      setNewOpenRouterModel('');
+                    }}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                   >
-                    anthropic/claude-3.5-sonnet
+                    Add
                   </button>
                   <button
                     type="button"
-                    onClick={() => setCustomModelName('anthropic/claude-3.5-haiku')}
-                    className="text-left text-blue-700 hover:text-blue-900 hover:underline"
+                    disabled={!customModelName}
+                    onClick={() => {
+                      const updated = LLMService.removeOpenRouterModel(customModelName);
+                      setOpenRouterModels(updated);
+                      setCustomModelName(updated[0] || '');
+                    }}
+                    className="px-4 py-2 border border-red-300 text-red-700 rounded-md hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    anthropic/claude-3.5-haiku
+                    Remove selected
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setCustomModelName('openai/gpt-4o')}
-                    className="text-left text-blue-700 hover:text-blue-900 hover:underline"
-                  >
-                    openai/gpt-4o
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCustomModelName('openai/gpt-4o-mini')}
-                    className="text-left text-blue-700 hover:text-blue-900 hover:underline"
-                  >
-                    openai/gpt-4o-mini
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCustomModelName('google/gemini-2.0-flash-exp:free')}
-                    className="text-left text-blue-700 hover:text-blue-900 hover:underline"
-                  >
-                    google/gemini-2.0-flash-exp:free
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCustomModelName('google/gemini-pro-1.5')}
-                    className="text-left text-blue-700 hover:text-blue-900 hover:underline"
-                  >
-                    google/gemini-pro-1.5
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCustomModelName('meta-llama/llama-3.1-405b-instruct')}
-                    className="text-left text-blue-700 hover:text-blue-900 hover:underline"
-                  >
-                    meta-llama/llama-3.1-405b-instruct
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCustomModelName('mistralai/mistral-large')}
-                    className="text-left text-blue-700 hover:text-blue-900 hover:underline"
-                  >
-                    mistralai/mistral-large
-                  </button>
-                </div>
-                <div className="bg-yellow-50 border border-yellow-200 rounded p-2 mt-3">
-                  <p className="text-xs text-yellow-800">
-                    <strong>⚠️ Troubleshooting 404 errors:</strong><br/>
-                    • Check model name spelling exactly<br/>
-                    • Some models have limited availability<br/>
-                    • Try a different model if one doesn't work<br/>
-                    • Check your OpenRouter account balance
-                  </p>
                 </div>
                 <p className="text-xs text-blue-600 mt-2">
-                  📋 <strong>Copy & Paste:</strong> Visit <a href="https://openrouter.ai/models" target="_blank" rel="noopener noreferrer" className="underline font-medium">openrouter.ai/models</a> and copy any model name to paste above
+                  📋 Visit <a href="https://openrouter.ai/models" target="_blank" rel="noopener noreferrer" className="underline font-medium">openrouter.ai/models</a> to copy a model name.
                 </p>
               </div>
+            </div>
+          </div>
+        )}
+
         {/* OpenAI Custom Model Input */}
         {selectedProvider && selectedProvider.id === 'openai' && (
           <div className="mb-6">
@@ -319,9 +317,6 @@ export const LLMProviderSelector: React.FC<LLMProviderSelectorProps> = ({ isOpen
                   <button type="button" onClick={() => setCustomModelName('gpt-4.1-mini')} className="text-left text-blue-700 hover:text-blue-900 hover:underline">gpt-4.1-mini</button>
                 </div>
               </div>
-            </div>
-          </div>
-        )}
             </div>
           </div>
         )}

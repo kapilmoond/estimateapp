@@ -118,6 +118,68 @@ export class LLMService {
     localStorage.setItem('openrouter-custom-model', modelName);
   }
 
+  // OpenRouter saved models management (stored in localStorage)
+  private static readonly OPENROUTER_MODELS_KEY = 'openrouter-models';
+
+  static getOpenRouterSavedModels(): string[] {
+    try {
+      const raw = localStorage.getItem(this.OPENROUTER_MODELS_KEY);
+      let list: string[] = [];
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) list = parsed.filter(x => typeof x === 'string');
+      }
+      // Ensure current custom model is present
+      const current = this.getCustomModelName();
+      if (current && !list.includes(current)) list.unshift(current);
+      // Provide a small default starter set if empty
+      if (list.length === 0) {
+        list = [
+          'anthropic/claude-3.5-sonnet',
+          'anthropic/claude-3.5-haiku',
+          'openai/gpt-4o',
+          'openai/gpt-4o-mini',
+          'meta-llama/llama-3.1-405b-instruct'
+        ];
+      }
+      // Deduplicate and trim
+      const seen = new Set<string>();
+      const cleaned = list
+        .map(s => (s || '').trim())
+        .filter(s => s.length > 0 && !seen.has(s) && (seen.add(s), true));
+      // Save back the cleaned list
+      localStorage.setItem(this.OPENROUTER_MODELS_KEY, JSON.stringify(cleaned));
+      return cleaned;
+    } catch (e) {
+      console.error('Error loading OpenRouter models list:', e);
+      return [this.getCustomModelName() || 'anthropic/claude-3.5-sonnet'];
+    }
+  }
+
+  static addOpenRouterModel(model: string): string[] {
+    const m = (model || '').trim();
+    if (!m) return this.getOpenRouterSavedModels();
+    const list = this.getOpenRouterSavedModels();
+    if (!list.includes(m)) list.unshift(m);
+    localStorage.setItem(this.OPENROUTER_MODELS_KEY, JSON.stringify(list));
+    // Also set as current selection
+    this.setCustomModelName(m);
+    return list;
+  }
+
+  static removeOpenRouterModel(model: string): string[] {
+    const target = (model || '').trim();
+    const list = this.getOpenRouterSavedModels().filter(m => m !== target);
+    localStorage.setItem(this.OPENROUTER_MODELS_KEY, JSON.stringify(list));
+    // If removed the currently selected model, switch to first available if any
+    if (this.getCustomModelName() === target) {
+      if (list.length > 0) this.setCustomModelName(list[0]);
+      else this.setCustomModelName('');
+    }
+    return list;
+  }
+
+
   static setProvider(providerId: string, modelId: string): void {
     localStorage.setItem('llm-provider', providerId);
     localStorage.setItem('llm-model', modelId);
