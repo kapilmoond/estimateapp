@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { EzdxfDrawingService } from '../services/ezdxfDrawingService';
 
 interface DxfViewerProps {
   dxfContent?: string;
@@ -57,16 +58,21 @@ export const DxfViewer: React.FC<DxfViewerProps> = ({
 
   const downloadDxf = () => {
     if (!dxfContent) return;
-
-    const blob = new Blob([dxfContent], { type: 'application/dxf' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${title.replace(/[^a-zA-Z0-9]/g, '_')}.dxf`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    try {
+      // Use service helper which handles base64 decoding and correct mime
+      EzdxfDrawingService.downloadDXF(dxfContent, title || 'drawing');
+    } catch (e) {
+      // Fallback to plain text blob if something goes wrong
+      const blob = new Blob([dxfContent], { type: 'application/dxf' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${title?.replace(/[^a-zA-Z0-9]/g, '_') || 'drawing'}.dxf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
   };
 
   const openInNewTab = () => {
@@ -211,16 +217,19 @@ export const SimpleDxfViewer: React.FC<{ dxfContent?: string; title?: string }> 
 }) => {
   const downloadDxf = () => {
     if (!dxfContent) return;
-
-    const blob = new Blob([dxfContent], { type: 'application/dxf' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${title.replace(/[^a-zA-Z0-9]/g, '_')}.dxf`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    try {
+      EzdxfDrawingService.downloadDXF(dxfContent, title || 'drawing');
+    } catch (e) {
+      const blob = new Blob([dxfContent], { type: 'application/dxf' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${title?.replace(/[^a-zA-Z0-9]/g, '_') || 'drawing'}.dxf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
   };
 
   if (!dxfContent) {

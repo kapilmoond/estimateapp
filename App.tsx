@@ -307,7 +307,8 @@ const App: React.FC = () => {
   };
 
   const handleDrawingGenerated = (result: DrawingResult) => {
-    // Do not overwrite existing results; saved drawings list drives display
+    // Show the latest result immediately in the UI (even if persistence fails)
+    setDrawingResults(prev => [result, ...prev]);
     setIsDrawingGenerating(false);
 
     // Add to conversation history
