@@ -1,5 +1,4 @@
 import { LLMService } from './llmService';
-import { getCombinedTutorials } from './ezdxfTutorialService';
 import { EZDXF_TUTORIAL } from './ezdxfTutorial';
 
 export interface DrawingRequest {
@@ -182,17 +181,8 @@ export class EzdxfDrawingService {
    * Build comprehensive prompt for ezdxf code generation
    */
   private static async buildDrawingPrompt(request: DrawingRequest): Promise<string> {
-    // Fetch official tutorials verbatim and include in prompt for maximum accuracy
-    let tutorialsText = '';
-    try {
-      const tutorials = await getCombinedTutorials(false);
-      tutorialsText = tutorials.combined;
-    } catch (e) {
-      console.warn('Failed to fetch tutorials online, using local fallback.');
-    }
-    if (!tutorialsText || tutorialsText.length < 2000) {
-      tutorialsText = `Fallback local tutorial (condensed)\n\n${EZDXF_TUTORIAL}`;
-    }
+    // Always use the bundled local tutorial (single file) – no network fetch
+    const tutorialsText = EZDXF_TUTORIAL;
 
 
     return `You are a professional CAD engineer and Python developer specializing in ezdxf library version 1.4.2 for creating technical drawings (target DXF R2018).
