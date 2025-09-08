@@ -10,6 +10,7 @@ export interface ProjectDrawing {
   result: DrawingResult;
   timestamp: number;
   settings?: any; // Drawing settings used
+  includeInContext?: boolean; // Whether to include this drawing in LLM context
 }
 
 export class DrawingService {
@@ -20,16 +21,17 @@ export class DrawingService {
    */
   static saveDrawing(drawing: Omit<ProjectDrawing, 'id' | 'timestamp'>): ProjectDrawing {
     const drawings = this.loadAllDrawings();
-    
+
     const newDrawing: ProjectDrawing = {
       ...drawing,
       id: this.generateId(),
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      includeInContext: drawing.includeInContext ?? true,
     };
-    
+
     drawings.push(newDrawing);
     this.saveAllDrawings(drawings);
-    
+
     return newDrawing;
   }
 

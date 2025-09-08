@@ -16,6 +16,7 @@ interface EzdxfDrawingInterfaceProps {
   onDrawingGenerated: (result: DrawingResult) => void;
   onError: (error: string) => void;
   onGenerateDrawing?: () => Promise<void>; // Function to trigger drawing generation
+  onDrawingsChanged?: () => void; // Notify parent when drawings list changes (add/delete/clear)
 }
 
 export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
@@ -26,7 +27,8 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
   referenceText,
   onDrawingGenerated,
   onError,
-  onGenerateDrawing
+  onGenerateDrawing,
+  onDrawingsChanged,
 }) => {
   const [serverStatus, setServerStatus] = useState<{ running: boolean; message: string; version?: string } | null>(null);
   const [isCheckingServer, setIsCheckingServer] = useState(false);
@@ -152,7 +154,8 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
           specification,
           generatedCode: pythonCode,
           result,
-          settings: drawingSettings
+          settings: drawingSettings,
+          includeInContext: true,
         });
 
         setCurrentDrawing(savedDrawing);
@@ -357,6 +360,7 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
                   DrawingService.deleteProjectDrawings(getCurrentProjectId());
                   setProjectDrawings([]);
                   setCurrentDrawing(null);
+                  onDrawingsChanged && onDrawingsChanged();
                 }
               }}
               className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
@@ -391,6 +395,7 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
                     try {
                       setCurrentDrawing(drawing);
                       onDrawingGenerated(drawing.result);
+                      onDrawingsChanged && onDrawingsChanged();
                     } catch (error) {
                       console.error('Error loading drawing:', error);
                     }
@@ -406,6 +411,31 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
                     {currentDrawing?.id === drawing.id && (
                       <span className="text-xs text-blue-600 font-medium">Current</span>
                     )}
+
+                    {/* Toggle include in context */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const updatedDrawing: ProjectDrawing = {
+                          ...drawing,
+                          includeInContext: drawing.includeInContext === false ? true : false,
+                        };
+                        DrawingService.updateDrawing(updatedDrawing);
+                        const refreshed = DrawingService.loadProjectDrawings(getCurrentProjectId());
+                        setProjectDrawings(refreshed);
+                        if (currentDrawing?.id === drawing.id) {
+                          setCurrentDrawing(updatedDrawing);
+                        }
+                      }}
+                      className={`text-xs px-2 py-1 rounded ${
+                        drawing.includeInContext === false ? 'bg-gray-200 text-gray-700' : 'bg-green-100 text-green-800'
+                      }`}
+                      title={drawing.includeInContext === false ? 'Include this drawing in context' : 'Exclude this drawing from context'}
+                    >
+                      {drawing.includeInContext === false ? 'Excluded' : 'In Context'}
+                    </button>
+
+                    {/* Delete */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -416,9 +446,10 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
                           if (currentDrawing?.id === drawing.id) {
                             setCurrentDrawing(null);
                           }
+                          onDrawingsChanged && onDrawingsChanged();
                         }
                       }}
-                      className="text-red-500 hover:text-red-700 text-xs"
+                      className="text-red-500 hover:text-red-700 text-xs ml-2"
                       title="Delete drawing"
                     >
                       🗑️

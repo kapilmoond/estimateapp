@@ -214,10 +214,12 @@ const App: React.FC = () => {
       const drawings = DrawingService.loadProjectDrawings(projectId);
       setSavedDrawings(drawings);
 
-      // Load the latest drawing result if available
-      const latestDrawing = DrawingService.getLatestProjectDrawing(projectId);
-      if (latestDrawing) {
-        setDrawingResults([latestDrawing.result]);
+      // Load all drawing results for display (do not overwrite previous)
+      if (drawings.length > 0) {
+        setDrawingResults(drawings
+          .sort((a, b) => b.timestamp - a.timestamp)
+          .map(d => d.result)
+        );
       } else {
         setDrawingResults([]);
       }
@@ -305,8 +307,7 @@ const App: React.FC = () => {
   };
 
   const handleDrawingGenerated = (result: DrawingResult) => {
-    // Replace existing results instead of adding to prevent duplication
-    setDrawingResults([result]);
+    // Do not overwrite existing results; saved drawings list drives display
     setIsDrawingGenerating(false);
 
     // Add to conversation history
@@ -528,11 +529,22 @@ const App: React.FC = () => {
           })
           .join('\n\n');
 
+        // Add drawings context summaries
+        const drawingsContext = savedDrawings
+          .filter(d => d.includeInContext !== false)
+          .map(d => `• ${d.title}: ${d.description}`)
+          .join('\n');
+
         let enhancedReferenceText = referenceText + contextPrompt;
 
         // Include design context in discussions
         if (designContext) {
           enhancedReferenceText += `\n\n**AVAILABLE COMPONENT DESIGNS:**\n${designContext}`;
+        }
+
+        // Include drawings context in discussions
+        if (drawingsContext) {
+          enhancedReferenceText += `\n\n**AVAILABLE TECHNICAL DRAWINGS:**\n${drawingsContext}`;
         }
 
         // Add knowledge base context if enabled
@@ -781,6 +793,12 @@ const App: React.FC = () => {
         .map(d => `**${d.componentName}:**\n${d.designContent}`)
         .join('\n\n');
 
+      // Include summaries of selected drawings as context
+      const drawingsContextSummary = savedDrawings
+        .filter(d => d.includeInContext !== false)
+        .map(d => `• ${d.title}: ${d.description}`)
+        .join('\n');
+
       const drawingGuidelines = GuidelinesService.getActiveGuidelines();
       const drawingGuidelinesText = GuidelinesService.formatGuidelinesForPrompt(drawingGuidelines);
 
@@ -805,7 +823,7 @@ const App: React.FC = () => {
         description: inputText.substring(0, 200) + (inputText.length > 200 ? '...' : ''),
         userRequirements: inputText,
         projectContext,
-        designContext,
+        designContext: [designContext, drawingsContextSummary].filter(Boolean).join('\n\n**DRAWINGS CONTEXT:**\n'),
         guidelines: drawingGuidelinesText,
         referenceText: referenceText + templateContext
       };
@@ -1429,6 +1447,7 @@ Create a new cost abstract that addresses the remake instructions using the exis
                 referenceText={referenceText}
                 onDrawingGenerated={handleDrawingGenerated}
                 onError={handleDrawingError}
+                onDrawingsChanged={loadSavedDrawings}
               />
 
               {/* Display Generated Drawings */}
@@ -1628,7 +1647,7 @@ Create a new cost abstract that addresses the remake instructions using the exis
 
               <div>
                 <h4 className="font-medium text-gray-700 mb-2">Drawings</h4>
-                <p className="text-2xl font-bold text-purple-600">{savedDrawings.length + drawingResults.length}</p>
+                <p className="text-2xl font-bold text-purple-600">{savedDrawings.length}</p>
                 <p className="text-sm text-gray-500">Technical drawings</p>
               </div>
 
