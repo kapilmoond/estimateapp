@@ -838,7 +838,7 @@ export const DrawingSettingsPanel: React.FC<DrawingSettingsPanelProps> = ({
 
 // Default settings function
 export const getDefaultSettings = (): DrawingSettings => ({
-  documentFormat: 'R2010',
+  documentFormat: 'R2018',
   units: 'mm',
   scale: 1,
 

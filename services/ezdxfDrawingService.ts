@@ -30,8 +30,8 @@ export class EzdxfDrawingService {
    * Generate complete ezdxf Python code for technical drawing
    */
   static async generateDrawingCode(request: DrawingRequest): Promise<string> {
-    const prompt = this.buildDrawingPrompt(request);
-    
+    const prompt = await this.buildDrawingPrompt(request);
+
     console.log('EzdxfDrawingService: Generating Python code with LLM');
     console.log('Prompt length:', prompt.length);
 
@@ -155,12 +155,26 @@ export class EzdxfDrawingService {
   /**
    * Build comprehensive prompt for ezdxf code generation
    */
-  private static buildDrawingPrompt(request: DrawingRequest): string {
-    return `You are a professional CAD engineer and Python developer specializing in ezdxf library version 1.4.2 for creating technical drawings.
+  private static async buildDrawingPrompt(request: DrawingRequest): Promise<string> {
+    // Fetch official tutorials verbatim and include in prompt for maximum accuracy
+    const { getCombinedTutorials } = await import('./ezdxfTutorialService');
+    const tutorials = await getCombinedTutorials(false);
+    let tutorialsText = tutorials.combined;
+    try {
+      if (!tutorialsText || tutorialsText.length < 2000) {
+        const { EZDXF_TUTORIAL } = await import('./ezdxfTutorial');
+        tutorialsText = `Fallback local tutorial (condensed)\n\n${EZDXF_TUTORIAL}`;
+      }
+    } catch {}
 
-**CRITICAL INSTRUCTION: You must respond with ONLY executable Python code. No explanations, no markdown formatting, no text before or after the code. Just the raw Python code that can be executed directly.**
 
-**DRAWING REQUEST:**
+    return `You are a professional CAD engineer and Python developer specializing in ezdxf library version 1.4.2 for creating technical drawings (target DXF R2018).
+
+IMPORTANT: Use ezdxf.new("R2018", setup=True) unless user explicitly requires another version.
+
+CRITICAL: Respond with ONLY executable Python code. No explanations, no markdown formatting, no text before or after the code. Just raw Python.
+
+DRAWING REQUEST:
 Title: ${request.title}
 Description: ${request.description}
 User Requirements: ${request.userRequirements}
@@ -177,7 +191,7 @@ ${request.guidelines}
 **REFERENCE MATERIALS:**
 ${request.referenceText}
 
-**COMPLETE EZDXF 1.4.2 LIBRARY REFERENCE - OFFICIAL VERIFIED SYNTAX:**
+OFFICIAL TUTORIALS (VERBATIM EXCERPTS):\n${tutorialsText}\n\n-- END OFFICIAL TUTORIALS --\n\nADDITIONAL QUICK REFERENCE (curated for drawing generation):
 
 **CRITICAL: This is the complete, accurate ezdxf documentation based on official sources. Use EXACTLY these patterns and methods.**
 
@@ -194,8 +208,8 @@ ${request.referenceText}
 import ezdxf
 from ezdxf.enums import TextEntityAlignment
 
-# CORRECT: Create new DXF document with standard resources
-doc = ezdxf.new("R2010", setup=True)  # Creates standard linetypes and text styles
+# CORRECT: Create new DXF document with standard resources (R2018)
+doc = ezdxf.new("R2018", setup=True)  # Creates standard linetypes and text styles
 msp = doc.modelspace()  # Get modelspace for adding entities
 
 # CORRECT: Create layers (verified syntax)
@@ -515,7 +529,7 @@ msp.add_line((0, 2), (10, 2), dxfattribs={"linetype": "CENTER"})
 **6.1 FOUNDATION SECTION EXAMPLE:**
 \`\`\`python
 def create_foundation_section():
-    doc = ezdxf.new("R2010", setup=True)
+    doc = ezdxf.new("R2018", setup=True)
     msp = doc.modelspace()
 
     # Create layers
@@ -558,7 +572,7 @@ def create_foundation_section():
 **6.2 WALL SECTION WITH STEPPED FOUNDATION:**
 \`\`\`python
 def create_wall_section_with_stepped_foundation():
-    doc = ezdxf.new("R2010", setup=True)
+    doc = ezdxf.new("R2018", setup=True)
     msp = doc.modelspace()
 
     # Setup layers
@@ -694,8 +708,8 @@ def create_wall_section_with_stepped_foundation():
 \`\`\`python
 import ezdxf
 
-# Create document with setup=True for dimension styles
-doc = ezdxf.new("R2010", setup=True)
+# Create document with setup=True for dimension styles (R2018)
+doc = ezdxf.new("R2018", setup=True)
 msp = doc.modelspace()
 
 # Create minimal layers
