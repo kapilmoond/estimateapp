@@ -26,17 +26,27 @@ export const DxfViewer: React.FC<DxfViewerProps> = ({
     setError('');
 
     try {
-      // Create a blob from the DXF content
-      const blob = new Blob([content], { type: 'application/dxf' });
-      
+      // Detect and decode base64 if needed
+      let blob: Blob;
+      try {
+        const clean = content.replace(/^data:[^,]*,/, '');
+        const binaryString = atob(clean);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+        blob = new Blob([bytes], { type: 'application/dxf' });
+      } catch {
+        // Fallback: treat as plain text DXF
+        blob = new Blob([content], { type: 'application/dxf' });
+      }
+
       // For now, we'll use a placeholder URL structure
       // In a real implementation, you would upload to a server and get a public URL
       const tempUrl = URL.createObjectURL(blob);
-      
+
       // ShareCAD viewer URL format
       const shareCADUrl = `//sharecad.org/cadframe/load?url=${encodeURIComponent(tempUrl)}`;
       setViewerUrl(shareCADUrl);
-      
+
     } catch (err) {
       console.error('Error preparing DXF for viewing:', err);
       setError('Failed to prepare DXF file for viewing');

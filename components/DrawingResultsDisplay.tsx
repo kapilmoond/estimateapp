@@ -117,7 +117,7 @@ export const DrawingResultsDisplay: React.FC<DrawingResultsDisplayProps> = ({
           </div>
           <div>
             <span className="text-green-600 font-medium">Format:</span>
-            <div className="text-green-800">DXF R2010</div>
+            <div className="text-green-800">DXF R2018</div>
           </div>
           <div>
             <span className="text-green-600 font-medium">Code Lines:</span>

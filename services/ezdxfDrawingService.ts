@@ -118,10 +118,11 @@ export class EzdxfDrawingService {
       console.log('='.repeat(80));
       console.log('Success:', result.success);
       console.log('File size:', result.file_size);
+      console.log('Keys:', Object.keys(result));
       console.log('Execution log:', result.execution_log);
-      console.log('Image success:', result.image_success);
-      if (result.image_error) {
-        console.log('Image error:', result.image_error);
+      console.log('Image success:', result.image_success || result.imageSuccess);
+      if (result.image_error || result.imageError) {
+        console.log('Image error:', result.image_error || result.imageError);
       }
       console.log('='.repeat(80));
 
@@ -129,16 +130,40 @@ export class EzdxfDrawingService {
         throw new Error(`Python execution error: ${result.error}`);
       }
 
+      // Normalize DXF base64 content from various possible keys
+      const rawDxf = result.dxf_content || result.dxfBase64 || result.dxf || result.base64 || (result.dxf_data && result.dxf_data.base64) || '';
+      let dxfContent = '';
+      if (typeof rawDxf === 'string' && rawDxf.length > 0) {
+        dxfContent = this.stripDataUrlPrefix(rawDxf);
+      } else if (result.dxf_text) {
+        // Convert raw UTF-8 text to base64
+        try {
+          dxfContent = btoa(unescape(encodeURIComponent(result.dxf_text)));
+        } catch (e) {
+          console.warn('Failed to convert dxf_text to base64');
+        }
+      }
+
+      if (!dxfContent) {
+        throw new Error('Server did not return DXF content. Please check the local Python server response schema.');
+      }
+
+      // Normalize image fields
+      const imagePng = this.stripDataUrlPrefix(result.image_png || result.png_base64 || result.png || '');
+      const imagePdf = this.stripDataUrlPrefix(result.image_pdf || result.pdf_base64 || result.pdf || '');
+      const imageSuccess = !!(imagePng || imagePdf || result.image_success || result.imageSuccess);
+      const imageError = result.image_error || result.imageError || '';
+
       return {
         pythonCode,
-        dxfContent: result.dxf_content,
+        dxfContent,
         title,
         description: result.description || 'Technical drawing generated with ezdxf',
-        executionLog: result.execution_log || 'Drawing generated successfully',
-        imagePng: result.image_png,
-        imagePdf: result.image_pdf,
-        imageSuccess: result.image_success,
-        imageError: result.image_error
+        executionLog: result.execution_log || result.log || 'Drawing generated successfully',
+        imagePng: imagePng || undefined,
+        imagePdf: imagePdf || undefined,
+        imageSuccess,
+        imageError: imageError || undefined,
       };
 
     } catch (error) {
@@ -1003,12 +1028,21 @@ Use ONLY safe dimension parameters. NO units, NO dimpost, NO dimunit.`;
   }
 
   /**
+   * Strip data URL prefix if present
+   */
+  private static stripDataUrlPrefix(data: string): string {
+    if (!data) return data;
+    return data.replace(/^data:[^,]*,/, '');
+  }
+
+  /**
    * Create a downloadable DXF file from base64 content
    */
   static downloadDXF(dxfContent: string, filename: string): void {
     try {
+      const clean = this.stripDataUrlPrefix(dxfContent);
       // Decode base64 content
-      const binaryString = atob(dxfContent);
+      const binaryString = atob(clean);
       const bytes = new Uint8Array(binaryString.length);
       for (let i = 0; i < binaryString.length; i++) {
         bytes[i] = binaryString.charCodeAt(i);
