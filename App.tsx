@@ -199,7 +199,6 @@ const App: React.FC = () => {
   };
 
   const loadDrawings = () => {
-  const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState<boolean>(false);
     // Load legacy drawings
     const loadedDrawings = DXFStorageService.loadDrawings();
     setDrawings(loadedDrawings);
