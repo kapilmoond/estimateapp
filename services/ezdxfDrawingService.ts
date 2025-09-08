@@ -1,5 +1,4 @@
 import { LLMService } from './llmService';
-import { EZDXF_TUTORIAL } from './ezdxfTutorial';
 
 export interface DrawingRequest {
   title: string;
@@ -181,8 +180,8 @@ export class EzdxfDrawingService {
    * Build comprehensive prompt for ezdxf code generation
    */
   private static async buildDrawingPrompt(request: DrawingRequest): Promise<string> {
-    // Always use the bundled local tutorial (single file) – no network fetch
-    const tutorialsText = EZDXF_TUTORIAL;
+    // Always use the bundled local tutorial (single text file) – no external fetch
+    const tutorialsText = await EzdxfDrawingService.loadLocalTutorialText();
 
 
     return `You are a professional CAD engineer and Python developer specializing in ezdxf library version 1.4.2 for creating technical drawings (target DXF R2018).
@@ -1016,6 +1015,21 @@ Use ONLY safe dimension parameters. NO units, NO dimpost, NO dimunit.`;
         success: false,
         message: 'Cannot connect to server for testing'
       };
+    }
+  }
+
+  /**
+   * Load local tutorial text from public folder single file
+   */
+  private static async loadLocalTutorialText(): Promise<string> {
+    try {
+      const res = await fetch('/estimateapp/ezdxf_tutorial_bundle.txt');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const text = await res.text();
+      return text || 'Official ezdxf Tutorials bundle not found.';
+    } catch (e) {
+      console.warn('Failed to load local tutorial bundle:', e);
+      return 'Official ezdxf Tutorials bundle not found.';
     }
   }
 
