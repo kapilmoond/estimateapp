@@ -1,6 +1,7 @@
 import { LLMService } from './llmService';
 import { EZDXF_TUTORIAL_CONTENT } from './ezdxfTutorialContent';
 import { DrawingSettings } from './drawingSettingsService';
+import { EzdxfDrawingService } from './ezdxfDrawingService';
 
 export interface DrawingPart {
   name: string;
@@ -118,10 +119,14 @@ export class TwoPhaseDrawingGenerator {
 
       // Try to execute the code to check for errors
       console.log('Testing generated Python code...');
-      const result = await EzdxfDrawingService.executeDrawingCode(pythonCode, 'Test execution');
-
-      console.log('✅ Python code executed successfully on first attempt');
-      return pythonCode;
+      try {
+        const result = await EzdxfDrawingService.executeDrawingCode(pythonCode, 'Test execution');
+        console.log('✅ Python code executed successfully on first attempt');
+        return pythonCode;
+      } catch (testError: any) {
+        console.log('❌ Python code test execution failed:', testError.message);
+        throw testError;
+      }
 
     } catch (executionError: any) {
       console.log('❌ Python code execution failed, attempting error correction...');
@@ -376,7 +381,9 @@ LINES:
     return errorMessage.includes('Local server error') ||
            errorMessage.includes('Syntax error in generated Python code') ||
            errorMessage.includes('Runtime error during code execution') ||
-           errorMessage.includes('Python execution error');
+           errorMessage.includes('Python execution error') ||
+           errorMessage.includes('Failed to execute drawing code') ||
+           errorMessage.includes('Cannot connect to local ezdxf server');
   }
 
   /**
@@ -629,11 +636,12 @@ Your response must contain ONLY the corrected Python code between <<<< and >>>> 
       // Test the corrected code (but don't retry correction if it fails again)
       try {
         console.log('🧪 Testing corrected Python code...');
-        await EzdxfDrawingService.executeDrawingCode(correctedCode, 'Error correction test');
+        const testResult = await EzdxfDrawingService.executeDrawingCode(correctedCode, 'Error correction test');
         console.log('✅ Corrected code executed successfully!');
-      } catch (testError) {
+      } catch (testError: any) {
         console.log('⚠️ Corrected code still has issues, but returning it anyway (no infinite retry)');
-        console.log('Test error:', testError);
+        console.log('Test error:', testError.message || testError);
+        // Don't throw here - return the corrected code anyway to avoid infinite loops
       }
 
       return correctedCode;
