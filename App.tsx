@@ -15,7 +15,6 @@ import { DesignService } from './services/designService';
 import { ContextService } from './services/contextService';
 import { DXFService, DXFStorageService } from './services/dxfService';
 import { TwoPhaseDrawingGenerator } from './services/twoPhaseDrawingGenerator';
-import { IntelligentDrawingService } from './services/intelligentDrawingService';
 import { HTMLService } from './services/htmlService';
 import { TemplateService, MasterTemplate } from './services/templateService';
 import { Spinner } from './components/Spinner';
@@ -224,15 +223,11 @@ const App: React.FC = () => {
   };
 
   const loadDrawings = () => {
-    // Load legacy drawings from DXFStorageService
+    // Load legacy drawings
     const loadedDrawings = DXFStorageService.loadDrawings();
-
-    // Note: TechnicalDrawing interface doesn't have projectId,
-    // so we load all drawings for now. Project filtering happens
-    // in the persistent drawing system.
     setDrawings(loadedDrawings);
 
-    // Load new persistent drawings (these are project-specific)
+    // Load new persistent drawings
     loadSavedDrawings();
   };
 
@@ -267,12 +262,6 @@ const App: React.FC = () => {
     } catch (error) {
       console.error('Error loading saved drawings:', error);
     }
-  };
-
-  // Refresh all drawing displays after deletion
-  const refreshAllDrawings = () => {
-    loadDrawings();
-    loadSavedDrawings();
   };
 
   const loadProjectData = (project: ProjectData) => {
@@ -872,23 +861,15 @@ const App: React.FC = () => {
       const title = inputText.match(/(?:draw|create|generate)\s+(?:a\s+)?(.+?)(?:\s+for|\s+with|\.|$)/i)?.[1]?.trim() ||
                    `Technical Drawing ${new Date().toLocaleDateString()}`;
 
-      // INTELLIGENT DRAWING GENERATION SYSTEM (AutoLISP → Python → DXF)
+      // TWO-PHASE DRAWING GENERATION SYSTEM
       const drawingSettings = DrawingSettingsService.loadSettings();
       const isModification = Boolean(previousPythonCode && modificationInstructions);
 
-      // Prepare context data for LLM
-      const contextData = {
-        designs: designs.filter(d => d.includeInContext),
-        previousDiscussions: conversationHistory.slice(-5), // Last 5 messages for context
-        projectContext: ProjectService.getCurrentProjectId() || 'default'
-      };
-
-      let drawingResult: DrawingResult;
-      let autolispCode: string;
+      let analysis: string;
       let pythonCode: string;
 
       if (isModification) {
-        // For modifications, find the original AutoLISP code
+        // For modifications, we need the previous analysis from saved drawings
         let savedDrawings: ProjectDrawing[] = [];
         try {
           savedDrawings = await EnhancedDrawingService.loadAllDrawings();
@@ -897,55 +878,47 @@ const App: React.FC = () => {
           savedDrawings = DrawingService.loadAllDrawings();
         }
         const previousDrawing = savedDrawings.find(d => d.generatedCode === previousPythonCode);
-        const originalAutolispCode = previousDrawing?.specification || ''; // We'll store AutoLISP in specification field
+        const previousAnalysis = previousDrawing?.specification || '';
 
-        console.log('🔄 Modifying existing drawing with intelligent service...');
-        const intelligentResult = await IntelligentDrawingService.modifyDrawing(
-          originalAutolispCode,
-          modificationInstructions || inputText,
-          drawingSettings,
-          title,
-          contextData
-        );
-
-        if (!intelligentResult.success) {
-          throw new Error(intelligentResult.error || 'Drawing modification failed');
-        }
-
-        autolispCode = intelligentResult.autolispCode;
-        pythonCode = intelligentResult.pythonCode;
-        drawingResult = intelligentResult.drawingResult!;
-
-        // Log warnings if any
-        if (intelligentResult.warnings.length > 0) {
-          console.warn('⚠️ Drawing modification warnings:', intelligentResult.warnings);
-        }
-
-      } else {
-        console.log('🚀 Generating new drawing with intelligent service...');
-        const intelligentResult = await IntelligentDrawingService.generateDrawing(
+        // Phase 1: Modify the analysis
+        console.log('🔍 Phase 1: Modifying drawing analysis...');
+        analysis = await TwoPhaseDrawingGenerator.analyzeRequirements(
           inputText,
           drawingSettings,
-          title,
-          contextData
+          true,
+          previousAnalysis,
+          modificationInstructions
         );
 
-        if (!intelligentResult.success) {
-          throw new Error(intelligentResult.error || 'Drawing generation failed');
-        }
+        // Phase 2: Generate modified Python code with error correction
+        console.log('🔧 Phase 2: Generating modified Python code with error correction...');
+        pythonCode = await TwoPhaseDrawingGenerator.generatePythonCodeWithCorrection(
+          analysis,
+          drawingSettings,
+          inputText, // original prompt for error correction context
+          true,
+          previousPythonCode,
+          modificationInstructions
+        );
+      } else {
+        // Phase 1: Analyze requirements and create detailed part list
+        console.log('🔍 Phase 1: Analyzing drawing requirements...');
+        analysis = await TwoPhaseDrawingGenerator.analyzeRequirements(
+          inputText,
+          drawingSettings
+        );
 
-        autolispCode = intelligentResult.autolispCode;
-        pythonCode = intelligentResult.pythonCode;
-        drawingResult = intelligentResult.drawingResult!;
-
-        // Log statistics and warnings
-        console.log('📊 Generation statistics:', intelligentResult.metadata);
-        if (intelligentResult.warnings.length > 0) {
-          console.warn('⚠️ Drawing generation warnings:', intelligentResult.warnings);
-        }
+        // Phase 2: Generate Python code from analysis with error correction
+        console.log('🔧 Phase 2: Generating Python code from analysis with error correction...');
+        pythonCode = await TwoPhaseDrawingGenerator.generatePythonCodeWithCorrection(
+          analysis,
+          drawingSettings,
+          inputText // original prompt for error correction context
+        );
       }
 
-      const result = drawingResult;
+      // Execute code on local server
+      const result = await EzdxfDrawingService.executeDrawingCode(pythonCode, title);
 
       // Save the drawing to persistence with analysis and Python code
       try {
@@ -954,7 +927,7 @@ const App: React.FC = () => {
           projectId,
           title,
           description: inputText.substring(0, 200) + (inputText.length > 200 ? '...' : ''),
-          specification: autolispCode, // Store the AutoLISP code for future modifications
+          specification: analysis, // Store the Phase 1 analysis
           generatedCode: pythonCode,
           result,
           settings: drawingSettings
@@ -970,7 +943,7 @@ const App: React.FC = () => {
             projectId: ProjectService.getCurrentProjectId() || 'default',
             title,
             description: inputText.substring(0, 200) + (inputText.length > 200 ? '...' : ''),
-            specification: autolispCode,
+            specification: analysis,
             generatedCode: pythonCode,
             result,
             settings: drawingSettings

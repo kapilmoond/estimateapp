@@ -28,12 +28,9 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({
 
   const handleDeleteDrawing = async (drawingId: string) => {
     if (!confirm('Are you sure you want to delete this drawing?')) return;
-
+    
     try {
-      // Use unified deletion from EnhancedDrawingService
-      const { EnhancedDrawingService } = await import('../services/drawingService');
-      const success = await EnhancedDrawingService.deleteDrawing(drawingId);
-
+      const success = DXFStorageService.deleteDrawing(drawingId);
       if (success) {
         onDrawingUpdate();
         if (selectedDrawing?.id === drawingId) {
@@ -42,7 +39,6 @@ export const DrawingDisplay: React.FC<DrawingDisplayProps> = ({
         if (onContextUpdate) {
           onContextUpdate();
         }
-        console.log('Drawing deleted successfully from all storage systems');
       } else {
         alert('Failed to delete drawing.');
       }

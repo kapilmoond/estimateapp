@@ -1,6 +1,5 @@
 import { DrawingResult } from './ezdxfDrawingService';
 import { IndexedDBService } from './indexedDBService';
-import { DXFStorageService } from './dxfService';
 
 export interface ProjectDrawing {
   id: string;
@@ -57,84 +56,32 @@ export class EnhancedDrawingService {
   }
 
   /**
-   * Delete a specific drawing from all storage systems
+   * Delete a specific drawing
    */
   static async deleteDrawing(drawingId: string): Promise<boolean> {
-    let success = false;
-
     try {
-      // Delete from IndexedDB
       await IndexedDBService.delete('drawings', drawingId);
       console.log('Drawing deleted from IndexedDB:', drawingId);
-      success = true;
+      return true;
     } catch (error) {
-      console.error('Error deleting drawing from IndexedDB:', error);
+      console.error('Error deleting drawing:', error);
+      return false;
     }
-
-    try {
-      // Delete from legacy localStorage (DrawingService)
-      DrawingService.deleteDrawing(drawingId);
-      console.log('Drawing deleted from legacy storage:', drawingId);
-      success = true;
-    } catch (error) {
-      console.error('Error deleting drawing from legacy storage:', error);
-    }
-
-    try {
-      // Delete from DXFStorageService
-      const dxfSuccess = DXFStorageService.deleteDrawing(drawingId);
-      if (dxfSuccess) {
-        console.log('Drawing deleted from DXF storage:', drawingId);
-        success = true;
-      }
-    } catch (error) {
-      console.error('Error deleting drawing from DXF storage:', error);
-    }
-
-    return success;
   }
 
   /**
-   * Delete all drawings for a project from all storage systems
+   * Delete all drawings for a project
    */
   static async deleteProjectDrawings(projectId: string): Promise<number> {
+    const projectDrawings = await this.loadProjectDrawings(projectId);
     let deletedCount = 0;
 
-    // Delete from IndexedDB
-    try {
-      const projectDrawings = await this.loadProjectDrawings(projectId);
-      for (const drawing of projectDrawings) {
-        const success = await this.deleteDrawing(drawing.id);
-        if (success) deletedCount++;
-      }
-    } catch (error) {
-      console.error('Error deleting project drawings from IndexedDB:', error);
+    for (const drawing of projectDrawings) {
+      const success = await this.deleteDrawing(drawing.id);
+      if (success) deletedCount++;
     }
 
-    // Delete from legacy storage
-    try {
-      const legacyDrawings = DrawingService.loadProjectDrawings(projectId);
-      for (const drawing of legacyDrawings) {
-        DrawingService.deleteDrawing(drawing.id);
-        deletedCount++;
-      }
-    } catch (error) {
-      console.error('Error deleting project drawings from legacy storage:', error);
-    }
-
-    // Clear DXF storage (it doesn't have project-specific storage, so we need to filter)
-    try {
-      const allDxfDrawings = DXFStorageService.loadDrawings();
-      const projectDxfDrawings = allDxfDrawings.filter(d => d.projectId === projectId);
-      for (const drawing of projectDxfDrawings) {
-        DXFStorageService.deleteDrawing(drawing.id);
-        deletedCount++;
-      }
-    } catch (error) {
-      console.error('Error deleting project drawings from DXF storage:', error);
-    }
-
-    console.log(`Deleted ${deletedCount} drawings for project ${projectId} from all storage systems`);
+    console.log(`Deleted ${deletedCount} drawings for project ${projectId}`);
     return deletedCount;
   }
 
