@@ -5,7 +5,7 @@ import { TwoPhaseDrawingGenerator } from '../services/twoPhaseDrawingGenerator';
 
 import { DrawingSettingsPanel, DrawingSettings } from './DrawingSettingsPanel';
 import { DrawingSettingsService } from '../services/drawingSettingsService';
-import { DrawingService, ProjectDrawing } from '../services/drawingService';
+import { DrawingService, EnhancedDrawingService, ProjectDrawing } from '../services/drawingService';
 import { ProjectService } from '../services/projectService';
 
 interface EzdxfDrawingInterfaceProps {
@@ -160,7 +160,7 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
 
       // Save the drawing to persistence
       try {
-        const savedDrawing = DrawingService.saveDrawing({
+        const savedDrawing = await EnhancedDrawingService.saveDrawing({
           projectId: getCurrentProjectId(),
           title,
           description: extractDescription(userInput),
@@ -174,11 +174,29 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
         setCurrentDrawing(savedDrawing);
 
         // Update project drawings list
-        const updatedDrawings = DrawingService.loadProjectDrawings(getCurrentProjectId());
+        const updatedDrawings = await EnhancedDrawingService.loadProjectDrawings(getCurrentProjectId());
         setProjectDrawings(updatedDrawings);
       } catch (error) {
-        console.error('Error saving drawing:', error);
-        // Continue without crashing - drawing still works, just not saved
+        console.error('Error saving drawing to IndexedDB:', error);
+        // Fallback to localStorage
+        try {
+          const fallbackDrawing = DrawingService.saveDrawing({
+            projectId: getCurrentProjectId(),
+            title,
+            description: extractDescription(userInput),
+            specification: analysis,
+            generatedCode: pythonCode,
+            result,
+            settings: drawingSettings,
+            includeInContext: true,
+          });
+          setCurrentDrawing(fallbackDrawing);
+          const updatedDrawings = DrawingService.loadProjectDrawings(getCurrentProjectId());
+          setProjectDrawings(updatedDrawings);
+        } catch (fallbackError) {
+          console.error('Error saving drawing to fallback storage:', fallbackError);
+          // Continue without crashing - drawing still works, just not saved
+        }
       }
 
       onDrawingGenerated(result);

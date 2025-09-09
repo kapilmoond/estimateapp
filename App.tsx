@@ -41,7 +41,7 @@ import { StorageManager } from './components/StorageManager';
 
 import { DrawingResultsDisplay } from './components/DrawingResultsDisplay';
 import { EzdxfDrawingService, DrawingResult } from './services/ezdxfDrawingService';
-import { DrawingService, ProjectDrawing } from './services/drawingService';
+import { DrawingService, EnhancedDrawingService, ProjectDrawing } from './services/drawingService';
 
 import { DrawingCodeGenerator } from './services/drawingCodeGenerator';
 import { DrawingSettingsService } from './services/drawingSettingsService';
@@ -232,10 +232,22 @@ const App: React.FC = () => {
   };
 
   // Load saved drawings for current project
-  const loadSavedDrawings = () => {
+  const loadSavedDrawings = async () => {
     try {
       const projectId = ProjectService.getCurrentProjectId() || 'default';
-      const drawings = DrawingService.loadProjectDrawings(projectId);
+
+      // Try to load from IndexedDB first
+      let drawings: ProjectDrawing[] = [];
+      try {
+        drawings = await EnhancedDrawingService.loadProjectDrawings(projectId);
+        console.log(`Loaded ${drawings.length} drawings from IndexedDB for project ${projectId}`);
+      } catch (indexedDBError) {
+        console.log('IndexedDB not available, falling back to localStorage');
+        // Fallback to localStorage
+        drawings = DrawingService.loadProjectDrawings(projectId);
+        console.log(`Loaded ${drawings.length} drawings from localStorage for project ${projectId}`);
+      }
+
       setSavedDrawings(drawings);
 
       // Load all drawing results for display (do not overwrite previous)
@@ -858,7 +870,13 @@ const App: React.FC = () => {
 
       if (isModification) {
         // For modifications, we need the previous analysis from saved drawings
-        const savedDrawings = DrawingService.loadAllDrawings();
+        let savedDrawings: ProjectDrawing[] = [];
+        try {
+          savedDrawings = await EnhancedDrawingService.loadAllDrawings();
+        } catch (error) {
+          console.log('IndexedDB not available, using localStorage for modification lookup');
+          savedDrawings = DrawingService.loadAllDrawings();
+        }
         const previousDrawing = savedDrawings.find(d => d.generatedCode === previousPythonCode);
         const previousAnalysis = previousDrawing?.specification || '';
 
@@ -905,7 +923,7 @@ const App: React.FC = () => {
       // Save the drawing to persistence with analysis and Python code
       try {
         const projectId = ProjectService.getCurrentProjectId() || 'default';
-        const savedDrawing = DrawingService.saveDrawing({
+        const savedDrawing = await EnhancedDrawingService.saveDrawing({
           projectId,
           title,
           description: inputText.substring(0, 200) + (inputText.length > 200 ? '...' : ''),
@@ -915,10 +933,26 @@ const App: React.FC = () => {
           settings: drawingSettings
         });
 
-        console.log('Drawing saved to persistence:', savedDrawing.id);
+        console.log('Drawing saved to IndexedDB:', savedDrawing.id);
         loadSavedDrawings();
       } catch (error) {
-        console.error('Error saving drawing to persistence:', error);
+        console.error('Error saving drawing to IndexedDB:', error);
+        // Fallback to legacy localStorage save
+        try {
+          const fallbackDrawing = DrawingService.saveDrawing({
+            projectId: ProjectService.getCurrentProjectId() || 'default',
+            title,
+            description: inputText.substring(0, 200) + (inputText.length > 200 ? '...' : ''),
+            specification: analysis,
+            generatedCode: pythonCode,
+            result,
+            settings: drawingSettings
+          });
+          console.log('Drawing saved to localStorage as fallback:', fallbackDrawing.id);
+          loadSavedDrawings();
+        } catch (fallbackError) {
+          console.error('Error saving drawing to fallback storage:', fallbackError);
+        }
       }
 
       // Handle the result

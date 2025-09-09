@@ -1,4 +1,5 @@
 import { DrawingResult } from './ezdxfDrawingService';
+import { IndexedDBService } from './indexedDBService';
 
 export interface ProjectDrawing {
   id: string;
@@ -13,6 +14,195 @@ export interface ProjectDrawing {
   includeInContext?: boolean; // Whether to include this drawing in LLM context
 }
 
+/**
+ * Enhanced Drawing Service using IndexedDB for persistent storage
+ */
+export class EnhancedDrawingService {
+  /**
+   * Save a drawing to IndexedDB
+   */
+  static async saveDrawing(drawing: Omit<ProjectDrawing, 'id' | 'timestamp'>): Promise<ProjectDrawing> {
+    const newDrawing: ProjectDrawing = {
+      ...drawing,
+      id: this.generateId(),
+      timestamp: Date.now(),
+      includeInContext: drawing.includeInContext ?? true,
+    };
+
+    await IndexedDBService.save('drawings', newDrawing);
+    console.log('Drawing saved to IndexedDB:', newDrawing.id);
+    return newDrawing;
+  }
+
+  /**
+   * Load all drawings from IndexedDB
+   */
+  static async loadAllDrawings(): Promise<ProjectDrawing[]> {
+    try {
+      const drawings = await IndexedDBService.loadAll<ProjectDrawing>('drawings');
+      return drawings.sort((a, b) => b.timestamp - a.timestamp);
+    } catch (error) {
+      console.error('Error loading drawings from IndexedDB:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Load drawings for a specific project
+   */
+  static async loadProjectDrawings(projectId: string): Promise<ProjectDrawing[]> {
+    const allDrawings = await this.loadAllDrawings();
+    return allDrawings.filter(drawing => drawing.projectId === projectId);
+  }
+
+  /**
+   * Delete a specific drawing
+   */
+  static async deleteDrawing(drawingId: string): Promise<boolean> {
+    try {
+      await IndexedDBService.delete('drawings', drawingId);
+      console.log('Drawing deleted from IndexedDB:', drawingId);
+      return true;
+    } catch (error) {
+      console.error('Error deleting drawing:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Delete all drawings for a project
+   */
+  static async deleteProjectDrawings(projectId: string): Promise<number> {
+    const projectDrawings = await this.loadProjectDrawings(projectId);
+    let deletedCount = 0;
+
+    for (const drawing of projectDrawings) {
+      const success = await this.deleteDrawing(drawing.id);
+      if (success) deletedCount++;
+    }
+
+    console.log(`Deleted ${deletedCount} drawings for project ${projectId}`);
+    return deletedCount;
+  }
+
+  /**
+   * Update a drawing
+   */
+  static async updateDrawing(drawingId: string, updates: Partial<ProjectDrawing>): Promise<ProjectDrawing | null> {
+    try {
+      const existingDrawing = await IndexedDBService.load<ProjectDrawing>('drawings', drawingId);
+      if (!existingDrawing) return null;
+
+      const updatedDrawing = { ...existingDrawing, ...updates, timestamp: Date.now() };
+      await IndexedDBService.save('drawings', updatedDrawing);
+
+      console.log('Drawing updated in IndexedDB:', drawingId);
+      return updatedDrawing;
+    } catch (error) {
+      console.error('Error updating drawing:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get a specific drawing by ID
+   */
+  static async getDrawing(drawingId: string): Promise<ProjectDrawing | null> {
+    try {
+      return await IndexedDBService.load<ProjectDrawing>('drawings', drawingId);
+    } catch (error) {
+      console.error('Error getting drawing:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Clear all drawings (with confirmation)
+   */
+  static async clearAllDrawings(): Promise<number> {
+    try {
+      const allDrawings = await this.loadAllDrawings();
+      const count = allDrawings.length;
+
+      await IndexedDBService.clearStore('drawings');
+      console.log(`Cleared ${count} drawings from IndexedDB`);
+      return count;
+    } catch (error) {
+      console.error('Error clearing drawings:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Get drawing statistics
+   */
+  static async getDrawingStats(): Promise<{
+    totalDrawings: number;
+    projectCounts: Record<string, number>;
+    totalSize: number;
+    oldestDrawing?: ProjectDrawing;
+    newestDrawing?: ProjectDrawing;
+  }> {
+    const allDrawings = await this.loadAllDrawings();
+    const projectCounts: Record<string, number> = {};
+
+    allDrawings.forEach(drawing => {
+      projectCounts[drawing.projectId] = (projectCounts[drawing.projectId] || 0) + 1;
+    });
+
+    const totalSize = JSON.stringify(allDrawings).length;
+    const oldestDrawing = allDrawings.length > 0 ? allDrawings[allDrawings.length - 1] : undefined;
+    const newestDrawing = allDrawings.length > 0 ? allDrawings[0] : undefined;
+
+    return {
+      totalDrawings: allDrawings.length,
+      projectCounts,
+      totalSize,
+      oldestDrawing,
+      newestDrawing
+    };
+  }
+
+  /**
+   * Migrate from localStorage to IndexedDB
+   */
+  static async migrateFromLocalStorage(): Promise<number> {
+    try {
+      // Check if there are drawings in localStorage
+      const legacyDrawings = DrawingService.loadAllDrawings();
+      if (legacyDrawings.length === 0) return 0;
+
+      console.log(`Migrating ${legacyDrawings.length} drawings from localStorage to IndexedDB...`);
+
+      let migratedCount = 0;
+      for (const drawing of legacyDrawings) {
+        try {
+          await IndexedDBService.save('drawings', drawing);
+          migratedCount++;
+        } catch (error) {
+          console.error('Error migrating drawing:', drawing.id, error);
+        }
+      }
+
+      console.log(`Successfully migrated ${migratedCount} drawings to IndexedDB`);
+      return migratedCount;
+    } catch (error) {
+      console.error('Error during migration:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Generate unique ID for drawings
+   */
+  private static generateId(): string {
+    return `drawing_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+}
+
+/**
+ * Legacy Drawing Service (localStorage) - kept for backward compatibility
+ */
 export class DrawingService {
   private static readonly STORAGE_KEY = 'hsr_project_drawings';
 

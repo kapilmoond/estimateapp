@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { EnhancedProjectService } from '../services/enhancedProjectService';
 import { IndexedDBService } from '../services/indexedDBService';
+import { EnhancedDrawingService, ProjectDrawing } from '../services/drawingService';
 
 interface StorageManagerProps {
   isOpen: boolean;
@@ -18,6 +19,14 @@ interface StorageStats {
   conversationStats: any;
 }
 
+interface DrawingStats {
+  totalDrawings: number;
+  projectCounts: Record<string, number>;
+  totalSize: number;
+  oldestDrawing?: ProjectDrawing;
+  newestDrawing?: ProjectDrawing;
+}
+
 export const StorageManager: React.FC<StorageManagerProps> = ({
   isOpen,
   onClose,
@@ -25,8 +34,12 @@ export const StorageManager: React.FC<StorageManagerProps> = ({
   onConversationCleared
 }) => {
   const [stats, setStats] = useState<StorageStats | null>(null);
+  const [drawingStats, setDrawingStats] = useState<DrawingStats | null>(null);
+  const [projectDrawings, setProjectDrawings] = useState<ProjectDrawing[]>([]);
+  const [selectedDrawings, setSelectedDrawings] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'overview' | 'conversations' | 'drawings' | 'backup'>('overview');
 
   useEffect(() => {
     if (isOpen) {
@@ -38,8 +51,20 @@ export const StorageManager: React.FC<StorageManagerProps> = ({
     try {
       setLoading(true);
       setError(null);
+
+      // Load storage stats
       const storageStats = await EnhancedProjectService.getStorageStats();
       setStats(storageStats);
+
+      // Load drawing stats
+      const drawingStatsData = await EnhancedDrawingService.getDrawingStats();
+      setDrawingStats(drawingStatsData);
+
+      // Load current project drawings if available
+      if (currentProjectId) {
+        const drawings = await EnhancedDrawingService.loadProjectDrawings(currentProjectId);
+        setProjectDrawings(drawings);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load storage statistics');
     } finally {
@@ -128,6 +153,88 @@ export const StorageManager: React.FC<StorageManagerProps> = ({
     }
   };
 
+  // Drawing Management Functions
+  const handleDeleteSelectedDrawings = async () => {
+    if (selectedDrawings.size === 0) return;
+
+    if (!window.confirm(`⚠️ This will permanently delete ${selectedDrawings.size} selected drawing(s). This action cannot be undone. Continue?`)) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      let deletedCount = 0;
+
+      for (const drawingId of selectedDrawings) {
+        const success = await EnhancedDrawingService.deleteDrawing(drawingId);
+        if (success) deletedCount++;
+      }
+
+      setSelectedDrawings(new Set());
+      await loadStats();
+
+      alert(`Successfully deleted ${deletedCount} drawings`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete drawings');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteProjectDrawings = async (projectId: string) => {
+    if (!window.confirm(`⚠️ This will permanently delete ALL drawings for this project. This action cannot be undone. Continue?`)) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const deletedCount = await EnhancedDrawingService.deleteProjectDrawings(projectId);
+      await loadStats();
+
+      alert(`Successfully deleted ${deletedCount} drawings for project`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete project drawings');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleClearAllDrawings = async () => {
+    if (!window.confirm('⚠️ This will permanently delete ALL drawings across ALL projects. This action cannot be undone. Continue?')) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const deletedCount = await EnhancedDrawingService.clearAllDrawings();
+      await loadStats();
+
+      alert(`Successfully deleted ${deletedCount} drawings`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to clear all drawings');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleDrawingSelection = (drawingId: string) => {
+    const newSelection = new Set(selectedDrawings);
+    if (newSelection.has(drawingId)) {
+      newSelection.delete(drawingId);
+    } else {
+      newSelection.add(drawingId);
+    }
+    setSelectedDrawings(newSelection);
+  };
+
+  const selectAllDrawings = () => {
+    setSelectedDrawings(new Set(projectDrawings.map(d => d.id)));
+  };
+
+  const clearDrawingSelection = () => {
+    setSelectedDrawings(new Set());
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -159,7 +266,7 @@ export const StorageManager: React.FC<StorageManagerProps> = ({
             {/* Storage Statistics */}
             <div className="bg-blue-50 rounded-lg p-4">
               <h3 className="text-lg font-semibold text-blue-800 mb-3">📊 Storage Statistics</h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="text-center">
                   <div className="text-2xl font-bold text-blue-600">{stats.totalProjects}</div>
                   <div className="text-sm text-gray-600">Projects</div>
@@ -167,6 +274,10 @@ export const StorageManager: React.FC<StorageManagerProps> = ({
                 <div className="text-center">
                   <div className="text-2xl font-bold text-green-600">{stats.totalMessages}</div>
                   <div className="text-sm text-gray-600">Chat Messages</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-orange-600">{drawingStats?.totalDrawings || 0}</div>
+                  <div className="text-sm text-gray-600">Drawings</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-purple-600">{stats.databaseSize}</div>
@@ -209,6 +320,126 @@ export const StorageManager: React.FC<StorageManagerProps> = ({
               
               <div className="mt-3 text-sm text-gray-600">
                 💡 <strong>Tip:</strong> Clearing chat histories can free up significant memory, especially for projects with long conversations.
+              </div>
+            </div>
+
+            {/* Drawing Management */}
+            <div className="bg-orange-50 rounded-lg p-4">
+              <h3 className="text-lg font-semibold text-orange-800 mb-3">📐 Drawing Management</h3>
+              <p className="text-gray-700 mb-4">
+                Manage your technical drawings and CAD files. Drawings are stored persistently and linked to projects.
+              </p>
+
+              {drawingStats && (
+                <div className="mb-4 p-3 bg-white rounded border">
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                    <div>
+                      <span className="font-medium text-orange-600">Total Drawings:</span>
+                      <div className="text-orange-800">{drawingStats.totalDrawings}</div>
+                    </div>
+                    <div>
+                      <span className="font-medium text-orange-600">Storage Size:</span>
+                      <div className="text-orange-800">{(drawingStats.totalSize / 1024 / 1024).toFixed(2)} MB</div>
+                    </div>
+                    <div>
+                      <span className="font-medium text-orange-600">Projects:</span>
+                      <div className="text-orange-800">{Object.keys(drawingStats.projectCounts).length}</div>
+                    </div>
+                  </div>
+
+                  {Object.keys(drawingStats.projectCounts).length > 0 && (
+                    <div className="mt-3">
+                      <span className="font-medium text-orange-600 text-sm">Per Project:</span>
+                      <div className="text-orange-800 text-sm">
+                        {Object.entries(drawingStats.projectCounts).map(([projectId, count]) => (
+                          <span key={projectId} className="inline-block mr-3">
+                            {projectId}: {count}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Current Project Drawings */}
+              {currentProjectId && projectDrawings.length > 0 && (
+                <div className="mb-4">
+                  <h4 className="font-medium text-orange-700 mb-2">Current Project Drawings ({projectDrawings.length})</h4>
+                  <div className="max-h-40 overflow-y-auto space-y-2">
+                    {projectDrawings.map((drawing) => (
+                      <div key={drawing.id} className="flex items-center justify-between p-2 bg-white rounded border text-sm">
+                        <div className="flex items-center">
+                          <input
+                            type="checkbox"
+                            checked={selectedDrawings.has(drawing.id)}
+                            onChange={() => toggleDrawingSelection(drawing.id)}
+                            className="mr-2"
+                          />
+                          <div>
+                            <div className="font-medium">{drawing.title}</div>
+                            <div className="text-gray-500 text-xs">
+                              {new Date(drawing.timestamp).toLocaleDateString()}
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => EnhancedDrawingService.deleteDrawing(drawing.id).then(() => loadStats())}
+                          className="text-red-600 hover:text-red-800 text-xs px-2 py-1 rounded"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-3 flex gap-2 text-sm">
+                    <button
+                      onClick={selectAllDrawings}
+                      className="px-3 py-1 bg-orange-200 text-orange-800 rounded hover:bg-orange-300"
+                    >
+                      Select All
+                    </button>
+                    <button
+                      onClick={clearDrawingSelection}
+                      className="px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+                    >
+                      Clear Selection
+                    </button>
+                    {selectedDrawings.size > 0 && (
+                      <button
+                        onClick={handleDeleteSelectedDrawings}
+                        className="px-3 py-1 bg-red-200 text-red-800 rounded hover:bg-red-300"
+                      >
+                        Delete Selected ({selectedDrawings.size})
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                {currentProjectId && (
+                  <button
+                    onClick={() => handleDeleteProjectDrawings(currentProjectId)}
+                    disabled={loading}
+                    className="w-full px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:bg-gray-400 transition-colors"
+                  >
+                    🗑️ Clear Current Project Drawings
+                  </button>
+                )}
+
+                <button
+                  onClick={handleClearAllDrawings}
+                  disabled={loading}
+                  className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-400 transition-colors"
+                >
+                  🗑️ Clear ALL Drawings (All Projects)
+                </button>
+              </div>
+
+              <div className="mt-3 text-sm text-gray-600">
+                💡 <strong>Tip:</strong> Drawings are stored persistently and will remain after browser refresh. Use selective deletion to manage storage space.
               </div>
             </div>
 
