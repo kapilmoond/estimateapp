@@ -17,17 +17,24 @@ export class DrawingCodeGenerator {
 
     const safetyRider = `
 
-CRITICAL EZDXF API CORRECTIONS (MANDATORY):
-1. TEXT POSITIONING: Text objects do NOT have set_pos() method. Use ONLY:
-   - text.set_placement(p1=(x, y), align=TextEntityAlignment.MIDDLE_CENTER)
-   - OR simply set 'insert': (x, y) in dxfattribs and skip set_placement entirely
-2. DIMENSION RENDERING: Always call .render() after adding any dimension
-3. LAYER CREATION: Use doc.layers.new(name, dxfattribs={...}) not doc.layers.add()
-4. VALID TEXT ALIGNMENT: Use TextEntityAlignment.MIDDLE_CENTER, LEFT, RIGHT, etc.
+CRITICAL EZDXF API CORRECTIONS - FOLLOW EXACTLY:
 
-EXAMPLE CORRECT TEXT USAGE:
-text = msp.add_text("Label", dxfattribs={'insert': (100, 50), 'height': 25, 'layer': 'TEXT'})
-text.set_placement(p1=(100, 50), align=TextEntityAlignment.MIDDLE_CENTER)
+1. TEXT POSITIONING - NEVER use set_placement() with only align parameter:
+   ❌ WRONG: text.set_placement(align=TextEntityAlignment.MIDDLE_CENTER)
+   ✅ CORRECT: text.set_placement(p1=(x, y), align=TextEntityAlignment.MIDDLE_CENTER)
+   ✅ BETTER: Just use 'insert' in dxfattribs and skip set_placement entirely
+
+2. MANDATORY TEXT PATTERN - Use this exact pattern:
+   text = msp.add_text("Your Text", dxfattribs={'insert': (x, y), 'height': 50, 'layer': 'TEXT'})
+   # DO NOT call set_placement at all - the insert point is already set
+
+3. DIMENSION RENDERING: Always call .render() after adding any dimension
+
+4. LAYER CREATION: Use doc.layers.new(name, dxfattribs={...})
+
+SAFE TEXT EXAMPLE (copy this exactly):
+title_text = msp.add_text("TABLE DRAWING", dxfattribs={'insert': (0, 400), 'height': 50, 'layer': 'TEXT'})
+# No set_placement call needed - text is already positioned by 'insert'
 `;
 
     const prompt = basePrompt + safetyRider;

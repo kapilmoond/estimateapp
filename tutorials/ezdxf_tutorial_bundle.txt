@@ -415,9 +415,7 @@ insert: The (x, y) insertion point for the text.
 height: The text height in drawing units. This is mandatory.
 layer: The layer to place the text on (e.g., "TEXT", "ANNOTATIONS"). This is mandatory.
 style: The name of the TextStyle you created in Chapter 2 (e.g., "my_font_style").
-Alignment: By default, text is left-aligned at the insertion point. You often need to change this. You do so by calling the .set_placement() method after creating the text object.
-Implementation in the Script:
-code
+
 Python
 # --- Placed inside the "4. ENTITY PLACEMENT" section of your script template ---
 
@@ -520,8 +518,7 @@ Aligned Dimension: Measures the true distance between two points at any angle. U
 Radius/Diameter Dimension: For circles and arcs. Use msp.add_radius_dim(center, radius, angle) or msp.add_diameter_dim().
 5.4. Summary of Chapter 5
 Annotations turn a drawing into a technical specification. They must be placed on dedicated layers (e.g., "ANNOTATIONS", "DIMENSIONS").
-Use TEXT for simple, single-line labels. Remember to set the alignment using .set_placement() after creation.
-Use MTEXT for multi-line notes. It uses char_height instead of height.
+Use TEXT for simple, single-line labels. Remember to set the alignment 
 Dimensions are complex objects that show measurements. Their appearance is controlled by a DimStyle.
 add_linear_dim() is your workhorse for horizontal (angle=0) and vertical (angle=90) measurements.
 The base point is critical for positioning the dimension line. The p1 and p2 points define what is being measured.
