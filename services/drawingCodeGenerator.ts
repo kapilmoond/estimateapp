@@ -16,10 +16,18 @@ export class DrawingCodeGenerator {
       : this.createGenerationPrompt(description);
 
     const safetyRider = `
-API SAFETY RULES (MANDATORY):
-- For TEXT entities: use text.set_pos((x, y), align=TextEntityAlignment.*). Do NOT call Text.set_placement without the first positional argument p1.
-- If using set_placement, always pass p1 as the first argument (the insertion point).
-- After adding any linear dimension, always call .render().
+
+CRITICAL EZDXF API CORRECTIONS (MANDATORY):
+1. TEXT POSITIONING: Text objects do NOT have set_pos() method. Use ONLY:
+   - text.set_placement(p1=(x, y), align=TextEntityAlignment.MIDDLE_CENTER)
+   - OR simply set 'insert': (x, y) in dxfattribs and skip set_placement entirely
+2. DIMENSION RENDERING: Always call .render() after adding any dimension
+3. LAYER CREATION: Use doc.layers.new(name, dxfattribs={...}) not doc.layers.add()
+4. VALID TEXT ALIGNMENT: Use TextEntityAlignment.MIDDLE_CENTER, LEFT, RIGHT, etc.
+
+EXAMPLE CORRECT TEXT USAGE:
+text = msp.add_text("Label", dxfattribs={'insert': (100, 50), 'height': 25, 'layer': 'TEXT'})
+text.set_placement(p1=(100, 50), align=TextEntityAlignment.MIDDLE_CENTER)
 `;
 
     const prompt = basePrompt + safetyRider;
