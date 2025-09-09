@@ -5,14 +5,17 @@ import { EzdxfDrawingService } from '../services/ezdxfDrawingService';
 interface DrawingResultsDisplayProps {
   result: DrawingResult;
   onRegenerateRequest: (instructions: string, previousCode: string) => void;
+  onDeleteRequest?: () => void;
 }
 
 export const DrawingResultsDisplay: React.FC<DrawingResultsDisplayProps> = ({
   result,
-  onRegenerateRequest
+  onRegenerateRequest,
+  onDeleteRequest
 }) => {
   const [regenerateInstructions, setRegenerateInstructions] = useState('');
   const [showRegenerateForm, setShowRegenerateForm] = useState(false);
+  const [showPythonCode, setShowPythonCode] = useState(false);
 
   const handleDownloadDXF = () => {
     try {
@@ -43,6 +46,12 @@ export const DrawingResultsDisplay: React.FC<DrawingResultsDisplayProps> = ({
     onRegenerateRequest(regenerateInstructions, result.pythonCode);
     setRegenerateInstructions('');
     setShowRegenerateForm(false);
+  };
+
+  const handleDelete = () => {
+    if (window.confirm('Are you sure you want to delete this drawing? This action cannot be undone.')) {
+      onDeleteRequest?.();
+    }
   };
 
   const formatFileSize = (base64Content: string): string => {
@@ -103,33 +112,100 @@ export const DrawingResultsDisplay: React.FC<DrawingResultsDisplayProps> = ({
         >
           🔄 Modify Drawing
         </button>
+
+        <button
+          onClick={() => setShowPythonCode(!showPythonCode)}
+          className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm flex items-center gap-2"
+        >
+          📝 View Code
+        </button>
+
+        {onDeleteRequest && (
+          <button
+            onClick={handleDelete}
+            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm flex items-center gap-2"
+          >
+            🗑️ Delete
+          </button>
+        )}
       </div>
 
-      {/* Regenerate Form */}
+      {/* Enhanced Modification Form */}
       {showRegenerateForm && (
-        <div className="mb-6 p-4 bg-orange-50 border border-orange-200 rounded-lg">
-          <h4 className="font-medium text-orange-900 mb-3">Modify Drawing</h4>
-          <textarea
-            value={regenerateInstructions}
-            onChange={(e) => setRegenerateInstructions(e.target.value)}
-            placeholder="Describe the changes you want to make to the drawing (e.g., 'Add more dimensions', 'Change the scale', 'Add a title block', 'Include centerlines')..."
-            className="w-full p-3 border rounded-lg resize-none"
-            rows={3}
-          />
-          <div className="flex items-center gap-3 mt-3">
+        <div className="mb-6 p-6 bg-orange-50 border border-orange-200 rounded-lg">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-2xl">🔧</span>
+            <h4 className="font-semibold text-orange-900 text-lg">Modify Drawing</h4>
+          </div>
+
+          <div className="bg-white p-4 rounded-lg border border-orange-200 mb-4">
+            <h5 className="font-medium text-gray-900 mb-2">📋 Current Drawing Context</h5>
+            <div className="text-sm text-gray-700 mb-3">
+              <strong>Title:</strong> {result.title}
+            </div>
+            <div className="text-sm text-gray-700 mb-3">
+              <strong>Description:</strong> {result.description}
+            </div>
+            <div className="text-sm text-gray-600">
+              The LLM will receive the complete Python code below as context for modifications.
+            </div>
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-orange-900 mb-2">
+              🎯 Modification Instructions
+            </label>
+            <textarea
+              value={regenerateInstructions}
+              onChange={(e) => setRegenerateInstructions(e.target.value)}
+              placeholder="Describe the specific changes you want to make to the drawing:&#10;&#10;Examples:&#10;• Add green dimension lines for all measurements&#10;• Change the table width to 1500mm&#10;• Add a title block in the bottom right corner&#10;• Include centerlines for all circular features&#10;• Add hatching to show material sections&#10;• Rotate the entire drawing 90 degrees"
+              className="w-full p-3 border border-orange-300 rounded-lg resize-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+              rows={5}
+            />
+          </div>
+
+          <div className="flex items-center gap-3">
             <button
               onClick={handleRegenerate}
               disabled={!regenerateInstructions.trim()}
-              className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:bg-gray-400 transition-colors text-sm"
+              className="px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:bg-gray-400 transition-colors font-medium flex items-center gap-2"
             >
-              🔄 Regenerate Drawing
+              🔄 Apply Modifications
             </button>
             <button
-              onClick={() => setShowRegenerateForm(false)}
-              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+              onClick={() => {
+                setShowRegenerateForm(false);
+                setRegenerateInstructions('');
+              }}
+              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
             >
               Cancel
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Python Code Display */}
+      {showPythonCode && (
+        <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="font-medium text-gray-900 flex items-center gap-2">
+              📝 Generated Python Code
+            </h4>
+            <button
+              onClick={handleDownloadCode}
+              className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors"
+            >
+              📥 Download .py
+            </button>
+          </div>
+          <div className="bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto">
+            <pre className="text-sm whitespace-pre-wrap font-mono">
+              {result.pythonCode}
+            </pre>
+          </div>
+          <div className="mt-2 text-xs text-gray-600">
+            This code will be included as context when you modify the drawing.
           </div>
         </div>
       )}

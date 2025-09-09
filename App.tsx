@@ -343,6 +343,16 @@ const App: React.FC = () => {
     handleDrawingRequest(undefined, previousCode, instructions);
   };
 
+  const handleDrawingDelete = (index: number) => {
+    setDrawingResults(prev => prev.filter((_, i) => i !== index));
+
+    // Add confirmation message to conversation
+    setConversationHistory(prev => [
+      ...prev,
+      { role: 'model', text: `🗑️ **Drawing Deleted**\n\nThe drawing has been removed from the current session.` }
+    ]);
+  };
+
   const handleContextUpdate = () => {
     setContextKey(prev => prev + 1); // Force re-render of context components
   };
@@ -1416,6 +1426,7 @@ Create a new cost abstract that addresses the remake instructions using the exis
                   key={index}
                   result={result}
                   onRegenerateRequest={handleDrawingRegenerate}
+                  onDeleteRequest={() => handleDrawingDelete(index)}
                 />
               ))}
             </div>
