@@ -36,6 +36,8 @@ import { TemplateManager } from './components/TemplateManager';
 import { CollapsibleControlPanel } from './components/CollapsibleControlPanel';
 import { ProjectManager } from './components/ProjectManager';
 import { ProjectService, ProjectData } from './services/projectService';
+import { EnhancedProjectService } from './services/enhancedProjectService';
+import { StorageManager } from './components/StorageManager';
 
 import { DrawingResultsDisplay } from './components/DrawingResultsDisplay';
 import { EzdxfDrawingService, DrawingResult } from './services/ezdxfDrawingService';
@@ -122,6 +124,7 @@ const App: React.FC = () => {
   const [purifiedContext, setPurifiedContext] = useState<string>('');
   const [isTemplateSelectorOpen, setIsTemplateSelectorOpen] = useState<boolean>(false);
   const [isTemplateManagerOpen, setIsTemplateManagerOpen] = useState<boolean>(false);
+  const [isStorageManagerOpen, setIsStorageManagerOpen] = useState<boolean>(false);
   const [selectedTemplates, setSelectedTemplates] = useState<MasterTemplate[]>([]);
   const [templateInstructions, setTemplateInstructions] = useState<string>('');
 
@@ -169,30 +172,43 @@ const App: React.FC = () => {
   }, [conversationHistory]);
 
   useEffect(() => {
-    const storedApiKey = localStorage.getItem('gemini-api-key');
-    if (storedApiKey) {
-        setApiKey(storedApiKey);
-    }
+    const initializeApp = async () => {
+      // Initialize Enhanced Project Service (IndexedDB)
+      try {
+        await EnhancedProjectService.initialize();
+        console.log('Enhanced Project Service initialized successfully');
+      } catch (error) {
+        console.error('Failed to initialize Enhanced Project Service:', error);
+        // Fallback to regular ProjectService if IndexedDB fails
+      }
 
-    // Load guidelines
-    loadGuidelines();
+      const storedApiKey = localStorage.getItem('gemini-api-key');
+      if (storedApiKey) {
+          setApiKey(storedApiKey);
+      }
 
-    // Try to load current project
-    const savedProject = ProjectService.loadCurrentProject();
-    if (savedProject) {
-      loadProjectData(savedProject);
-    } else {
-      // No saved project, load individual data (legacy support)
-      loadDesigns();
-      loadDrawings();
-    }
+      // Load guidelines
+      loadGuidelines();
 
-    // Initialize context if not exists
-    const existingContext = ContextService.getCurrentContext();
-    if (!existingContext && conversationHistory.length > 1) {
-      const projectDescription = conversationHistory.slice(1).map(msg => msg.text).join(' ').substring(0, 200);
-      ContextService.initializeContext(projectDescription);
-    }
+      // Try to load current project
+      const savedProject = ProjectService.loadCurrentProject();
+      if (savedProject) {
+        loadProjectData(savedProject);
+      } else {
+        // No saved project, load individual data (legacy support)
+        loadDesigns();
+        loadDrawings();
+      }
+
+      // Initialize context if not exists
+      const existingContext = ContextService.getCurrentContext();
+      if (!existingContext && conversationHistory.length > 1) {
+        const projectDescription = conversationHistory.slice(1).map(msg => msg.text).join(' ').substring(0, 200);
+        ContextService.initializeContext(projectDescription);
+      }
+    };
+
+    initializeApp();
   }, []);
 
   const loadGuidelines = () => {
@@ -456,6 +472,21 @@ const App: React.FC = () => {
       ...prev,
       { role: 'model', text: `✅ **Discussion Context Purified!**\n\n🧹 **Status:** Your discussion context has been analyzed and purified.\n\n📋 **Summary:** A comprehensive context summary has been created that captures all final decisions, requirements, and project details.\n\n💡 **Benefits:**\n• Cleaner context for future AI interactions\n• Focus on final decisions only\n• Organized project information\n• Improved AI response quality\n\n🎯 **Next Steps:** This purified context will now be used for all future design and estimation work.` }
     ]);
+  };
+
+  const handleConversationCleared = () => {
+    // Reset conversation to initial message
+    setConversationHistory([
+      { role: 'model', text: 'Hello! I am your AI assistant for construction estimation. Please describe the project you want to build, and we can define its scope together.' }
+    ]);
+
+    // Clear current message
+    setCurrentMessage('');
+
+    // Save the updated project
+    if (currentProject) {
+      saveCurrentProject();
+    }
   };
 
   const handleTemplateSelected = (templates: MasterTemplate[], customInstructions: string) => {
@@ -1290,6 +1321,7 @@ Create a new cost abstract that addresses the remake instructions using the exis
           onOpenTemplateManager={() => setIsTemplateManagerOpen(true)}
           onOpenTemplateSelector={() => setIsTemplateSelectorOpen(true)}
           onOpenProjectManager={() => setIsProjectManagerOpen(true)}
+          onOpenStorageManager={() => setIsStorageManagerOpen(true)}
           guidelinesCount={guidelines.filter(g => g.isActive).length}
           currentProvider={currentProvider}
           outputMode={outputMode}
@@ -1780,6 +1812,16 @@ Create a new cost abstract that addresses the remake instructions using the exis
           </div>
         )}
       </div>
+
+      {/* Storage Manager Modal */}
+      {isStorageManagerOpen && (
+        <StorageManager
+          isOpen={isStorageManagerOpen}
+          onClose={() => setIsStorageManagerOpen(false)}
+          currentProjectId={currentProject?.id}
+          onConversationCleared={handleConversationCleared}
+        />
+      )}
 
       {/* NS Rate Analysis Modal */}
       {showNSRateAnalysis && (

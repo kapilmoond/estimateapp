@@ -12,6 +12,7 @@ interface CollapsibleControlPanelProps {
   onOpenTemplateManager?: () => void;
   onOpenTemplateSelector?: () => void;
   onOpenProjectManager?: () => void;
+  onOpenStorageManager?: () => void;
 
   // Status Props
   guidelinesCount: number;
@@ -44,6 +45,7 @@ export const CollapsibleControlPanel: React.FC<CollapsibleControlPanelProps> = (
   onOpenTemplateManager,
   onOpenTemplateSelector,
   onOpenProjectManager,
+  onOpenStorageManager,
   guidelinesCount,
   currentProvider,
   outputMode,
@@ -75,6 +77,15 @@ export const CollapsibleControlPanel: React.FC<CollapsibleControlPanelProps> = (
                 className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
               >
                 📁 Projects
+              </button>
+            )}
+
+            {onOpenStorageManager && (
+              <button
+                onClick={onOpenStorageManager}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
+              >
+                💾 Storage
               </button>
             )}
 
