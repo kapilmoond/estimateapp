@@ -13,12 +13,6 @@ export interface HostingResult {
 export class DXFHostingService {
   private static readonly HOSTING_PROVIDERS = [
     {
-      name: 'file.io',
-      upload: DXFHostingService.uploadToFileIO,
-      maxSize: 100 * 1024 * 1024, // 100MB
-      duration: '24 hours'
-    },
-    {
       name: 'tmpfiles.org',
       upload: DXFHostingService.uploadToTmpFiles,
       maxSize: 100 * 1024 * 1024, // 100MB
@@ -88,30 +82,92 @@ export class DXFHostingService {
   }
 
   /**
-   * Upload to file.io (24 hour hosting)
+   * Analyze DXF content to extract useful information
    */
-  private static async uploadToFileIO(blob: Blob, filename: string): Promise<HostingResult> {
-    const formData = new FormData();
-    formData.append('file', blob, `${filename.replace(/[^a-zA-Z0-9]/g, '_')}.dxf`);
+  static analyzeDXFContent(dxfContent: string): {
+    isValid: boolean;
+    format: string;
+    entities: string[];
+    layers: string[];
+    hasText: boolean;
+    hasDimensions: boolean;
+    estimatedComplexity: 'simple' | 'moderate' | 'complex';
+    issues: string[];
+  } {
+    try {
+      // Decode base64 if needed
+      let textContent = dxfContent;
+      if (!dxfContent.includes('SECTION') && !dxfContent.includes('HEADER')) {
+        try {
+          const base64Data = dxfContent.replace(/^data:[^,]*,/, '');
+          textContent = atob(base64Data);
+        } catch (e) {
+          // Not base64, use as is
+        }
+      }
 
-    const response = await fetch('https://file.io', {
-      method: 'POST',
-      body: formData
-    });
+      const entities: string[] = [];
+      const layers: string[] = [];
+      const issues: string[] = [];
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
+      // Check for basic DXF structure
+      const hasHeader = textContent.includes('HEADER');
+      const hasTables = textContent.includes('TABLES');
+      const hasEntities = textContent.includes('ENTITIES');
+      const hasEOF = textContent.includes('EOF');
 
-    const result = await response.json();
-    
-    if (result.success && result.link) {
+      if (!hasHeader || !hasEntities || !hasEOF) {
+        issues.push('Missing required DXF sections');
+      }
+
+      // Extract entities
+      const entityTypes = ['LINE', 'CIRCLE', 'ARC', 'POLYLINE', 'TEXT', 'DIMENSION', 'INSERT', 'POINT'];
+      entityTypes.forEach(type => {
+        if (textContent.includes(type)) {
+          entities.push(type);
+        }
+      });
+
+      // Extract layers (simplified)
+      const layerMatches = textContent.match(/\n2\n([^\n]+)\n/g);
+      if (layerMatches) {
+        layerMatches.forEach(match => {
+          const layer = match.replace(/\n2\n/, '').replace(/\n/, '');
+          if (layer && !layers.includes(layer) && layer !== '0') {
+            layers.push(layer);
+          }
+        });
+      }
+
+      const hasText = entities.includes('TEXT') || entities.includes('MTEXT');
+      const hasDimensions = entities.includes('DIMENSION');
+
+      // Estimate complexity
+      let complexity: 'simple' | 'moderate' | 'complex' = 'simple';
+      if (entities.length > 5 || layers.length > 3) complexity = 'moderate';
+      if (entities.length > 10 || layers.length > 5 || hasDimensions) complexity = 'complex';
+
       return {
-        success: true,
-        url: result.link
+        isValid: hasHeader && hasEntities && hasEOF,
+        format: textContent.includes('AC1032') ? 'DXF R2018' : 'DXF',
+        entities,
+        layers: layers.slice(0, 10), // Limit to first 10 layers
+        hasText,
+        hasDimensions,
+        estimatedComplexity: complexity,
+        issues
       };
-    } else {
-      throw new Error(result.message || 'Upload failed');
+    } catch (error) {
+      return {
+        isValid: false,
+        format: 'Unknown',
+        entities: [],
+        layers: [],
+        hasText: false,
+        hasDimensions: false,
+        estimatedComplexity: 'simple',
+        issues: ['Failed to analyze DXF content']
+      };
     }
   }
 
