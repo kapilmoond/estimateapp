@@ -274,6 +274,25 @@ LINES:
       return codeMatch[1].trim();
     }
 
+    // Check if response starts with <<<< (common LLM behavior)
+    if (response.trim().startsWith('<<<<')) {
+      // Find the end marker
+      const endIndex = response.indexOf('>>>>');
+      if (endIndex !== -1) {
+        // Extract content between markers
+        const code = response.substring(4, endIndex).trim();
+        if (code) {
+          return code;
+        }
+      } else {
+        // No end marker found, remove the start marker and return the rest
+        const code = response.substring(4).trim();
+        if (code && (code.includes('import ezdxf') || code.includes('ezdxf.new'))) {
+          return code;
+        }
+      }
+    }
+
     // Fallback: look for python code blocks
     const pythonMatch = response.match(/```python([\s\S]*?)```/);
     if (pythonMatch && pythonMatch[1]) {
