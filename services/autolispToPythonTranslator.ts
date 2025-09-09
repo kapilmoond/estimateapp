@@ -370,24 +370,27 @@ msp.add_text("${text}", dxfattribs={'insert': (${x}, ${y}), 'height': ${height},
       customText = this.parseString(command.parameters[6]);
     }
 
-    let dimensionCode = `# Linear dimension from (${x1}, ${y1}) to (${x2}, ${y2})
+    // Create dimension with proper ezdxf syntax
+    if (customText) {
+      return `# Linear dimension from (${x1}, ${y1}) to (${x2}, ${y2}) with custom text "${customText}"
 dim = msp.add_linear_dim(
     base=(${dimX}, ${dimY}),
     p1=(${x1}, ${y1}),
     p2=(${x2}, ${y2}),
-    dxfattribs={'layer': 'DIMENSIONS'}
-)`;
-
-    // Add custom text if provided
-    if (customText) {
-      dimensionCode += `
-dim.dxf.text = "${customText}"`;
-    }
-
-    dimensionCode += `
+    text="${customText}",
+    dxfattribs={'layer': 'DIMENSIONS', 'color': ${this.currentColor}}
+)
 dim.render()`;
-
-    return dimensionCode;
+    } else {
+      return `# Linear dimension from (${x1}, ${y1}) to (${x2}, ${y2})
+dim = msp.add_linear_dim(
+    base=(${dimX}, ${dimY}),
+    p1=(${x1}, ${y1}),
+    p2=(${x2}, ${y2}),
+    dxfattribs={'layer': 'DIMENSIONS', 'color': ${this.currentColor}}
+)
+dim.render()`;
+    }
   }
 
   /**
