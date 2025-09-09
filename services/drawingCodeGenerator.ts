@@ -11,11 +11,22 @@ export class DrawingCodeGenerator {
     previousPythonCode?: string,
     modificationRequest?: string
   ): Promise<string> {
-    const prompt = isModification && previousPythonCode && modificationRequest
+    const basePrompt = isModification && previousPythonCode && modificationRequest
       ? this.createModificationPrompt(previousPythonCode, modificationRequest, description)
       : this.createGenerationPrompt(description);
 
+    const safetyRider = `
+API SAFETY RULES (MANDATORY):
+- For TEXT entities: use text.set_pos((x, y), align=TextEntityAlignment.*). Do NOT call Text.set_placement without the first positional argument p1.
+- If using set_placement, always pass p1 as the first argument (the insertion point).
+- After adding any linear dimension, always call .render().
+`;
+
+    const prompt = basePrompt + safetyRider;
+
     try {
+      console.log('DrawingCodeGenerator: Prompt length:', prompt.length);
+      console.log('DrawingCodeGenerator: Tutorial included:', prompt.includes('Chapter 1') || prompt.includes('Your Mission and the Script Generation Protocol') ? 'yes' : 'no');
       const response = await LLMService.generateContent(prompt);
       const pythonCode = this.extractPythonCodeFromResponse(response);
       return pythonCode;
