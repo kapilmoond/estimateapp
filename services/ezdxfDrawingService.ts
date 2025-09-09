@@ -8,6 +8,7 @@ export interface DrawingRequest {
   designContext: string;
   guidelines: string;
   referenceText: string;
+  previousPythonCode?: string; // for modification requests, include the previous code to edit
 }
 
 export interface DrawingResult {
@@ -47,13 +48,9 @@ export class EzdxfDrawingService {
       throw new Error(`Failed to generate valid Python code for drawing. LLM response was: ${response.substring(0, 200)}...`);
     }
 
-    // Sanitize and auto-repair common issues in generated code
-    const sanitized = this.sanitizePythonCode(pythonCode);
+    // Per user requirement: do not auto-repair or alter code; use LLM-generated program as-is
     console.log('Successfully extracted Python code, length:', pythonCode.length);
-    if (sanitized !== pythonCode) {
-      console.log('Applied code sanitization and repairs. New length:', sanitized.length);
-    }
-    return sanitized;
+    return pythonCode.trim();
   }
 
   /**
@@ -61,15 +58,8 @@ export class EzdxfDrawingService {
    */
   static async executeDrawingCode(pythonCode: string, title: string): Promise<DrawingResult> {
     try {
-      // Validate code for invalid DXF attributes before execution
-      const validation = this.validateDXFCode(pythonCode);
-      if (!validation.isValid) {
-        console.error('EzdxfDrawingService: Code validation failed');
-        validation.errors.forEach(error => console.error('Validation Error:', error));
-        throw new Error(`Code validation failed: ${validation.errors.join('; ')}`);
-      }
-
-      console.log('EzdxfDrawingService: Code validation passed - executing Python code via local ezdxf server');
+      // Execute code directly per user requirement (no pre-validation)
+      console.log('EzdxfDrawingService: Executing Python code via local ezdxf server');
       console.log('='.repeat(80));
       console.log('PYTHON CODE BEING SENT TO SERVER:');
       console.log('='.repeat(80));
@@ -185,7 +175,8 @@ export class EzdxfDrawingService {
    * Build comprehensive prompt for ezdxf code generation
    */
   private static async buildDrawingPrompt(request: DrawingRequest): Promise<string> {
-    // Keep prompt compact per user instruction: do NOT inline large tutorials in the prompt.
+    // Per user instruction: include the complete local tutorial bundle in the prompt for maximum reliability
+    const tutorialsText = await EzdxfDrawingService.loadLocalTutorialText();
 
     return `You are a professional CAD engineer and Python developer specializing in ezdxf library version 1.4.2 for creating technical drawings (target DXF R2018).
 
@@ -210,7 +201,9 @@ ${request.guidelines}
 **REFERENCE MATERIALS:**
 ${request.referenceText}
 
-ADDITIONAL QUICK REFERENCE (curated for drawing generation):
+${request.previousPythonCode ? `PREVIOUS PYTHON CODE (for modification requests):\n${request.previousPythonCode}\n\n` : ''}
+
+OFFICIAL TUTORIALS (VERBATIM EXCERPTS):\n${tutorialsText}\n\n-- END OFFICIAL TUTORIALS --\n\nADDITIONAL QUICK REFERENCE (curated for drawing generation):
 
 **CRITICAL: This is the complete, accurate ezdxf documentation based on official sources. Use EXACTLY these patterns and methods.**
 

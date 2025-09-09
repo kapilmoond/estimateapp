@@ -1,19 +1,16 @@
 import React, { useState } from 'react';
 import { DrawingResult } from '../services/ezdxfDrawingService';
-import { SimpleDxfViewer } from './DxfViewer';
 import { EzdxfDrawingService } from '../services/ezdxfDrawingService';
 
 interface DrawingResultsDisplayProps {
   result: DrawingResult;
-  onRegenerateRequest: (instructions: string) => void;
+  onRegenerateRequest: (instructions: string, previousCode: string) => void;
 }
 
 export const DrawingResultsDisplay: React.FC<DrawingResultsDisplayProps> = ({
   result,
   onRegenerateRequest
 }) => {
-  const [showCode, setShowCode] = useState(false);
-  const [showLog, setShowLog] = useState(false);
   const [regenerateInstructions, setRegenerateInstructions] = useState('');
   const [showRegenerateForm, setShowRegenerateForm] = useState(false);
 
@@ -23,45 +20,6 @@ export const DrawingResultsDisplay: React.FC<DrawingResultsDisplayProps> = ({
     } catch (error) {
       console.error('Download error:', error);
       alert('Failed to download DXF file. Please try again.');
-    }
-  };
-
-  const handleDownloadPNG = () => {
-    if (!result.imagePng) {
-      alert('PNG image not available');
-      return;
-    }
-    try {
-      EzdxfDrawingService.downloadPNG(result.imagePng, result.title);
-    } catch (error) {
-      console.error('PNG download error:', error);
-      alert('Failed to download PNG image. Please try again.');
-    }
-  };
-
-  const handleDownloadPDF = () => {
-    if (!result.imagePdf) {
-      alert('PDF image not available');
-      return;
-    }
-    try {
-      EzdxfDrawingService.downloadPDF(result.imagePdf, result.title);
-    } catch (error) {
-      console.error('PDF download error:', error);
-      alert('Failed to download PDF image. Please try again.');
-    }
-  };
-
-  const handlePrintImage = () => {
-    if (!result.imagePng) {
-      alert('PNG image not available for printing');
-      return;
-    }
-    try {
-      EzdxfDrawingService.printPNG(result.imagePng);
-    } catch (error) {
-      console.error('Print error:', error);
-      alert('Failed to print image. Please try again.');
     }
   };
 
@@ -82,7 +40,7 @@ export const DrawingResultsDisplay: React.FC<DrawingResultsDisplayProps> = ({
       alert('Please provide instructions for regeneration');
       return;
     }
-    onRegenerateRequest(regenerateInstructions);
+    onRegenerateRequest(regenerateInstructions, result.pythonCode);
     setRegenerateInstructions('');
     setShowRegenerateForm(false);
   };
@@ -126,41 +84,9 @@ export const DrawingResultsDisplay: React.FC<DrawingResultsDisplayProps> = ({
         </div>
       </div>
 
-      {/* Preferred Image Preview if available, fallback to simple DXF viewer */}
-      <div className="mb-6">
-        {result.imagePng ? (
-          <div className="border border-gray-200 rounded-lg p-3 bg-white">
-            <div className="text-sm text-gray-600 mb-2">PNG Preview (auto-scaled to fit)</div>
-            <img
-              src={`data:image/png;base64,${result.imagePng}`}
-              alt={result.title}
-              className="w-full h-auto rounded"
-            />
-            <div className="mt-2 flex gap-2">
-              <button onClick={handleDownloadPNG} className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">Download PNG</button>
-              {result.imagePdf && (
-                <button onClick={handleDownloadPDF} className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">Download PDF</button>
-              )}
-              <button onClick={handlePrintImage} className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50">Print Image</button>
-            </div>
-          </div>
-        ) : (
-          <SimpleDxfViewer dxfContent={result.dxfContent} title={result.title} />
-        )}
-      </div>
+      {/* Preview removed per requirement: only DXF download offered */}
 
-      {/* Image Generation Error */}
-      {!result.imageSuccess && result.imageError && (
-        <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <h4 className="font-medium text-yellow-900 mb-2">⚠️ Image Generation Notice</h4>
-          <p className="text-sm text-yellow-800">
-            DXF file generated successfully, but image preview failed: {result.imageError}
-          </p>
-          <p className="text-xs text-yellow-700 mt-1">
-            You can still download and use the DXF file in CAD software.
-          </p>
-        </div>
-      )}
+
 
       {/* Action Buttons */}
       <div className="flex flex-wrap items-center gap-3 mb-6">
@@ -234,26 +160,12 @@ export const DrawingResultsDisplay: React.FC<DrawingResultsDisplayProps> = ({
 
       {/* Usage Instructions */}
       <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-        <h4 className="font-medium text-blue-900 mb-2">How to use your files:</h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <h5 className="font-medium text-blue-800 mb-1">📐 DXF File (CAD Software):</h5>
-            <div className="text-sm text-blue-700 space-y-1">
-              <div>• <strong>AutoCAD:</strong> File → Open → Select DXF</div>
-              <div>• <strong>FreeCAD:</strong> File → Import → Choose DXF</div>
-              <div>• <strong>LibreCAD:</strong> File → Open → Select drawing</div>
-              <div>• <strong>Online:</strong> AutoCAD Web or OnShape</div>
-            </div>
-          </div>
-          <div>
-            <h5 className="font-medium text-blue-800 mb-1">🖼️ Image Files (Printing):</h5>
-            <div className="text-sm text-blue-700 space-y-1">
-              <div>• <strong>PNG:</strong> High-quality image for viewing/printing</div>
-              <div>• <strong>PDF:</strong> Vector format for professional printing</div>
-              <div>• <strong>Print:</strong> Use "Print Image" for direct printing</div>
-              <div>• <strong>Scale:</strong> Images auto-scaled to fit page</div>
-            </div>
-          </div>
+        <h4 className="font-medium text-blue-900 mb-2">How to use your DXF file:</h4>
+        <div className="text-sm text-blue-700 space-y-1">
+          <div>• <strong>AutoCAD:</strong> File → Open → Select DXF</div>
+          <div>• <strong>FreeCAD:</strong> File → Import → Choose DXF</div>
+          <div>• <strong>LibreCAD:</strong> File → Open → Select drawing</div>
+          <div>• <strong>Online:</strong> AutoCAD Web or OnShape</div>
         </div>
       </div>
 

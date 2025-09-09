@@ -35,7 +35,7 @@ import { TemplateManager } from './components/TemplateManager';
 import { CollapsibleControlPanel } from './components/CollapsibleControlPanel';
 import { ProjectManager } from './components/ProjectManager';
 import { ProjectService, ProjectData } from './services/projectService';
-import { EzdxfDrawingInterface } from './components/EzdxfDrawingInterface';
+
 import { DrawingResultsDisplay } from './components/DrawingResultsDisplay';
 import { EzdxfDrawingService, DrawingResult } from './services/ezdxfDrawingService';
 import { DrawingService, ProjectDrawing } from './services/drawingService';
@@ -329,10 +329,11 @@ const App: React.FC = () => {
     ]);
   };
 
-  const handleDrawingRegenerate = (instructions: string) => {
+  const handleDrawingRegenerate = (instructions: string, previousCode?: string) => {
+    // Include previous Python code explicitly so the LLM edits only what is required
     const enhancedInput = `${currentMessage}\n\nMODIFICATIONS REQUESTED:\n${instructions}`;
     setCurrentMessage(enhancedInput);
-    handleDrawingRequest();
+    handleDrawingRequest(undefined, previousCode);
   };
 
   const handleContextUpdate = () => {
@@ -777,7 +778,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleDrawingRequest = async (userInput?: string) => {
+  const handleDrawingRequest = async (userInput?: string, previousPythonCode?: string) => {
     const inputText = userInput || currentMessage;
     if (!inputText.trim()) {
       setError('Please provide drawing requirements');
@@ -836,7 +837,8 @@ const App: React.FC = () => {
         projectContext,
         designContext: [designContext, drawingsContextSummary].filter(Boolean).join('\n\n**DRAWINGS CONTEXT:**\n'),
         guidelines: drawingGuidelinesText,
-        referenceText: referenceText + templateContext
+        referenceText: referenceText + templateContext,
+        previousPythonCode: previousPythonCode || undefined,
       };
 
       // Generate the drawing using the new service
@@ -1452,20 +1454,9 @@ Create a new cost abstract that addresses the remake instructions using the exis
             />
           )}
 
-          {/* Professional CAD Drawing Interface */}
+          {/* Technical Drawing Results */}
           {outputMode === 'drawing' && (
             <div className="space-y-6">
-              <EzdxfDrawingInterface
-                userInput={currentMessage}
-                projectContext={referenceText}
-                designContext={designs.map(d => `${d.componentName}: ${d.designContent}`).join('\n\n')}
-                guidelines={guidelines.filter(g => g.isActive).map(g => g.content).join('\n')}
-                referenceText={referenceText}
-                onDrawingGenerated={handleDrawingGenerated}
-                onError={handleDrawingError}
-                onDrawingsChanged={loadSavedDrawings}
-              />
-
               {/* Display Generated Drawings */}
               {drawingResults.map((result, index) => (
                 <DrawingResultsDisplay
