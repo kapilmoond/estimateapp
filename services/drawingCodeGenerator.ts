@@ -1,4 +1,5 @@
 import { LLMService } from './llmService';
+import { EZDXF_TUTORIAL_CONTENT } from './ezdxfTutorialContent';
 
 export class DrawingCodeGenerator {
   /**
@@ -11,8 +12,8 @@ export class DrawingCodeGenerator {
     modificationRequest?: string
   ): Promise<string> {
     const prompt = isModification && previousPythonCode && modificationRequest
-      ? await this.createModificationPrompt(previousPythonCode, modificationRequest, description)
-      : await this.createGenerationPrompt(description);
+      ? this.createModificationPrompt(previousPythonCode, modificationRequest, description)
+      : this.createGenerationPrompt(description);
 
     try {
       const response = await LLMService.generateContent(prompt);
@@ -28,12 +29,12 @@ export class DrawingCodeGenerator {
   /**
    * Create modification prompt for existing Python code
    */
-  private static async createModificationPrompt(
+  private static createModificationPrompt(
     previousPythonCode: string,
     modificationRequest: string,
     originalDescription: string
-  ): Promise<string> {
-    const tutorialContext = await this.getEzdxfTutorialContext();
+  ): string {
+    const tutorialContext = this.getComprehensiveEzdxfTutorial();
     return `You are a professional CAD engineer. MODIFY the existing Python ezdxf code based on the modification request.
 
 **EZDXF TUTORIAL CONTEXT:**
@@ -66,8 +67,8 @@ ${originalDescription}
 >>>>`;
   }
 
-  private static async createGenerationPrompt(description: string): Promise<string> {
-    const tutorialContext = await this.getEzdxfTutorialContext();
+  private static createGenerationPrompt(description: string): string {
+    const tutorialContext = this.getComprehensiveEzdxfTutorial();
     return `You are a professional CAD engineer. Generate complete Python code using ezdxf library to create the requested technical drawing.
 
 **EZDXF TUTORIAL CONTEXT:**
@@ -128,24 +129,11 @@ Your response must contain ONLY the complete Python code between <<<< and >>>> m
   }
 
   /**
-   * Load ezdxf tutorial context from file
+   * Get comprehensive ezdxf tutorial context (inline content)
    */
-  private static async getEzdxfTutorialContext(): Promise<string> {
-    try {
-      const response = await fetch('/ezdxf_tutorial_bundle.txt');
-      if (response.ok) {
-        const content = await response.text();
-        return content;
-      } else {
-        console.warn('Could not load ezdxf tutorial bundle, using basic context');
-        return this.getBasicEzdxfContext();
-      }
-    } catch (error) {
-      console.error('Error loading ezdxf tutorial context:', error);
-      return this.getBasicEzdxfContext();
-    }
+ private static getComprehensiveEzdxfTutorial(): string {
+    return EZDXF_TUTORIAL_CONTENT;
   }
-
   /**
    * Basic ezdxf context as fallback
    */
