@@ -15,6 +15,7 @@ import { DesignService } from './services/designService';
 import { ContextService } from './services/contextService';
 import { DXFService, DXFStorageService } from './services/dxfService';
 import { TwoPhaseDrawingGenerator } from './services/twoPhaseDrawingGenerator';
+import { IntelligentDrawingService } from './services/intelligentDrawingService';
 import { HTMLService } from './services/htmlService';
 import { TemplateService, MasterTemplate } from './services/templateService';
 import { Spinner } from './components/Spinner';
@@ -861,15 +862,23 @@ const App: React.FC = () => {
       const title = inputText.match(/(?:draw|create|generate)\s+(?:a\s+)?(.+?)(?:\s+for|\s+with|\.|$)/i)?.[1]?.trim() ||
                    `Technical Drawing ${new Date().toLocaleDateString()}`;
 
-      // TWO-PHASE DRAWING GENERATION SYSTEM
+      // INTELLIGENT DRAWING GENERATION SYSTEM (AutoLISP → Python → DXF)
       const drawingSettings = DrawingSettingsService.loadSettings();
       const isModification = Boolean(previousPythonCode && modificationInstructions);
 
-      let analysis: string;
+      // Prepare context data for LLM
+      const contextData = {
+        designs: designs.filter(d => d.includeInContext),
+        previousDiscussions: conversationHistory.slice(-5), // Last 5 messages for context
+        projectContext: ProjectService.getCurrentProjectId() || 'default'
+      };
+
+      let drawingResult: DrawingResult;
+      let autolispCode: string;
       let pythonCode: string;
 
       if (isModification) {
-        // For modifications, we need the previous analysis from saved drawings
+        // For modifications, find the original AutoLISP code
         let savedDrawings: ProjectDrawing[] = [];
         try {
           savedDrawings = await EnhancedDrawingService.loadAllDrawings();
@@ -878,47 +887,55 @@ const App: React.FC = () => {
           savedDrawings = DrawingService.loadAllDrawings();
         }
         const previousDrawing = savedDrawings.find(d => d.generatedCode === previousPythonCode);
-        const previousAnalysis = previousDrawing?.specification || '';
+        const originalAutolispCode = previousDrawing?.specification || ''; // We'll store AutoLISP in specification field
 
-        // Phase 1: Modify the analysis
-        console.log('🔍 Phase 1: Modifying drawing analysis...');
-        analysis = await TwoPhaseDrawingGenerator.analyzeRequirements(
-          inputText,
+        console.log('🔄 Modifying existing drawing with intelligent service...');
+        const intelligentResult = await IntelligentDrawingService.modifyDrawing(
+          originalAutolispCode,
+          modificationInstructions || inputText,
           drawingSettings,
-          true,
-          previousAnalysis,
-          modificationInstructions
+          title,
+          contextData
         );
 
-        // Phase 2: Generate modified Python code with error correction
-        console.log('🔧 Phase 2: Generating modified Python code with error correction...');
-        pythonCode = await TwoPhaseDrawingGenerator.generatePythonCodeWithCorrection(
-          analysis,
-          drawingSettings,
-          inputText, // original prompt for error correction context
-          true,
-          previousPythonCode,
-          modificationInstructions
-        );
+        if (!intelligentResult.success) {
+          throw new Error(intelligentResult.error || 'Drawing modification failed');
+        }
+
+        autolispCode = intelligentResult.autolispCode;
+        pythonCode = intelligentResult.pythonCode;
+        drawingResult = intelligentResult.drawingResult!;
+
+        // Log warnings if any
+        if (intelligentResult.warnings.length > 0) {
+          console.warn('⚠️ Drawing modification warnings:', intelligentResult.warnings);
+        }
+
       } else {
-        // Phase 1: Analyze requirements and create detailed part list
-        console.log('🔍 Phase 1: Analyzing drawing requirements...');
-        analysis = await TwoPhaseDrawingGenerator.analyzeRequirements(
+        console.log('🚀 Generating new drawing with intelligent service...');
+        const intelligentResult = await IntelligentDrawingService.generateDrawing(
           inputText,
-          drawingSettings
+          drawingSettings,
+          title,
+          contextData
         );
 
-        // Phase 2: Generate Python code from analysis with error correction
-        console.log('🔧 Phase 2: Generating Python code from analysis with error correction...');
-        pythonCode = await TwoPhaseDrawingGenerator.generatePythonCodeWithCorrection(
-          analysis,
-          drawingSettings,
-          inputText // original prompt for error correction context
-        );
+        if (!intelligentResult.success) {
+          throw new Error(intelligentResult.error || 'Drawing generation failed');
+        }
+
+        autolispCode = intelligentResult.autolispCode;
+        pythonCode = intelligentResult.pythonCode;
+        drawingResult = intelligentResult.drawingResult!;
+
+        // Log statistics and warnings
+        console.log('📊 Generation statistics:', intelligentResult.metadata);
+        if (intelligentResult.warnings.length > 0) {
+          console.warn('⚠️ Drawing generation warnings:', intelligentResult.warnings);
+        }
       }
 
-      // Execute code on local server
-      const result = await EzdxfDrawingService.executeDrawingCode(pythonCode, title);
+      const result = drawingResult;
 
       // Save the drawing to persistence with analysis and Python code
       try {
@@ -927,7 +944,7 @@ const App: React.FC = () => {
           projectId,
           title,
           description: inputText.substring(0, 200) + (inputText.length > 200 ? '...' : ''),
-          specification: analysis, // Store the Phase 1 analysis
+          specification: autolispCode, // Store the AutoLISP code for future modifications
           generatedCode: pythonCode,
           result,
           settings: drawingSettings
@@ -943,7 +960,7 @@ const App: React.FC = () => {
             projectId: ProjectService.getCurrentProjectId() || 'default',
             title,
             description: inputText.substring(0, 200) + (inputText.length > 200 ? '...' : ''),
-            specification: analysis,
+            specification: autolispCode,
             generatedCode: pythonCode,
             result,
             settings: drawingSettings
