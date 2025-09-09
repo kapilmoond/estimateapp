@@ -83,15 +83,75 @@ export class TwoPhaseDrawingGenerator {
     try {
       console.log('TwoPhaseDrawingGenerator: Phase 2 - Generating Python code');
       console.log('Phase 2 prompt length:', prompt.length);
-      
+
       const response = await LLMService.generateContent(prompt);
       const pythonCode = this.extractPythonCodeFromResponse(response);
-      
+
       console.log('Phase 2 code generation completed, length:', pythonCode.length);
       return pythonCode;
     } catch (error) {
       console.error('Error in Phase 2 code generation:', error);
       throw new Error(`Failed to generate Python code: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Generate Python code with automatic error correction
+   */
+  static async generatePythonCodeWithCorrection(
+    analysis: string,
+    settings: DrawingSettings,
+    originalPrompt: string,
+    isModification: boolean = false,
+    previousPythonCode?: string,
+    modificationRequest?: string
+  ): Promise<string> {
+    try {
+      // First attempt: Generate code normally
+      const pythonCode = await this.generatePythonCode(
+        analysis,
+        settings,
+        isModification,
+        previousPythonCode,
+        modificationRequest
+      );
+
+      // Try to execute the code to check for errors
+      console.log('Testing generated Python code...');
+      const result = await EzdxfDrawingService.executeDrawingCode(pythonCode, 'Test execution');
+
+      console.log('✅ Python code executed successfully on first attempt');
+      return pythonCode;
+
+    } catch (executionError: any) {
+      console.log('❌ Python code execution failed, attempting error correction...');
+      console.log('Execution error:', executionError.message);
+
+      // Check if this is a server error with detailed information
+      if (this.isServerExecutionError(executionError)) {
+        console.log('🔧 Server execution error detected, attempting automatic correction...');
+
+        // Extract error details from the server response
+        const errorDetails = this.extractErrorDetails(executionError);
+
+        // Generate corrected code
+        const correctedCode = await this.generateErrorCorrectedCode(
+          analysis,
+          settings,
+          originalPrompt,
+          pythonCode,
+          errorDetails,
+          isModification,
+          previousPythonCode,
+          modificationRequest
+        );
+
+        console.log('✅ Error correction completed, returning corrected code');
+        return correctedCode;
+      } else {
+        // Not a server execution error, re-throw
+        throw executionError;
+      }
     }
   }
 
@@ -309,6 +369,78 @@ LINES:
   }
 
   /**
+   * Check if error is a server execution error that can be corrected
+   */
+  private static isServerExecutionError(error: any): boolean {
+    const errorMessage = error.message || '';
+    return errorMessage.includes('Local server error') ||
+           errorMessage.includes('Syntax error in generated Python code') ||
+           errorMessage.includes('Runtime error during code execution') ||
+           errorMessage.includes('Python execution error');
+  }
+
+  /**
+   * Extract detailed error information from server error
+   */
+  private static extractErrorDetails(error: any): {
+    errorType: string;
+    errorMessage: string;
+    executionLog?: string;
+    codePreview?: string;
+    traceback?: string;
+    lineNumber?: number;
+  } {
+    const errorMessage = error.message || '';
+
+    // Parse different types of server errors
+    if (errorMessage.includes('Syntax error in generated Python code')) {
+      const syntaxMatch = errorMessage.match(/Syntax error in generated Python code: (.+?)(?:\.|$)/);
+      const lineMatch = errorMessage.match(/line (\d+)/);
+
+      return {
+        errorType: 'syntax',
+        errorMessage: syntaxMatch ? syntaxMatch[1] : 'Syntax error',
+        lineNumber: lineMatch ? parseInt(lineMatch[1]) : undefined,
+        executionLog: this.extractFromError(errorMessage, 'execution_log'),
+        codePreview: this.extractFromError(errorMessage, 'code_preview'),
+        traceback: this.extractFromError(errorMessage, 'traceback')
+      };
+    } else if (errorMessage.includes('Runtime error during code execution')) {
+      return {
+        errorType: 'runtime',
+        errorMessage: errorMessage.replace('Local server error: 400 BAD REQUEST. Details: ', ''),
+        executionLog: this.extractFromError(errorMessage, 'execution_log'),
+        traceback: this.extractFromError(errorMessage, 'traceback')
+      };
+    } else {
+      return {
+        errorType: 'unknown',
+        errorMessage: errorMessage
+      };
+    }
+  }
+
+  /**
+   * Helper to extract specific fields from error message
+   */
+  private static extractFromError(errorMessage: string, field: string): string | undefined {
+    try {
+      // Try to parse as JSON if it looks like server response
+      const jsonMatch = errorMessage.match(/\{.*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        return parsed[field];
+      }
+    } catch (e) {
+      // Not JSON, continue with regex extraction
+    }
+
+    const regex = new RegExp(`${field}['":]\\s*['"]([^'"]+)['"]`, 'i');
+    const match = errorMessage.match(regex);
+    return match ? match[1] : undefined;
+  }
+
+  /**
    * Create Phase 1 modification prompt
    */
   private static createPhase1ModificationPrompt(
@@ -405,5 +537,109 @@ Your response must contain ONLY the complete modified Python code between <<<< a
 <<<<
 [Your complete modified Python code here]
 >>>>`;
+  }
+
+  /**
+   * Generate error-corrected Python code
+   */
+  private static async generateErrorCorrectedCode(
+    analysis: string,
+    settings: DrawingSettings,
+    originalPrompt: string,
+    failedCode: string,
+    errorDetails: any,
+    isModification: boolean = false,
+    previousPythonCode?: string,
+    modificationRequest?: string
+  ): Promise<string> {
+    const tutorialContext = EZDXF_TUTORIAL_CONTENT;
+    const settingsContext = this.formatSettingsForPrompt(settings);
+
+    const errorCorrectionPrompt = `🔧 PYTHON CODE ERROR CORRECTION
+
+You are a professional CAD engineer. The Python code you generated has execution errors and needs to be corrected.
+
+**EZDXF TUTORIAL CONTEXT:**
+${tutorialContext}
+
+═══════════════════════════════════════════════════════════════════════════════
+📋 ORIGINAL ANALYSIS (YOUR BLUEPRINT):
+═══════════════════════════════════════════════════════════════════════════════
+${analysis}
+
+═══════════════════════════════════════════════════════════════════════════════
+📝 ORIGINAL PROMPT THAT WAS SENT:
+═══════════════════════════════════════════════════════════════════════════════
+${originalPrompt}
+
+═══════════════════════════════════════════════════════════════════════════════
+❌ FAILED PYTHON CODE:
+═══════════════════════════════════════════════════════════════════════════════
+<<<<
+${failedCode}
+>>>>
+
+═══════════════════════════════════════════════════════════════════════════════
+🚨 ERROR DETAILS:
+═══════════════════════════════════════════════════════════════════════════════
+**Error Type:** ${errorDetails.errorType}
+**Error Message:** ${errorDetails.errorMessage}
+${errorDetails.lineNumber ? `**Line Number:** ${errorDetails.lineNumber}` : ''}
+${errorDetails.executionLog ? `**Execution Log:** ${errorDetails.executionLog}` : ''}
+${errorDetails.traceback ? `**Traceback:** ${errorDetails.traceback}` : ''}
+
+═══════════════════════════════════════════════════════════════════════════════
+⚙️ DRAWING SETTINGS:
+═══════════════════════════════════════════════════════════════════════════════
+${settingsContext}
+
+═══════════════════════════════════════════════════════════════════════════════
+🎯 ERROR CORRECTION REQUIREMENTS:
+═══════════════════════════════════════════════════════════════════════════════
+
+**CRITICAL FIXES NEEDED:**
+1. **Fix the specific error:** ${errorDetails.errorMessage}
+2. **Maintain original functionality:** Keep all intended drawing features
+3. **Follow ezdxf best practices:** Use proper syntax and methods
+4. **Ensure completeness:** Include all necessary imports and setup
+
+**COMMON ERROR FIXES:**
+- **Syntax Errors:** Check parentheses, brackets, quotes, indentation
+- **Missing Imports:** Ensure all required modules are imported
+- **Undefined Variables:** Check variable names and scope
+- **Method Calls:** Verify correct ezdxf method signatures
+- **Dimension Issues:** Use proper dimension creation and rendering
+
+**OUTPUT FORMAT:**
+Your response must contain ONLY the corrected Python code between <<<< and >>>> markers.
+
+<<<<
+[Your complete corrected Python code here]
+>>>>`;
+
+    try {
+      console.log('🔧 Generating error-corrected Python code...');
+      console.log('Error correction prompt length:', errorCorrectionPrompt.length);
+
+      const response = await LLMService.generateContent(errorCorrectionPrompt);
+      const correctedCode = this.extractPythonCodeFromResponse(response);
+
+      console.log('✅ Error-corrected code generated, length:', correctedCode.length);
+
+      // Test the corrected code (but don't retry correction if it fails again)
+      try {
+        console.log('🧪 Testing corrected Python code...');
+        await EzdxfDrawingService.executeDrawingCode(correctedCode, 'Error correction test');
+        console.log('✅ Corrected code executed successfully!');
+      } catch (testError) {
+        console.log('⚠️ Corrected code still has issues, but returning it anyway (no infinite retry)');
+        console.log('Test error:', testError);
+      }
+
+      return correctedCode;
+    } catch (error) {
+      console.error('Error in error correction:', error);
+      throw new Error(`Failed to generate error-corrected code: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 }

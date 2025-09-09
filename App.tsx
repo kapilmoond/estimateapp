@@ -872,11 +872,12 @@ const App: React.FC = () => {
           modificationInstructions
         );
 
-        // Phase 2: Generate modified Python code
-        console.log('🔧 Phase 2: Generating modified Python code...');
-        pythonCode = await TwoPhaseDrawingGenerator.generatePythonCode(
+        // Phase 2: Generate modified Python code with error correction
+        console.log('🔧 Phase 2: Generating modified Python code with error correction...');
+        pythonCode = await TwoPhaseDrawingGenerator.generatePythonCodeWithCorrection(
           analysis,
           drawingSettings,
+          inputText, // original prompt for error correction context
           true,
           previousPythonCode,
           modificationInstructions
@@ -889,11 +890,12 @@ const App: React.FC = () => {
           drawingSettings
         );
 
-        // Phase 2: Generate Python code from analysis
-        console.log('🔧 Phase 2: Generating Python code from analysis...');
-        pythonCode = await TwoPhaseDrawingGenerator.generatePythonCode(
+        // Phase 2: Generate Python code from analysis with error correction
+        console.log('🔧 Phase 2: Generating Python code from analysis with error correction...');
+        pythonCode = await TwoPhaseDrawingGenerator.generatePythonCodeWithCorrection(
           analysis,
-          drawingSettings
+          drawingSettings,
+          inputText // original prompt for error correction context
         );
       }
 

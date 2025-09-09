@@ -145,15 +145,16 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
       );
       console.log('Phase 1 Analysis completed:', analysis.substring(0, 200) + '...');
 
-      // Phase 2: Generate Python code from analysis
-      console.log('🔧 Phase 2: Generating Python code from analysis...');
-      const pythonCode = await TwoPhaseDrawingGenerator.generatePythonCode(
+      // Phase 2: Generate Python code from analysis with automatic error correction
+      console.log('🔧 Phase 2: Generating Python code from analysis with error correction...');
+      const pythonCode = await TwoPhaseDrawingGenerator.generatePythonCodeWithCorrection(
         analysis,
-        drawingSettings
+        drawingSettings,
+        userInput // original prompt for error correction context
       );
-      console.log('Phase 2 Python code generated, length:', pythonCode.length);
+      console.log('Phase 2 Python code generated with error correction, length:', pythonCode.length);
 
-      // Execute code on local server
+      // Execute code on local server (final execution after error correction)
       const title = extractTitle(userInput);
       const result = await EzdxfDrawingService.executeDrawingCode(pythonCode, title);
 
