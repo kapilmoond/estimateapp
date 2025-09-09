@@ -314,14 +314,26 @@ export class DrawingService {
     );
   }
 
-  // Reduce size of DrawingResult before storing
+  // Reduce size of DrawingResult before storing - AGGRESSIVE REDUCTION for quota
   private static slimDrawingResult(result: DrawingResult): DrawingResult {
     const title = result.title;
     const description = result.description;
-    const pythonCode = (result.pythonCode || '').trim();
-    const dxfContent = result.dxfContent; // keep full DXF content for persistence and downloads
-    const executionLog = (result.executionLog || '').slice(0, 2000); // cap log to 2KB
+    // Store only essential Python code (remove comments and extra whitespace)
+    const pythonCode = this.compressPythonCode(result.pythonCode || '');
+    // Store only DXF filename reference, not full content (too large for localStorage)
+    const dxfContent = result.dxfContent ? `DXF_GENERATED_${Date.now()}.dxf` : '';
+    const executionLog = (result.executionLog || '').slice(0, 500); // cap log to 500 chars
     return { title, description, pythonCode, dxfContent, executionLog } as DrawingResult;
+  }
+
+  // Compress Python code by removing comments and extra whitespace
+  private static compressPythonCode(code: string): string {
+    return code
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line && !line.startsWith('#') && !line.startsWith('"""'))
+      .join('\n')
+      .slice(0, 5000); // Cap at 5KB max
   }
 
   // Keep full structured specification (elements, dimensions, names) to support regeneration

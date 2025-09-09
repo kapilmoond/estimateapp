@@ -61,35 +61,47 @@ title_text = msp.add_text("TABLE DRAWING", dxfattribs={'insert': (0, 400), 'heig
     originalDescription: string
   ): string {
     const tutorialContext = this.getComprehensiveEzdxfTutorial();
-    return `You are a professional CAD engineer. MODIFY the existing Python ezdxf code based on the modification request.
+    return `🔧 MODIFICATION MODE: You are modifying existing ezdxf Python code.
 
 **EZDXF TUTORIAL CONTEXT:**
 ${tutorialContext}
 
-**IMPORTANT: This is a MODIFICATION request, not a new drawing. You must:**
-1. Take the existing Python code as your starting point
-2. Apply ONLY the requested modifications
-3. Keep all other elements unchanged unless specifically requested
-4. Maintain proper ezdxf syntax and structure
-5. Preserve existing coordinates, dimensions, and properties unless modification affects them
+═══════════════════════════════════════════════════════════════════════════════
+📋 MODIFICATION INSTRUCTIONS (FOLLOW EXACTLY):
+═══════════════════════════════════════════════════════════════════════════════
 
-**EXISTING PYTHON CODE TO MODIFY:**
+🎯 TASK: Modify the existing Python code below based on the user's modification request.
+
+⚠️ CRITICAL RULES:
+1. START with the existing code as your base - DO NOT rewrite from scratch
+2. Apply ONLY the requested changes - preserve everything else
+3. Keep existing coordinates, dimensions, layers unless modification affects them
+4. Maintain the same code structure and organization
+5. Preserve all working elements that aren't being modified
+
+📝 EXISTING PYTHON CODE TO MODIFY:
 <<<<
 ${previousPythonCode}
 >>>>
 
-**MODIFICATION REQUEST:**
+🔄 MODIFICATION REQUEST:
 ${modificationRequest}
 
-**ORIGINAL DESCRIPTION:**
+📖 ORIGINAL DESCRIPTION (for context):
 ${originalDescription}
 
-**TASK:** Provide the complete modified Python code that implements the requested changes.
+═══════════════════════════════════════════════════════════════════════════════
+📤 OUTPUT REQUIREMENTS:
+═══════════════════════════════════════════════════════════════════════════════
 
-**CRITICAL:** Your response must contain the complete Python code between <<<< and >>>> markers. No explanations, no markdown formatting, just the pure Python code.
+Your response must contain ONLY the complete modified Python code between <<<< and >>>> markers.
+- No explanations before or after the code
+- No markdown formatting
+- No comments about what you changed
+- Just the pure, executable Python code
 
 <<<<
-[Your complete Python code here]
+[Your complete modified Python code here]
 >>>>`;
   }
 
