@@ -224,11 +224,15 @@ const App: React.FC = () => {
   };
 
   const loadDrawings = () => {
-    // Load legacy drawings
+    // Load legacy drawings from DXFStorageService
     const loadedDrawings = DXFStorageService.loadDrawings();
+
+    // Note: TechnicalDrawing interface doesn't have projectId,
+    // so we load all drawings for now. Project filtering happens
+    // in the persistent drawing system.
     setDrawings(loadedDrawings);
 
-    // Load new persistent drawings
+    // Load new persistent drawings (these are project-specific)
     loadSavedDrawings();
   };
 
@@ -263,6 +267,12 @@ const App: React.FC = () => {
     } catch (error) {
       console.error('Error loading saved drawings:', error);
     }
+  };
+
+  // Refresh all drawing displays after deletion
+  const refreshAllDrawings = () => {
+    loadDrawings();
+    loadSavedDrawings();
   };
 
   const loadProjectData = (project: ProjectData) => {

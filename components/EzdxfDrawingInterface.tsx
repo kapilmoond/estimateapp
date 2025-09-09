@@ -468,16 +468,29 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
 
                     {/* Delete */}
                     <button
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.stopPropagation();
                         if (confirm('Delete this drawing?')) {
-                          DrawingService.deleteDrawing(drawing.id);
-                          const updated = DrawingService.loadProjectDrawings(getCurrentProjectId());
-                          setProjectDrawings(updated);
-                          if (currentDrawing?.id === drawing.id) {
-                            setCurrentDrawing(null);
+                          try {
+                            // Use unified deletion from EnhancedDrawingService
+                            const { EnhancedDrawingService } = await import('../services/drawingService');
+                            const success = await EnhancedDrawingService.deleteDrawing(drawing.id);
+
+                            if (success) {
+                              const updated = DrawingService.loadProjectDrawings(getCurrentProjectId());
+                              setProjectDrawings(updated);
+                              if (currentDrawing?.id === drawing.id) {
+                                setCurrentDrawing(null);
+                              }
+                              onDrawingsChanged && onDrawingsChanged();
+                              console.log('Drawing deleted successfully from all storage systems');
+                            } else {
+                              alert('Failed to delete drawing.');
+                            }
+                          } catch (error) {
+                            console.error('Delete error:', error);
+                            alert('Failed to delete drawing. Please try again.');
                           }
-                          onDrawingsChanged && onDrawingsChanged();
                         }
                       }}
                       className="text-red-500 hover:text-red-700 text-xs ml-2"
