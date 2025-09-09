@@ -263,7 +263,7 @@ if block_name not in doc.blocks:
     
     # Now, add the Attribute Definition (the text placeholder).
     # This is NOT a TEXT entity. It is a template for future text.
-    tag_block.add_attdef(
+    attdef = tag_block.add_attdef(
         tag="ROOM_NUMBER",          # The internal, unique name of the attribute (UPPERCASE, no spaces).
         text="XXX",                 # The default text that appears.
         insert=(0, -2),             # Insertion point relative to the block's base point.
@@ -271,8 +271,10 @@ if block_name not in doc.blocks:
             'layer': '0',           # Place the AttDef on layer "0".
             'height': 4,            # The text height.
         }
-    ).set_placement(align=TextEntityAlignment.MIDDLE_CENTER) # Center the text.
-    
+    )
+    # IMPORTANT: set_placement() requires a position parameter in current ezdxf
+    attdef.set_placement((0, -2), align=TextEntityAlignment.MIDDLE_CENTER) # Center the text.
+
     print(f"Block '{block_name}' with attributes created successfully.")```
 
 **3.4. Mental Checkpoint: The State of Your Drawing**
@@ -434,7 +436,8 @@ part_label = msp.add_text(
 )
 # Now, set the alignment. MIDDLE_CENTER is very common.
 # It places the exact center of the text string at the insertion point.
-part_label.set_placement(align=TextEntityAlignment.MIDDLE_CENTER)
+# IMPORTANT: set_placement() requires a position parameter in current ezdxf
+part_label.set_placement((50, -10), align=TextEntityAlignment.MIDDLE_CENTER)
 MTEXT: For Multi-Line Paragraphs
 Purpose: Used for longer notes, paragraphs, or any text that needs to wrap. MTEXT is a more complex object with many formatting options.
 Key Parameters: It shares many parameters with TEXT but handles content differently. The text content can contain \n for hard line breaks.

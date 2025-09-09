@@ -331,14 +331,18 @@ export class DrawingService {
     return code
       .split('\n')
       .map(line => line.trim())
-      .filter(line => line && !line.startsWith('#') && !line.startsWith('"""'))
+      .filter(line => line && !line.startsWith('#') && !line.startsWith('"""') && !line.startsWith('print('))
       .join('\n')
-      .slice(0, 5000); // Cap at 5KB max
+      .slice(0, 3000); // Cap at 3KB max for storage
   }
 
-  // Keep full structured specification (elements, dimensions, names) to support regeneration
+  // Keep only essential parts of specification for regeneration
   private static slimSpecification(spec: any): any {
     if (!spec) return null;
-    return spec; // preserve as-is; spec JSON is compact compared to images and required for regen
+    if (typeof spec === 'string') {
+      // For text analysis, keep only first 2000 chars
+      return spec.slice(0, 2000);
+    }
+    return spec; // preserve JSON specs as-is
   }
 }

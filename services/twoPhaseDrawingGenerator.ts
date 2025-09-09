@@ -206,6 +206,27 @@ Generate complete Python code that implements EXACTLY what was specified in the 
 - For DIMENSIONS: Set colors on layers, not dimstyles; always call .render()
 - For LAYERS: Use doc.layers.new(name, dxfattribs={...})
 
+**DIMENSION TEXT VISIBILITY - MANDATORY REQUIREMENTS:**
+🚨 CRITICAL: Dimension text MUST be visible. Follow this EXACT pattern:
+
+STEP 1: Create custom dimension style with LARGE visible text
+if "VISIBLE_DIM" not in doc.dimstyles:
+    dimstyle = doc.dimstyles.new("VISIBLE_DIM")
+    dimstyle.dxf.dimtxt = 200.0    # Large text height (200mm)
+    dimstyle.dxf.dimasz = 100.0    # Large arrow size (100mm)
+    dimstyle.dxf.dimclrd = 1       # Red dimension lines
+    dimstyle.dxf.dimclrt = 1       # Red text color
+    dimstyle.dxf.dimtad = 1        # Text above dimension line
+    dimstyle.dxf.dimgap = 50.0     # Gap between text and line
+
+STEP 2: Use VISIBLE_DIM style for ALL dimensions
+dim = msp.add_linear_dim(base=(x, y), p1=(x1, y1), p2=(x2, y2), dimstyle="VISIBLE_DIM", dxfattribs={'layer': 'DIMENSIONS'})
+dim.render()  # ALWAYS call render()
+
+🚨 NEVER use "EZDXF" dimstyle - it has tiny invisible text!
+🚨 ALWAYS use "VISIBLE_DIM" custom style for ALL dimensions!
+🚨 Text height MUST be 200.0 or larger for visibility!
+
 **OUTPUT FORMAT:**
 Your response must contain ONLY the complete Python code between <<<< and >>>> markers.
 

@@ -338,10 +338,11 @@ const App: React.FC = () => {
   };
 
   const handleDrawingRegenerate = (instructions: string, previousCode?: string) => {
-    // Treat as a structured modification using previous specification; Python code is only a signal now
-    const enhancedInput = `${currentMessage}\n\nMODIFICATIONS REQUESTED:\n${instructions}`;
-    setCurrentMessage(enhancedInput);
-    handleDrawingRequest(undefined, previousCode, instructions);
+    // Create modification request without affecting the main input
+    const modificationInput = `DRAWING MODIFICATION REQUEST:\n${instructions}`;
+
+    // Call drawing request directly with modification parameters
+    handleDrawingRequest(modificationInput, previousCode, instructions);
   };
 
   const handleDrawingDelete = (index: number) => {
