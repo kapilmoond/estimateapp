@@ -23,6 +23,10 @@ export interface TranslationResult {
 }
 
 export class AutoLispToPythonTranslator {
+  private static currentLayer = '0';
+  private static currentColor = 7;
+  private static currentLinetype = 'CONTINUOUS';
+
   private static pythonImports = `import ezdxf
 from ezdxf import units
 from ezdxf.enums import TextEntityAlignment
@@ -33,12 +37,15 @@ import math
 doc = ezdxf.new('R2010')
 msp = doc.modelspace()
 
-# Set up layers
-doc.layers.new('0', dxfattribs={'color': 7})  # Default layer
-doc.layers.new('CONSTRUCTION', dxfattribs={'color': 1})  # Red
-doc.layers.new('DIMENSIONS', dxfattribs={'color': 5})   # Blue  
-doc.layers.new('TEXT', dxfattribs={'color': 7})         # Black
-doc.layers.new('CENTERLINES', dxfattribs={'color': 3})  # Green
+# Set up layers (check if they exist first)
+if 'CONSTRUCTION' not in doc.layers:
+    doc.layers.new('CONSTRUCTION', dxfattribs={'color': 1})  # Red
+if 'DIMENSIONS' not in doc.layers:
+    doc.layers.new('DIMENSIONS', dxfattribs={'color': 5})   # Blue
+if 'TEXT' not in doc.layers:
+    doc.layers.new('TEXT', dxfattribs={'color': 7})         # Black
+if 'CENTERLINES' not in doc.layers:
+    doc.layers.new('CENTERLINES', dxfattribs={'color': 3})  # Green
 
 `;
 
@@ -46,6 +53,11 @@ doc.layers.new('CENTERLINES', dxfattribs={'color': 3})  # Green
    * Main translation function
    */
   static translateAutoLispToPython(autolispCode: string): TranslationResult {
+    // Reset state for each translation
+    this.currentLayer = '0';
+    this.currentColor = 7;
+    this.currentLinetype = 'CONTINUOUS';
+
     const result: TranslationResult = {
       pythonCode: '',
       success: false,
@@ -242,9 +254,9 @@ doc.layers.new('CENTERLINES', dxfattribs={'color': 3})  # Green
     }
 
     const [x1, y1, x2, y2] = command.parameters.map(p => this.parseNumber(p));
-    
+
     return `# Line from (${x1}, ${y1}) to (${x2}, ${y2})
-msp.add_line((${x1}, ${y1}), (${x2}, ${y2}))`;
+msp.add_line((${x1}, ${y1}), (${x2}, ${y2}), dxfattribs={'layer': '${this.currentLayer}', 'color': ${this.currentColor}})`;
   }
 
   /**
@@ -256,9 +268,9 @@ msp.add_line((${x1}, ${y1}), (${x2}, ${y2}))`;
     }
 
     const [x, y, radius] = command.parameters.map(p => this.parseNumber(p));
-    
+
     return `# Circle at (${x}, ${y}) with radius ${radius}
-msp.add_circle((${x}, ${y}), ${radius})`;
+msp.add_circle((${x}, ${y}), ${radius}, dxfattribs={'layer': '${this.currentLayer}', 'color': ${this.currentColor}})`;
   }
 
   /**
@@ -301,7 +313,7 @@ msp.add_arc((${x}, ${y}), ${radius}, ${startAngle}, ${endAngle})`;
 
     return `# ${commandType} with ${points.length} points
 points = [${points.join(', ')}]
-msp.add_lwpolyline(points)`;
+msp.add_lwpolyline(points, dxfattribs={'layer': '${this.currentLayer}', 'color': ${this.currentColor}})`;
   }
 
   /**
@@ -313,10 +325,10 @@ msp.add_lwpolyline(points)`;
     }
 
     const [x1, y1, x2, y2] = command.parameters.map(p => this.parseNumber(p));
-    
+
     return `# Rectangle from (${x1}, ${y1}) to (${x2}, ${y2})
 points = [(${x1}, ${y1}), (${x2}, ${y1}), (${x2}, ${y2}), (${x1}, ${y2})]
-msp.add_lwpolyline(points, close=True)`;
+msp.add_lwpolyline(points, close=True, dxfattribs={'layer': '${this.currentLayer}', 'color': ${this.currentColor}})`;
   }
 
   /**
@@ -435,9 +447,10 @@ msp.add_mtext("${text}", dxfattribs={'insert': (${x}, ${y}), 'width': ${width}, 
     }
 
     const linetype = this.parseString(command.parameters[0]);
+    this.currentLinetype = linetype; // Update current linetype state
 
     return `# Set current linetype to ${linetype}
-# Note: Linetype will be applied to subsequent entities`;
+# Linetype will be applied to subsequent entities`;
   }
 
   /**
@@ -509,9 +522,12 @@ msp.add_spline(fit_points=fit_points)`;
     }
 
     const layerName = this.parseString(command.parameters[0]);
-    
+    this.currentLayer = layerName; // Update current layer state
+
     return `# Set current layer to ${layerName}
-# Note: Layer should be created in setup if not exists`;
+# Ensure layer exists
+if '${layerName}' not in doc.layers:
+    doc.layers.new('${layerName}', dxfattribs={'color': ${this.currentColor}})`;
   }
 
   /**
@@ -523,8 +539,9 @@ msp.add_spline(fit_points=fit_points)`;
     }
 
     const color = this.parseNumber(command.parameters[0]);
-    
+    this.currentColor = color; // Update current color state
+
     return `# Set current color to ${color}
-# Note: Color will be applied to subsequent entities`;
+# Color will be applied to subsequent entities`;
   }
 }

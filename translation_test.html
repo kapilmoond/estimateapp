@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AutoLISP Translation Test</title>
+    <style>
+        body { font-family: monospace; margin: 20px; }
+        .test-case { border: 1px solid #ccc; margin: 10px 0; padding: 10px; }
+        .success { background-color: #d4edda; }
+        .error { background-color: #f8d7da; }
+        .autolisp { background-color: #f8f9fa; padding: 10px; margin: 5px 0; }
+        .python { background-color: #e9ecef; padding: 10px; margin: 5px 0; }
+        pre { white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h1>🧪 AutoLISP Translation Testing</h1>
+    <div id="results"></div>
+
+    <script type="module">
+        // Import the translation service (this would need to be adapted for actual testing)
+        
+        const testCases = [
+            {
+                id: 1,
+                name: "Simple Foundation Plan",
+                autolisp: `; Foundation plan drawing
+(layer "CONSTRUCTION")
+(color 1)
+(rectangle 0 0 12000 8000)
+(line 6000 0 6000 8000)
+(layer "DIMENSIONS")
+(color 5)
+(dimension 0 0 12000 0 6000 -1000)
+(text 6000 -1500 300 "12000mm")
+(layer "TEXT")
+(color 7)
+(text 6000 4000 400 "FOUNDATION PLAN")`
+            },
+            {
+                id: 2,
+                name: "Circular Structure",
+                autolisp: `; Circular water tank
+(layer "CONSTRUCTION")
+(color 1)
+(circle 5000 5000 5000)
+(circle 5000 5000 50)
+(layer "DIMENSIONS")
+(color 5)
+(dimension 5000 5000 10000 5000 7500 5000)
+(text 7500 5200 300 "R5000mm")
+(layer "TEXT")
+(color 7)
+(text 5000 5500 500 "WATER TANK")`
+            },
+            {
+                id: 3,
+                name: "Arc Test",
+                autolisp: `; Arc test
+(layer "CONSTRUCTION")
+(color 1)
+(arc 8000 0 8000 0 90)
+(line 0 0 8000 0)
+(layer "TEXT")
+(color 7)
+(text 8000 4000 300 "ARC TEST")`
+            }
+        ];
+
+        // Mock translation function (replace with actual implementation)
+        function translateAutoLisp(autolispCode) {
+            // This is a simplified mock - in real testing, this would call the actual translator
+            const lines = autolispCode.split('\n').filter(line => line.trim() && !line.trim().startsWith(';'));
+            const errors = [];
+            const warnings = [];
+            let pythonCode = `import ezdxf
+from ezdxf import units
+from ezdxf.enums import TextEntityAlignment
+from ezdxf.math import Vec3
+import math
+
+# Create new DXF document
+doc = ezdxf.new('R2010')
+msp = doc.modelspace()
+
+# Set up layers (check if they exist first)
+if 'CONSTRUCTION' not in doc.layers:
+    doc.layers.new('CONSTRUCTION', dxfattribs={'color': 1})
+if 'DIMENSIONS' not in doc.layers:
+    doc.layers.new('DIMENSIONS', dxfattribs={'color': 5})
+if 'TEXT' not in doc.layers:
+    doc.layers.new('TEXT', dxfattribs={'color': 7})
+
+`;
+
+            let currentLayer = '0';
+            let currentColor = 7;
+
+            lines.forEach((line, index) => {
+                try {
+                    const trimmed = line.trim();
+                    if (trimmed.startsWith('(layer ')) {
+                        const match = trimmed.match(/\(layer\s+"([^"]+)"\)/);
+                        if (match) {
+                            currentLayer = match[1];
+                            pythonCode += `# Set current layer to ${currentLayer}\n`;
+                            pythonCode += `if '${currentLayer}' not in doc.layers:\n`;
+                            pythonCode += `    doc.layers.new('${currentLayer}', dxfattribs={'color': ${currentColor}})\n`;
+                        }
+                    } else if (trimmed.startsWith('(color ')) {
+                        const match = trimmed.match(/\(color\s+(\d+)\)/);
+                        if (match) {
+                            currentColor = parseInt(match[1]);
+                            pythonCode += `# Set current color to ${currentColor}\n`;
+                        }
+                    } else if (trimmed.startsWith('(rectangle ')) {
+                        const match = trimmed.match(/\(rectangle\s+([-\d]+)\s+([-\d]+)\s+([-\d]+)\s+([-\d]+)\)/);
+                        if (match) {
+                            const [, x1, y1, x2, y2] = match;
+                            pythonCode += `# Rectangle from (${x1}, ${y1}) to (${x2}, ${y2})\n`;
+                            pythonCode += `points = [(${x1}, ${y1}), (${x2}, ${y1}), (${x2}, ${y2}), (${x1}, ${y2})]\n`;
+                            pythonCode += `msp.add_lwpolyline(points, close=True, dxfattribs={'layer': '${currentLayer}', 'color': ${currentColor}})\n`;
+                        } else {
+                            errors.push(`Line ${index + 1}: Invalid rectangle syntax: ${trimmed}`);
+                        }
+                    } else if (trimmed.startsWith('(line ')) {
+                        const match = trimmed.match(/\(line\s+([-\d]+)\s+([-\d]+)\s+([-\d]+)\s+([-\d]+)\)/);
+                        if (match) {
+                            const [, x1, y1, x2, y2] = match;
+                            pythonCode += `# Line from (${x1}, ${y1}) to (${x2}, ${y2})\n`;
+                            pythonCode += `msp.add_line((${x1}, ${y1}), (${x2}, ${y2}), dxfattribs={'layer': '${currentLayer}', 'color': ${currentColor}})\n`;
+                        } else {
+                            errors.push(`Line ${index + 1}: Invalid line syntax: ${trimmed}`);
+                        }
+                    } else if (trimmed.startsWith('(circle ')) {
+                        const match = trimmed.match(/\(circle\s+([-\d]+)\s+([-\d]+)\s+([-\d]+)\)/);
+                        if (match) {
+                            const [, x, y, radius] = match;
+                            pythonCode += `# Circle at (${x}, ${y}) with radius ${radius}\n`;
+                            pythonCode += `msp.add_circle((${x}, ${y}), ${radius}, dxfattribs={'layer': '${currentLayer}', 'color': ${currentColor}})\n`;
+                        } else {
+                            errors.push(`Line ${index + 1}: Invalid circle syntax: ${trimmed}`);
+                        }
+                    } else if (trimmed.startsWith('(arc ')) {
+                        const match = trimmed.match(/\(arc\s+([-\d]+)\s+([-\d]+)\s+([-\d]+)\s+([-\d]+)\s+([-\d]+)\)/);
+                        if (match) {
+                            const [, x, y, radius, startAngle, endAngle] = match;
+                            pythonCode += `# Arc at (${x}, ${y}) with radius ${radius} from ${startAngle}° to ${endAngle}°\n`;
+                            pythonCode += `msp.add_arc((${x}, ${y}), ${radius}, ${startAngle}, ${endAngle}, dxfattribs={'layer': '${currentLayer}', 'color': ${currentColor}})\n`;
+                        } else {
+                            errors.push(`Line ${index + 1}: Invalid arc syntax: ${trimmed}`);
+                        }
+                    } else if (trimmed.startsWith('(text ')) {
+                        const match = trimmed.match(/\(text\s+([-\d]+)\s+([-\d]+)\s+([-\d]+)\s+"([^"]+)"\)/);
+                        if (match) {
+                            const [, x, y, height, text] = match;
+                            pythonCode += `# Text "${text}" at (${x}, ${y}) with height ${height}\n`;
+                            pythonCode += `msp.add_text("${text}", dxfattribs={'insert': (${x}, ${y}), 'height': ${height}, 'layer': '${currentLayer}', 'color': ${currentColor}})\n`;
+                        } else {
+                            errors.push(`Line ${index + 1}: Invalid text syntax: ${trimmed}`);
+                        }
+                    } else if (trimmed.startsWith('(dimension ')) {
+                        const match = trimmed.match(/\(dimension\s+([-\d]+)\s+([-\d]+)\s+([-\d]+)\s+([-\d]+)\s+([-\d]+)\s+([-\d]+)\)/);
+                        if (match) {
+                            const [, x1, y1, x2, y2, dimX, dimY] = match;
+                            pythonCode += `# Linear dimension from (${x1}, ${y1}) to (${x2}, ${y2})\n`;
+                            pythonCode += `dim = msp.add_linear_dim(\n`;
+                            pythonCode += `    base=(${dimX}, ${dimY}),\n`;
+                            pythonCode += `    p1=(${x1}, ${y1}),\n`;
+                            pythonCode += `    p2=(${x2}, ${y2}),\n`;
+                            pythonCode += `    dxfattribs={'layer': 'DIMENSIONS'}\n`;
+                            pythonCode += `)\n`;
+                            pythonCode += `dim.render()\n`;
+                        } else {
+                            errors.push(`Line ${index + 1}: Invalid dimension syntax: ${trimmed}`);
+                        }
+                    } else {
+                        warnings.push(`Line ${index + 1}: Unrecognized command: ${trimmed}`);
+                    }
+                } catch (error) {
+                    errors.push(`Line ${index + 1}: Translation error: ${error.message}`);
+                }
+            });
+
+            pythonCode += `\n# Save the drawing\ndoc.saveas("technical_drawing.dxf")\n`;
+
+            return {
+                success: errors.length === 0,
+                pythonCode,
+                errors,
+                warnings,
+                statistics: {
+                    totalCommands: lines.length,
+                    translatedCommands: lines.length - errors.length,
+                    errorCommands: errors.length,
+                    skippedCommands: warnings.length
+                }
+            };
+        }
+
+        function runTests() {
+            const resultsDiv = document.getElementById('results');
+            let passedTests = 0;
+            let totalTests = testCases.length;
+
+            testCases.forEach(testCase => {
+                const result = translateAutoLisp(testCase.autolisp);
+                
+                const testDiv = document.createElement('div');
+                testDiv.className = `test-case ${result.success ? 'success' : 'error'}`;
+                
+                testDiv.innerHTML = `
+                    <h3>🔍 Test ${testCase.id}: ${testCase.name} ${result.success ? '✅' : '❌'}</h3>
+                    
+                    <h4>AutoLISP Input:</h4>
+                    <div class="autolisp">
+                        <pre>${testCase.autolisp}</pre>
+                    </div>
+                    
+                    <h4>Translation Statistics:</h4>
+                    <ul>
+                        <li>Total Commands: ${result.statistics.totalCommands}</li>
+                        <li>Translated: ${result.statistics.translatedCommands}</li>
+                        <li>Errors: ${result.statistics.errorCommands}</li>
+                        <li>Warnings: ${result.statistics.skippedCommands}</li>
+                    </ul>
+                    
+                    ${result.errors.length > 0 ? `
+                        <h4>❌ Errors:</h4>
+                        <ul>
+                            ${result.errors.map(error => `<li>${error}</li>`).join('')}
+                        </ul>
+                    ` : ''}
+                    
+                    ${result.warnings.length > 0 ? `
+                        <h4>⚠️ Warnings:</h4>
+                        <ul>
+                            ${result.warnings.map(warning => `<li>${warning}</li>`).join('')}
+                        </ul>
+                    ` : ''}
+                    
+                    <h4>Generated Python Code:</h4>
+                    <div class="python">
+                        <pre>${result.pythonCode}</pre>
+                    </div>
+                `;
+                
+                resultsDiv.appendChild(testDiv);
+                
+                if (result.success) passedTests++;
+            });
+
+            // Add summary
+            const summaryDiv = document.createElement('div');
+            summaryDiv.innerHTML = `
+                <h2>📊 Test Summary</h2>
+                <p><strong>Total Tests:</strong> ${totalTests}</p>
+                <p><strong>Passed:</strong> ${passedTests} ✅</p>
+                <p><strong>Failed:</strong> ${totalTests - passedTests} ❌</p>
+                <p><strong>Success Rate:</strong> ${((passedTests / totalTests) * 100).toFixed(1)}%</p>
+            `;
+            resultsDiv.insertBefore(summaryDiv, resultsDiv.firstChild);
+        }
+
+        // Run tests when page loads
+        runTests();
+    </script>
+</body>
+</html>

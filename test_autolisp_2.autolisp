@@ -1,0 +1,35 @@
+; Test 2: Circular Structure with Radius
+; Create a circular water tank with 5m radius, include center point, radius dimension R5000mm, and title text.
+
+; Setup layers
+(layer "CONSTRUCTION")
+(color 1)
+
+; Main circular tank - 5m radius
+(circle 5000 5000 5000)
+
+; Center point marker
+(circle 5000 5000 50)
+
+; Center cross lines
+(line 4900 5000 5100 5000)
+(line 5000 4900 5000 5100)
+
+; Switch to dimensions layer
+(layer "DIMENSIONS")
+(color 5)
+
+; Radius dimension from center to edge
+(dimension 5000 5000 10000 5000 7500 5000)
+(text 7500 5200 300 "R5000mm")
+
+; Diameter dimension
+(dimension 0 5000 10000 5000 5000 -1000)
+(text 5000 -1500 300 "Ø10000mm")
+
+; Add labels
+(layer "TEXT")
+(color 7)
+(text 5000 5500 500 "WATER TANK")
+(text 5000 1000 300 "CIRCULAR PLAN")
+(text 5000 500 250 "SCALE 1:100")

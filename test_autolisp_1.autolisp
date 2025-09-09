@@ -1,0 +1,30 @@
+; Test 1: Simple Foundation Plan
+; Draw a rectangular foundation plan 12m x 8m with center dividing wall. Add dimensions and labels.
+
+; Setup layers and properties
+(layer "CONSTRUCTION")
+(color 1)
+(linetype "CONTINUOUS")
+
+; Main foundation outline 12m x 8m
+(rectangle 0 0 12000 8000)
+
+; Center dividing wall
+(line 6000 0 6000 8000)
+
+; Switch to dimensions layer
+(layer "DIMENSIONS")
+(color 5)
+
+; Add dimensions
+(dimension 0 0 12000 0 6000 -1000)
+(dimension 0 0 0 8000 -1000 4000)
+(text 6000 -1500 300 "12000mm")
+(text -1500 4000 300 "8000mm")
+
+; Add labels
+(layer "TEXT")
+(color 7)
+(text 6000 4000 400 "FOUNDATION PLAN")
+(text 3000 2000 250 "ROOM A")
+(text 9000 2000 250 "ROOM B")
