@@ -134,29 +134,6 @@ export const DrawingResultsDisplay: React.FC<DrawingResultsDisplayProps> = ({
         </div>
       )}
 
-      {/* Python Code Display */}
-      {showCode && (
-        <div className="mb-6">
-          <h4 className="text-sm font-medium text-gray-700 mb-2">Generated ezdxf Python Code:</h4>
-          <div className="bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto max-h-96">
-            <pre className="text-xs whitespace-pre-wrap font-mono">
-              {result.pythonCode}
-            </pre>
-          </div>
-        </div>
-      )}
-
-      {/* Execution Log */}
-      {showLog && (
-        <div className="mb-6">
-          <h4 className="text-sm font-medium text-gray-700 mb-2">Execution Log:</h4>
-          <div className="bg-gray-100 p-4 rounded-lg">
-            <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono">
-              {result.executionLog}
-            </pre>
-          </div>
-        </div>
-      )}
 
       {/* Usage Instructions */}
       <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
