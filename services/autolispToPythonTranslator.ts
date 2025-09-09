@@ -79,7 +79,15 @@ doc.layers.new('CENTERLINES', dxfattribs={'color': 3})  # Green
           }
         } catch (error) {
           result.statistics.errorCommands++;
-          result.errors.push(`Error translating ${command.command}: ${error}`);
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          result.errors.push(`Error translating ${command.command}: ${errorMessage}`);
+
+          // Add helpful context for common errors
+          if (errorMessage.includes('Invalid number') || errorMessage.includes('Failed to parse coordinate')) {
+            result.errors.push(`  → Command: ${command.originalLine}`);
+            result.errors.push(`  → Tip: Ensure all coordinates are pure numbers (e.g., 1000, not "Ø1000")`);
+            result.errors.push(`  → Tip: Put text content in quotes (e.g., "Ø1000mm")`);
+          }
         }
       }
 
@@ -333,19 +341,41 @@ msp.add_text("${text}", dxfattribs={'insert': (${x}, ${y}), 'height': ${height},
    */
   private static translateDimension(command: AutoLispCommand): string {
     if (command.parameters.length < 6) {
-      throw new Error('DIMENSION command requires at least 6 parameters (x1 y1 x2 y2 dim_x dim_y)');
+      throw new Error('DIMENSION command requires at least 6 parameters (x1 y1 x2 y2 dim_x dim_y [text])');
     }
 
-    const [x1, y1, x2, y2, dimX, dimY] = command.parameters.map(p => this.parseNumber(p));
-    
-    return `# Linear dimension from (${x1}, ${y1}) to (${x2}, ${y2})
+    // Parse coordinate parameters (first 6 are always coordinates)
+    const x1 = this.parseNumberSafe(command.parameters[0]);
+    const y1 = this.parseNumberSafe(command.parameters[1]);
+    const x2 = this.parseNumberSafe(command.parameters[2]);
+    const y2 = this.parseNumberSafe(command.parameters[3]);
+    const dimX = this.parseNumberSafe(command.parameters[4]);
+    const dimY = this.parseNumberSafe(command.parameters[5]);
+
+    // Check if there's custom dimension text (7th parameter)
+    let customText = '';
+    if (command.parameters.length > 6) {
+      customText = this.parseString(command.parameters[6]);
+    }
+
+    let dimensionCode = `# Linear dimension from (${x1}, ${y1}) to (${x2}, ${y2})
 dim = msp.add_linear_dim(
     base=(${dimX}, ${dimY}),
     p1=(${x1}, ${y1}),
     p2=(${x2}, ${y2}),
     dxfattribs={'layer': 'DIMENSIONS'}
-)
+)`;
+
+    // Add custom text if provided
+    if (customText) {
+      dimensionCode += `
+dim.dxf.text = "${customText}"`;
+    }
+
+    dimensionCode += `
 dim.render()`;
+
+    return dimensionCode;
   }
 
   /**
@@ -358,6 +388,17 @@ dim.render()`;
       throw new Error(`Invalid number: ${value}`);
     }
     return num;
+  }
+
+  /**
+   * Parse number safely, providing better error context
+   */
+  private static parseNumberSafe(value: string): number {
+    try {
+      return this.parseNumber(value);
+    } catch (error) {
+      throw new Error(`Failed to parse coordinate "${value}" as number. Coordinates must be numeric values, not text or symbols.`);
+    }
   }
 
   /**

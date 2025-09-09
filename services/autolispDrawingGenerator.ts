@@ -120,8 +120,8 @@ ${contextSection}
 **TEXT AND ANNOTATIONS:**
 - (text x y height "text_string") - Add text at position
 - (mtext x y width height "text_string") - Add multiline text
-- (dimension x1 y1 x2 y2 dim_x dim_y) - Linear dimension between two points
-- (dimlinear x1 y1 x2 y2 dim_x dim_y "text") - Linear dimension with custom text
+- (dimension x1 y1 x2 y2 dim_x dim_y) - Linear dimension between two points (all coordinates must be numbers)
+- (dimlinear x1 y1 x2 y2 dim_x dim_y "text") - Linear dimension with custom text (coordinates are numbers, text in quotes)
 
 **LAYERS AND PROPERTIES:**
 - (layer "layer_name") - Set current layer
@@ -138,6 +138,12 @@ ${contextSection}
 - X-axis increases to the right
 - Y-axis increases upward
 - All measurements in millimeters
+
+**CRITICAL PARAMETER RULES:**
+- ALL coordinates must be pure numbers: 1000, 5000, 12000 (NOT "Ø1000" or "R5000")
+- Text content goes in quotes: "Ø1000mm", "R5000", "Foundation Plan"
+- Dimension coordinates are numbers, dimension text is in quotes
+- Example: (dimlinear 0 0 1000 0 500 -200 "Ø1000mm") - coordinates are numbers, text is quoted
 
 ═══════════════════════════════════════════════════════════════════════════════
 🎯 GENERATION REQUIREMENTS:
@@ -222,11 +228,12 @@ ${contextSection}
 \`\`\`
 
 **VALIDATION CHECKLIST:**
-✓ All coordinates are numbers (not variables)
-✓ Text strings are in quotes
-✓ Layer names are in quotes
+✓ All coordinates are pure numbers: 1000, 5000 (NOT "Ø1000", "R5000", or variables)
+✓ Text content is in quotes: "Ø1000mm", "Foundation Plan"
+✓ Layer names are in quotes: "CONSTRUCTION", "DIMENSIONS"
 ✓ Commands use exact syntax from reference
-✓ Dimensions are properly positioned
+✓ Dimension coordinates are numbers, dimension text is quoted
+✓ No symbols or letters mixed with coordinate numbers
 ✓ Text is large enough (minimum 200mm height)
 ✓ Colors are appropriate (1=red, 5=blue, 7=black)
 
