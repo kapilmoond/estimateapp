@@ -39,7 +39,7 @@ import { ProjectService, ProjectData } from './services/projectService';
 import { DrawingResultsDisplay } from './components/DrawingResultsDisplay';
 import { EzdxfDrawingService, DrawingResult } from './services/ezdxfDrawingService';
 import { DrawingService, ProjectDrawing } from './services/drawingService';
-import { DrawingSpecificationParser } from './services/drawingSpecificationParser';
+
 import { DrawingCodeGenerator } from './services/drawingCodeGenerator';
 import { DrawingSettingsService } from './services/drawingSettingsService';
 import { DrawingSettingsPanel } from './components/DrawingSettingsPanel';
@@ -109,6 +109,7 @@ const App: React.FC = () => {
   const [isLLMSettingsOpen, setIsLLMSettingsOpen] = useState<boolean>(false);
   const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState<boolean>(false);
   const [isDrawingSettingsOpen, setIsDrawingSettingsOpen] = useState<boolean>(false);
+  const [drawingSettings, setDrawingSettings] = useState(() => DrawingSettingsService.loadSettings());
 
   const [includeKnowledgeBase, setIncludeKnowledgeBase] = useState<boolean>(false);
   const [currentProvider] = useState<string>(LLMService.getCurrentProvider());
@@ -805,35 +806,29 @@ const App: React.FC = () => {
       const title = inputText.match(/(?:draw|create|generate)\s+(?:a\s+)?(.+?)(?:\s+for|\s+with|\.|$)/i)?.[1]?.trim() ||
                    `Technical Drawing ${new Date().toLocaleDateString()}`;
 
-      // Build structured specification using LLM (JSON only)
-      const projectId = ProjectService.getCurrentProjectId() || 'default';
-      const previous = DrawingService.getLatestProjectDrawing(projectId);
-      const previousSpec = previous?.specification;
-
-      const spec = await DrawingSpecificationParser.parseDescription(
+      // Generate Python code directly using LLM
+      const isModification = Boolean(previousPythonCode && modificationInstructions);
+      const pythonCode = await DrawingCodeGenerator.generatePythonCode(
         inputText,
-        Boolean(previousPythonCode),
-        previousSpec,
+        isModification,
+        previousPythonCode,
         modificationInstructions
       );
-
-      // Generate Python from spec
-      const settings = DrawingSettingsService.loadSettings();
-      const pythonCode = DrawingCodeGenerator.generatePythonCode(spec, settings);
 
       // Execute code on local server
       const result = await EzdxfDrawingService.executeDrawingCode(pythonCode, title);
 
-      // Save the drawing to persistence with full spec for regeneration
+      // Save the drawing to persistence with Python code for regeneration
       try {
+        const projectId = ProjectService.getCurrentProjectId() || 'default';
         const savedDrawing = DrawingService.saveDrawing({
           projectId,
           title,
           description: inputText.substring(0, 200) + (inputText.length > 200 ? '...' : ''),
-          specification: spec,
+          specification: null, // No longer using JSON specifications
           generatedCode: pythonCode,
           result,
-          settings
+          settings: DrawingSettingsService.loadSettings()
         });
 
         console.log('Drawing saved to persistence:', savedDrawing.id);
@@ -1194,29 +1189,6 @@ Create a new cost abstract that addresses the remake instructions using the exis
 
   const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState<boolean>(false);
 
-
-
-          <div className="flex items-center justify-end gap-3 mb-4">
-            <button
-              onClick={() => setIsLLMSettingsOpen(true)}
-              className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50"
-            >
-              LLM Settings
-            </button>
-            <button
-              onClick={() => setIsDrawingSettingsOpen(true)}
-              className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50"
-            >
-              Drawing Settings
-            </button>
-            <button
-              onClick={() => setIsDiagnosticsOpen(true)}
-              className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50"
-            >
-              Diagnostics
-            </button>
-          </div>
-
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto px-4 py-8 max-w-6xl">
@@ -1261,6 +1233,7 @@ Create a new cost abstract that addresses the remake instructions using the exis
         <CollapsibleControlPanel
           onOpenGuidelines={() => setIsGuidelinesOpen(true)}
           onOpenLLMSettings={() => setIsLLMSettingsOpen(true)}
+          onOpenDrawingSettings={() => setIsDrawingSettingsOpen(true)}
           onOpenKnowledgeBase={() => setIsKnowledgeBaseOpen(true)}
           onOpenContextManager={() => setIsContextManagerOpen(true)}
           onOpenTemplateManager={() => setIsTemplateManagerOpen(true)}
@@ -1738,6 +1711,21 @@ Create a new cost abstract that addresses the remake instructions using the exis
 
         {isDiagnosticsOpen && (
           <SystemStatus isOpen={isDiagnosticsOpen} onClose={() => setIsDiagnosticsOpen(false)} />
+        )}
+
+        {isDrawingSettingsOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden">
+              <DrawingSettingsPanel
+                settings={drawingSettings}
+                onSettingsChange={(newSettings) => {
+                  setDrawingSettings(newSettings);
+                  DrawingSettingsService.saveSettings(newSettings);
+                }}
+                onClose={() => setIsDrawingSettingsOpen(false)}
+              />
+            </div>
+          </div>
         )}
       </div>
 

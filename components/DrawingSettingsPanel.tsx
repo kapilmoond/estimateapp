@@ -114,9 +114,48 @@ export const DrawingSettingsPanel: React.FC<DrawingSettingsPanelProps> = ({
     setLocalSettings(getDefaultSettings());
   };
 
+  const applyPreset = (presetName: string) => {
+    const presets = getDrawingPresets();
+    const preset = presets[presetName];
+    if (preset) {
+      setLocalSettings(preset);
+    }
+  };
+
   const renderDocumentTab = () => (
     <div className="space-y-4">
       <h3 className="text-lg font-semibold text-gray-900">Document Settings</h3>
+
+      {/* Presets Section */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <h4 className="text-sm font-medium text-blue-900 mb-2">Quick Presets</h4>
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={() => applyPreset('architectural')}
+            className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            🏗️ Architectural
+          </button>
+          <button
+            onClick={() => applyPreset('mechanical')}
+            className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
+          >
+            ⚙️ Mechanical
+          </button>
+          <button
+            onClick={() => applyPreset('electrical')}
+            className="px-3 py-1 text-xs bg-yellow-600 text-white rounded hover:bg-yellow-700"
+          >
+            ⚡ Electrical
+          </button>
+          <button
+            onClick={handleReset}
+            className="px-3 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700"
+          >
+            🔄 Default
+          </button>
+        </div>
+      </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -864,13 +903,13 @@ export const getDefaultSettings = (): DrawingSettings => ({
   },
 
   dimensions: {
-    styleName: 'Standard',
-    textHeight: 250,
-    arrowSize: 100,
-    tickSize: 50,
-    extensionBeyond: 50,
-    extensionOffset: 30,
-    textGap: 30,
+    styleName: 'HSR_Standard',
+    textHeight: 2.5,
+    arrowSize: 2.5,
+    tickSize: 1.25,
+    extensionBeyond: 1.25,
+    extensionOffset: 0.625,
+    textGap: 0.625,
     textPosition: 'above',
     textAlignment: 'center',
     arrowType: 'auto',
@@ -881,7 +920,7 @@ export const getDefaultSettings = (): DrawingSettings => ({
   },
 
   text: {
-    defaultHeight: 200,
+    defaultHeight: 2.5,
     fontName: 'arial.ttf',
     widthFactor: 1.0,
     obliqueAngle: 0
@@ -889,7 +928,7 @@ export const getDefaultSettings = (): DrawingSettings => ({
 
   lines: {
     defaultLineType: 'CONTINUOUS',
-    defaultLineWeight: 0
+    defaultLineWeight: 25
   },
 
   hatching: {
@@ -905,8 +944,112 @@ export const getDefaultSettings = (): DrawingSettings => ({
   },
 
   spacing: {
-    dimensionOffset: 300,
-    elementSpacing: 100,
-    marginSize: 200
+    dimensionOffset: 10,
+    elementSpacing: 5,
+    marginSize: 10
+  }
+});
+
+// Professional drawing presets
+export const getDrawingPresets = (): Record<string, DrawingSettings> => ({
+  architectural: {
+    ...getDefaultSettings(),
+    units: 'mm',
+    scale: 100,
+    dimensions: {
+      ...getDefaultSettings().dimensions,
+      styleName: 'HSR_Architectural',
+      textHeight: 3.5,
+      arrowSize: 3.5,
+      extensionBeyond: 2.0,
+      extensionOffset: 1.0,
+      textGap: 1.0,
+      decimalPlaces: 0,
+      showUnits: true
+    },
+    text: {
+      ...getDefaultSettings().text,
+      defaultHeight: 3.5,
+      fontName: 'arial.ttf'
+    },
+    lines: {
+      ...getDefaultSettings().lines,
+      defaultLineWeight: 35
+    },
+    spacing: {
+      dimensionOffset: 15,
+      elementSpacing: 10,
+      marginSize: 20
+    }
+  },
+
+  mechanical: {
+    ...getDefaultSettings(),
+    units: 'mm',
+    scale: 1,
+    dimensions: {
+      ...getDefaultSettings().dimensions,
+      styleName: 'HSR_Mechanical',
+      textHeight: 2.5,
+      arrowSize: 2.5,
+      extensionBeyond: 1.25,
+      extensionOffset: 0.625,
+      textGap: 0.625,
+      decimalPlaces: 2,
+      showUnits: true,
+      arrowType: 'arrows'
+    },
+    text: {
+      ...getDefaultSettings().text,
+      defaultHeight: 2.5,
+      fontName: 'arial.ttf'
+    },
+    lines: {
+      ...getDefaultSettings().lines,
+      defaultLineWeight: 25
+    },
+    spacing: {
+      dimensionOffset: 8,
+      elementSpacing: 5,
+      marginSize: 10
+    }
+  },
+
+  electrical: {
+    ...getDefaultSettings(),
+    units: 'mm',
+    scale: 50,
+    dimensions: {
+      ...getDefaultSettings().dimensions,
+      styleName: 'HSR_Electrical',
+      textHeight: 3.0,
+      arrowSize: 3.0,
+      extensionBeyond: 1.5,
+      extensionOffset: 0.75,
+      textGap: 0.75,
+      decimalPlaces: 1,
+      showUnits: false,
+      arrowType: 'ticks'
+    },
+    text: {
+      ...getDefaultSettings().text,
+      defaultHeight: 3.0,
+      fontName: 'arial.ttf'
+    },
+    lines: {
+      ...getDefaultSettings().lines,
+      defaultLineWeight: 30
+    },
+    layers: {
+      construction: { name: 'POWER', color: 1, lineType: 'CONTINUOUS' },
+      dimensions: { name: 'DIMENSIONS', color: 7, lineType: 'CONTINUOUS' },
+      hatching: { name: 'CONDUIT', color: 2, lineType: 'DASHED' },
+      text: { name: 'LABELS', color: 3, lineType: 'CONTINUOUS' }
+    },
+    spacing: {
+      dimensionOffset: 12,
+      elementSpacing: 8,
+      marginSize: 15
+    }
   }
 });

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { EzdxfDrawingService, DrawingRequest, DrawingResult } from '../services/ezdxfDrawingService';
 import { DrawingCodeGenerator } from '../services/drawingCodeGenerator';
-import { DrawingSpecificationParser } from '../services/drawingSpecificationParser';
+
 import { DrawingSettingsPanel, DrawingSettings } from './DrawingSettingsPanel';
 import { DrawingSettingsService } from '../services/drawingSettingsService';
 import { DrawingService, ProjectDrawing } from '../services/drawingService';
@@ -134,24 +134,21 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
     }
 
     try {
-      // Step 1: LLM provides precise attribute specifications
-      const specification = await DrawingSpecificationParser.parseDescription(userInput);
-      console.log('LLM Attribute Specification:', specification);
+      // Generate Python code directly using LLM with ezdxf tutorial context
+      const pythonCode = await DrawingCodeGenerator.generatePythonCode(userInput);
+      console.log('LLM-Generated Python Code:', pythonCode);
 
-      // Step 2: App generates reliable Python code from attributes using settings
-      const pythonCode = DrawingCodeGenerator.generatePythonCode(specification, drawingSettings);
-      console.log('App-Generated Python Code:', pythonCode);
+      // Execute code on local server
+      const title = extractTitle(userInput);
+      const result = await EzdxfDrawingService.executeDrawingCode(pythonCode, title);
 
-      // Step 3: Execute reliable code on local server
-      const result = await EzdxfDrawingService.executeDrawingCode(pythonCode, specification.title || 'drawing');
-
-      // Step 4: Save the drawing to persistence
+      // Save the drawing to persistence
       try {
         const savedDrawing = DrawingService.saveDrawing({
           projectId: getCurrentProjectId(),
-          title: extractTitle(userInput),
+          title,
           description: extractDescription(userInput),
-          specification,
+          specification: null, // No longer using JSON specifications
           generatedCode: pythonCode,
           result,
           settings: drawingSettings,

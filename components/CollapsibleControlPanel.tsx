@@ -6,6 +6,7 @@ interface CollapsibleControlPanelProps {
   // Settings Props
   onOpenGuidelines: () => void;
   onOpenLLMSettings: () => void;
+  onOpenDrawingSettings?: () => void;
   onOpenKnowledgeBase: () => void;
   onOpenContextManager?: () => void;
   onOpenTemplateManager?: () => void;
@@ -37,6 +38,7 @@ interface CollapsibleControlPanelProps {
 export const CollapsibleControlPanel: React.FC<CollapsibleControlPanelProps> = ({
   onOpenGuidelines,
   onOpenLLMSettings,
+  onOpenDrawingSettings,
   onOpenKnowledgeBase,
   onOpenContextManager,
   onOpenTemplateManager,
@@ -167,6 +169,15 @@ export const CollapsibleControlPanel: React.FC<CollapsibleControlPanelProps> = (
                       {currentProvider}
                     </span>
                   </button>
+
+                  {onOpenDrawingSettings && (
+                    <button
+                      onClick={onOpenDrawingSettings}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded flex items-center gap-2"
+                    >
+                      📐 Drawing Settings
+                    </button>
+                  )}
 
                   <button
                     onClick={onOpenKnowledgeBase}
