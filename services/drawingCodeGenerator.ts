@@ -60,6 +60,10 @@ export class DrawingCodeGenerator {
            'doc = ezdxf.new("' + settings.documentFormat + '", setup=True)\n' +
            'msp = doc.modelspace()\n' +
            '\n' +
+           '# Set drawing units (INSUNITS)\n' +
+           'units_map = {"mm": 4, "m": 6, "inches": 1, "feet": 2}\n' +
+           'doc.header["$INSUNITS"] = units_map.get("' + settings.units + '", 4)\n' +
+           '\n' +
            '# Configure text style from settings\n' +
            'if "Standard" not in doc.styles:\n' +
            '    doc.styles.add("Standard", font="' + settings.text.fontName + '")\n' +
@@ -71,11 +75,25 @@ export class DrawingCodeGenerator {
 
   private static generateLayers(settings: DrawingSettings): string {
     const layers = settings.layers;
-    return '# Create layers from settings\n' +
-           'doc.layers.add(name="' + layers.construction.name + '", color=' + layers.construction.color + ', linetype="' + layers.construction.lineType + '")\n' +
-           'doc.layers.add(name="' + layers.dimensions.name + '", color=' + layers.dimensions.color + ', linetype="' + layers.dimensions.lineType + '")\n' +
-           'doc.layers.add(name="' + layers.hatching.name + '", color=' + layers.hatching.color + ', linetype="' + layers.hatching.lineType + '")\n' +
-           'doc.layers.add(name="' + layers.text.name + '", color=' + layers.text.color + ', linetype="' + layers.text.lineType + '")';
+    return '# Create layers from settings with safe add\n' +
+           'def ensure_layer(name, color, linetype):\n' +
+           '    try:\n' +
+           '        doc.layers.add(name=name, color=color, linetype=linetype)\n' +
+           '    except Exception:\n' +
+           '        pass\n' +
+           '    return doc.layers.get(name)\n' +
+           'lyr_con = ensure_layer("' + layers.construction.name + '", ' + layers.construction.color + ', "' + layers.construction.lineType + '")\n' +
+           'lyr_dim = ensure_layer("' + layers.dimensions.name + '", ' + layers.dimensions.color + ', "' + layers.dimensions.lineType + '")\n' +
+           'lyr_hat = ensure_layer("' + layers.hatching.name + '", ' + layers.hatching.color + ', "' + layers.hatching.lineType + '")\n' +
+           'lyr_txt = ensure_layer("' + layers.text.name + '", ' + layers.text.color + ', "' + layers.text.lineType + '")\n' +
+           '\n' +
+           '# Apply default lineweight to layers if possible\n' +
+           'try:\n' +
+           '    lw = ' + settings.lines.defaultLineWeight + '\n' +
+           '    for lyr in (lyr_con, lyr_dim, lyr_hat, lyr_txt):\n' +
+           '        lyr.dxf.lineweight = lw\n' +
+           'except Exception:\n' +
+           '    pass';
   }
 
   private static generateDimensionStyle(settings: DrawingSettings): string {
@@ -147,7 +165,9 @@ export class DrawingCodeGenerator {
            'except:\n' +
            '    dimstyle.dxf.dimtsz = ' + dim.tickSize + '     # Force tick marks\n' +
            '    dimstyle.dxf.dimasz = 0       # Disable arrows\n' +
-           '    print("Using tick marks instead of arrows for better visibility")' : '');
+           '    print("Using tick marks instead of arrows for better visibility")' : '') + '\n' +
+           '# Global drawing defaults\n' +
+           'default_lineweight = ' + settings.lines.defaultLineWeight + '';
   }
 
   private static generateLines(lines: any[]): string {
@@ -156,7 +176,7 @@ export class DrawingCodeGenerator {
     const lineCode = lines.map((line, index) => {
       return 'msp.add_line((' + line.startPoint[0] + ', ' + line.startPoint[1] + '), (' +
              line.endPoint[0] + ', ' + line.endPoint[1] + '), dxfattribs={"layer": "' +
-             line.layer + '", "color": ' + line.color + '})';
+             line.layer + '", "color": ' + line.color + ', "lineweight": default_lineweight})';
     });
 
     return '# Add lines\n' + lineCode.join('\n');
@@ -167,7 +187,7 @@ export class DrawingCodeGenerator {
 
     const circleCode = circles.map((circle, index) => {
       return 'msp.add_circle((' + circle.centerPoint[0] + ', ' + circle.centerPoint[1] + '), radius=' +
-             circle.radius + ', dxfattribs={"layer": "' + circle.layer + '", "color": ' + circle.color + '})';
+             circle.radius + ', dxfattribs={"layer": "' + circle.layer + '", "color": ' + circle.color + ', "lineweight": default_lineweight})';
     });
 
     return '# Add circles\n' + circleCode.join('\n');
@@ -179,7 +199,7 @@ export class DrawingCodeGenerator {
     const arcCode = arcs.map((arc, index) => {
       return 'msp.add_arc((' + arc.centerPoint[0] + ', ' + arc.centerPoint[1] + '), radius=' +
              arc.radius + ', start_angle=' + arc.startAngle + ', end_angle=' + arc.endAngle +
-             ', dxfattribs={"layer": "' + arc.layer + '", "color": ' + arc.color + '})';
+             ', dxfattribs={"layer": "' + arc.layer + '", "color": ' + arc.color + ', "lineweight": default_lineweight})';
     });
 
     return '# Add arcs\n' + arcCode.join('\n');
@@ -196,7 +216,7 @@ export class DrawingCodeGenerator {
         '(' + rect.corner1[0] + ', ' + rect.corner2[1] + ')'
       ];
       return 'msp.add_lwpolyline([' + points.join(', ') + '], close=True, dxfattribs={"layer": "' +
-             rect.layer + '", "color": ' + rect.color + '})';
+             rect.layer + '", "color": ' + rect.color + ', "lineweight": default_lineweight})';
     });
 
     return '# Add rectangles\n' + rectCode.join('\n');
@@ -209,7 +229,7 @@ export class DrawingCodeGenerator {
       const points = poly.points.map((p: number[]) => '(' + p[0] + ', ' + p[1] + ')').join(', ');
       const closeStr = poly.closed ? ', close=True' : '';
       return 'msp.add_lwpolyline([' + points + ']' + closeStr + ', dxfattribs={"layer": "' +
-             poly.layer + '", "color": ' + poly.color + '})';
+             poly.layer + '", "color": ' + poly.color + ', "lineweight": default_lineweight})';
     });
 
     return '# Add polylines\n' + polyCode.join('\n');
