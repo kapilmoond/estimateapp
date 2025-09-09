@@ -164,11 +164,15 @@ export class TwoPhaseDrawingGenerator {
    * Create Phase 1 analysis prompt
    */
   private static createPhase1AnalysisPrompt(description: string, settings: DrawingSettings): string {
+    const tutorialContext = EZDXF_TUTORIAL_CONTENT;
     const settingsContext = this.formatSettingsForPrompt(settings);
-    
+
     return `🔍 PHASE 1: DRAWING REQUIREMENTS ANALYSIS
 
 You are a professional CAD engineer. Your task is to analyze the drawing requirements and create a comprehensive part list and dimensional analysis.
+
+**EZDXF TUTORIAL CONTEXT:**
+${tutorialContext}
 
 ═══════════════════════════════════════════════════════════════════════════════
 📋 DRAWING REQUIREMENTS:
@@ -192,6 +196,7 @@ Analyze the requirements and provide a detailed breakdown including:
    - Title and description
    - Overall dimensions (length, width, height if 3D)
    - Required views (front, side, top, isometric, etc.)
+   - Drawing scale and units
 
 2. **PART LIST AND SPECIFICATIONS**
    - Break down the object into individual parts/components
@@ -202,18 +207,39 @@ Analyze the requirements and provide a detailed breakdown including:
      * Material or construction notes
      * Any special requirements
 
-3. **DIMENSION REQUIREMENTS**
+3. **EZDXF ENTITY PLANNING**
+   - Identify which ezdxf entities to use (LINE, CIRCLE, ARC, POLYLINE, etc.)
+   - Plan entity coordinates and parameters
+   - Consider entity relationships and construction order
+   - Note any complex geometry that requires special handling
+
+4. **DIMENSION REQUIREMENTS**
    - List all dimensions that need to be shown
    - Specify dimension placement and orientation
+   - Plan dimension text size and visibility
    - Note any special dimension formatting requirements
+   - Consider dimension layer organization
 
-4. **SPECIAL INSTRUCTIONS**
-   - Layer assignments
-   - Color specifications
+5. **LAYER AND VISUAL ORGANIZATION**
+   - Plan layer structure (CONSTRUCTION, DIMENSIONS, TEXT, etc.)
+   - Color specifications for different elements
    - Text and annotation requirements
+   - Line weights and styles
    - Any user-specified overrides to default settings
 
-Provide your analysis in clear, structured text format. Be precise with measurements and positions.`;
+6. **TECHNICAL CONSIDERATIONS**
+   - Identify potential ezdxf implementation challenges
+   - Plan for proper dimension text visibility
+   - Consider drawing complexity and performance
+   - Note any special ezdxf features needed
+
+**IMPORTANT EZDXF CONSIDERATIONS:**
+- Plan for visible dimension text (large text heights, proper colors)
+- Consider entity creation order for proper layering
+- Plan coordinate systems and transformations
+- Identify any complex geometry requiring special ezdxf techniques
+
+Provide your analysis in clear, structured text format. Be precise with measurements, positions, and ezdxf implementation details.`;
   }
 
   /**
@@ -456,11 +482,15 @@ LINES:
     originalDescription: string,
     settings: DrawingSettings
   ): string {
+    const tutorialContext = EZDXF_TUTORIAL_CONTENT;
     const settingsContext = this.formatSettingsForPrompt(settings);
-    
+
     return `🔍 PHASE 1: MODIFY DRAWING ANALYSIS
 
 You are a professional CAD engineer. Modify the existing drawing analysis based on the modification request.
+
+**EZDXF TUTORIAL CONTEXT:**
+${tutorialContext}
 
 ═══════════════════════════════════════════════════════════════════════════════
 📋 EXISTING ANALYSIS TO MODIFY:
