@@ -87,8 +87,11 @@ def create_drawing(filepath: str):
     try:
         doc.saveas(filepath)
         print(f"Successfully created DXF file: {filepath}")
-    except IOError:
-        print(f"ERROR: Could not save DXF file to '{filepath}'. Check permissions.")
+    except IOError as e:
+        print(f"ERROR: Could not save DXF file to '{filepath}'. Error: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"ERROR: Unexpected error while saving DXF file: {e}")
         sys.exit(1)
 
 # =============================================================================
@@ -104,6 +107,8 @@ You must internally plan the drawing's structure before writing code.
 You must adhere strictly to the provided script template. The template is your guide and ensures every script you write is high-quality.
 This concludes Chapter 1. Proceed to Chapter 2 when you are ready to learn about the "Setup" section of the script.
 Chapter 2: The Setup Section - Creating an Organized Drawing
+**IMPORTANT:** This tutorial is updated for ezdxf version 1.4.2 (current as of 2024). Some syntax and methods may differ from older versions.
+
 Objective: To master the creation of Layers, Text Styles, and Linetypes. This corresponds to the "2. SETUP" block in your script template. A well-organized drawing is not just about shapes; it's about the structure that contains them.
 2.1. The Role of the Setup Section
 This section of your script acts like preparing your canvas before you start painting. You are defining the categories and styles you will use later. By creating layers and styles first, you ensure the rest of your script is clean and organized. The entities you create later will simply refer to the layers you create here.
@@ -437,6 +442,7 @@ part_label = msp.add_text(
 # Now, set the alignment. MIDDLE_CENTER is very common.
 # It places the exact center of the text string at the insertion point.
 # IMPORTANT: set_placement() requires a position parameter in current ezdxf
+# The position parameter should match the insert point for proper alignment
 part_label.set_placement((50, -10), align=TextEntityAlignment.MIDDLE_CENTER)
 MTEXT: For Multi-Line Paragraphs
 Purpose: Used for longer notes, paragraphs, or any text that needs to wrap. MTEXT is a more complex object with many formatting options.
@@ -471,6 +477,20 @@ Dimensions are one of the most complex entity types. They are not just lines and
 
 **Dimension Style (`DimStyle`):** The appearance of all dimension elements (arrowheads, text size, line positions) is controlled by a `DimStyle`. When you use `setup=True`, you get a default style named `"EZDXF"`. For your initial work, this is sufficient. Creating custom `DimStyle`s is an advanced topic.
 
+**IMPORTANT NOTE ON DIMENSION TEXT VISIBILITY:** In current ezdxf versions, dimension text may appear very small or invisible with default settings. If you encounter this issue, create a custom dimension style with larger text:
+
+```python
+# Create a custom dimension style with visible text
+if "VISIBLE_DIM" not in doc.dimstyles:
+    dimstyle = doc.dimstyles.new("VISIBLE_DIM")
+    dimstyle.dxf.dimtxt = 2.5    # Text height in drawing units
+    dimstyle.dxf.dimasz = 1.25   # Arrow size
+    dimstyle.dxf.dimclrd = 1     # Red dimension lines for visibility
+    dimstyle.dxf.dimclrt = 1     # Red dimension text for visibility
+```
+
+Then use this style in your dimensions: `dimstyle="VISIBLE_DIM"`
+
 #### **Linear Dimensions: `add_linear_dim()`**
 
 This is your most common dimensioning tool. It measures the straight-line distance between two points, either horizontally, vertically, or at a rotated angle.
@@ -482,6 +502,8 @@ This is your most common dimensioning tool. It measures the straight-line distan
 -   `dimstyle`: The name of the dimension style to use (e.g., `"EZDXF"`).
 
 **Implementation:** After you've added the dimension, you **must** call the `.render()` method on it. This calculates the measurement text and generates the final geometry.
+
+**CRITICAL NOTE:** The `.render()` method returns a `DimStyleOverride` object, not the dimension entity itself. If you need to access the actual dimension entity, use `dim.dimension` where `dim` is the returned object from `add_linear_dim()`.
 
 ```python
 # --- Continued inside the "4. ENTITY PLACEMENT" section ---
@@ -542,10 +564,16 @@ The DIFFICULT Boundary: A set of separate LINE and ARC entities that appear to f
 Your Mandate: Whenever you need to create a hatch, you should always strive to define its boundary using a single, closed LWPOLYLINE. If the user describes a shape with separate lines, your internal plan should first construct a closed LWPOLYLINE from those lines to serve as a reliable boundary for the hatch.
 6.3. The Four-Step Hatch Creation Process
 Creating a hatch is not a single command. It is a sequence of four distinct steps. You must perform them in this order.
-Define and Create the Boundary Geometry: First, you must add the boundary shape (preferably an LWPOLYLINE) to the modelspace. The hatch cannot be created without an existing boundary.
-Create an Empty Hatch Entity: Use msp.add_hatch() to create the main hatch object. At this point, the hatch exists but has no pattern and knows nothing about its boundary.
-Set the Hatch Pattern: Use the .set_pattern_fill() method on the hatch object to define its appearance (e.g., solid fill, angled lines, etc.).
-Append the Boundary Path: Use the .paths.add_polyline_path() method to associate the boundary geometry from Step 1 with the hatch from Step 2.
+
+**Step 1:** Define and Create the Boundary Geometry: First, you must add the boundary shape (preferably an LWPOLYLINE) to the modelspace. The hatch cannot be created without an existing boundary.
+
+**Step 2:** Create an Empty Hatch Entity: Use `msp.add_hatch()` to create the main hatch object. At this point, the hatch exists but has no pattern and knows nothing about its boundary.
+
+**Step 3:** Set the Hatch Pattern: Use the `.set_pattern_fill()` method on the hatch object to define its appearance (e.g., solid fill, angled lines, etc.).
+
+**Step 4:** Append the Boundary Path: Use the `.paths.add_polyline_path()` method to associate the boundary geometry from Step 1 with the hatch from Step 2.
+
+**IMPORTANT:** The boundary geometry must exist in the modelspace before creating the hatch. The hatch references the existing geometry, so deleting the boundary after hatch creation may cause issues in some CAD applications.
 6.4. Implementation in the Script (A Complete Example)
 Let's put the four-step process into practice. We will create a hexagonal machine part and then fill it with a steel cross-hatch pattern (ANSI31).
 code
@@ -665,9 +693,9 @@ if block_name not in doc.blocks:
     tb.add_lwpolyline([(10,10), (410,10), (410,287), (10,287)], close=True, dxfattribs={'layer': '0'})
     
     # 2. Add Attribute Definitions for customizable text.
-    tb.add_attdef("DRAWING_TITLE", "UNTITLED", insert=(210, 40), dxfattribs={'height': 5, 'layer': '0'}).set_placement(align=TextEntityAlignment.MIDDLE_CENTER)
-    tb.add_attdef("DRAWN_BY", "AI Agent", insert=(100, 25), dxfattribs={'height': 3, 'layer': '0'}).set_placement(align=TextEntityAlignment.MIDDLE_CENTER)
-    tb.add_attdef("SCALE", "NTS", insert=(300, 25), dxfattribs={'height': 3, 'layer': '0'}).set_placement(align=TextEntityAlignment.MIDDLE_CENTER)```
+    tb.add_attdef("DRAWING_TITLE", "UNTITLED", insert=(210, 40), dxfattribs={'height': 5, 'layer': '0'}).set_placement((210, 40), align=TextEntityAlignment.MIDDLE_CENTER)
+    tb.add_attdef("DRAWN_BY", "AI Agent", insert=(100, 25), dxfattribs={'height': 3, 'layer': '0'}).set_placement((100, 25), align=TextEntityAlignment.MIDDLE_CENTER)
+    tb.add_attdef("SCALE", "NTS", insert=(300, 25), dxfattribs={'height': 3, 'layer': '0'}).set_placement((300, 25), align=TextEntityAlignment.MIDDLE_CENTER)```
 
 **7.3. Creating the Paperspace Layout**
 
@@ -743,6 +771,10 @@ viewport = layout.add_viewport(
     status=1 # This status number links it to the modelspace.
 )
 
+# IMPORTANT: In current ezdxf versions, viewport status values:
+# 0 = viewport is off
+# 1 = viewport is on and active
+# 2 = viewport is on but not active
 # Best practice: turn the viewport border off for a cleaner look.
 viewport.off()
 7.5. Summary of Chapter 7
@@ -1032,5 +1064,16 @@ Anticipate Failure: Assume files might not save and definitions might already ex
 Write for the Human: The next person to see your code might be a human developer trying to understand it. Make their job easy.
 The Plan is Law: Do not deviate from the plan you create in Phase 1. If you realize the plan is flawed, mentally go back to Phase 1 and revise it before continuing to code.
 By internalizing this Grand Strategy, you transform from a tool that simply knows ezdxf commands into a true architect that can reliably design and construct complete, professional CAD solutions from abstract requirements.
-This concludes your 10-chapter training. You are now prepared for your mission.
+
+**FINAL COMPATIBILITY NOTES FOR CURRENT EZDXF (v1.4.2):**
+1. **Text Placement:** Always use position parameters in `set_placement()` method calls: `text.set_placement((x, y), align=TextEntityAlignment.MIDDLE_CENTER)`
+2. **Dimension Text Visibility:** For visible dimension text, create custom dimension styles with appropriate `dimtxt` (text height) and `dimasz` (arrow size) values
+3. **Error Handling:** Use proper error handling with specific exception types (`IOError`, `Exception`)
+4. **Dimension Rendering:** Ensure all dimension entities call `.render()` method after creation
+5. **Hatch Creation:** Verify hatch boundary geometry exists in modelspace before creating hatch entities
+6. **Document Setup:** Use `setup=True` in `ezdxf.new()` for standard linetypes and styles
+7. **Block Definitions:** Always check `if block_name not in doc.blocks:` before creating blocks
+8. **Layer Assignment:** Never leave entities on default layer "0" unless specifically required
+
+This concludes your 10-chapter training. You are now prepared for your mission with current ezdxf best practices.
 
