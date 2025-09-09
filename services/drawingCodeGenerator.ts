@@ -8,19 +8,43 @@ export class DrawingCodeGenerator {
   static generatePythonCode(spec: any, settings?: DrawingSettings): string {
     const drawingSettings = settings || DrawingSettingsService.loadSettings();
 
+    // Geometry from grouped arrays
+    const geomSections = [
+      this.generateLines(spec.lines || []),
+      this.generateCircles(spec.circles || []),
+      this.generateArcs(spec.arcs || []),
+      this.generateRectangles(spec.rectangles || []),
+      this.generatePolylines(spec.polylines || [])
+    ];
+    const geomGrouped = geomSections.filter(s => s.trim() !== '').join('\n\n');
+
+    // Fallback geometry from unified elements
+    const geomFromElements = (!geomGrouped && Array.isArray(spec.elements) && spec.elements.length > 0)
+      ? this.generateElements(spec.elements)
+      : '';
+
+    // Dimensions from grouped arrays
+    const dimSections = [
+      this.generateLinearDimensions(spec.linearDimensions || []),
+      this.generateRadialDimensions(spec.radialDimensions || [])
+    ];
+    const dimsGrouped = dimSections.filter(s => s.trim() !== '').join('\n\n');
+
+    // Fallback dimensions from unified dimensions
+    const dimsFromUnified = (!dimsGrouped && Array.isArray(spec.dimensions) && spec.dimensions.length > 0)
+      ? this.generateDimensions(spec.dimensions)
+      : '';
+
     const code = [
       this.generateImports(),
       this.generateDocumentSetup(drawingSettings),
       this.generateLayers(drawingSettings),
       this.generateDimensionStyle(drawingSettings),
-      this.generateLines(spec.lines || [], drawingSettings),
-      this.generateCircles(spec.circles || [], drawingSettings),
-      this.generateArcs(spec.arcs || [], drawingSettings),
-      this.generateRectangles(spec.rectangles || [], drawingSettings),
-      this.generatePolylines(spec.polylines || [], drawingSettings),
-      this.generateLinearDimensions(spec.linearDimensions || [], drawingSettings),
-      this.generateRadialDimensions(spec.radialDimensions || [], drawingSettings),
-      this.generateHatching(spec.hatching || [], drawingSettings),
+      geomGrouped,
+      geomFromElements,
+      dimsGrouped,
+      dimsFromUnified,
+      this.generateHatching(spec.hatching || []),
       this.generateSave(spec.title || 'drawing')
     ];
 
@@ -213,6 +237,33 @@ export class DrawingCodeGenerator {
     return '# Add linear dimensions with VISIBLE text and arrows/ticks\n' + dimCode.join('\n\n');
   }
 
+  private static generateElements(elements: any[]): string {
+    if (!elements || elements.length === 0) return '';
+    const parts: string[] = [];
+    elements.forEach((el) => {
+      switch (el.type) {
+        case 'line':
+          parts.push(this.generateLine(el));
+          break;
+        case 'circle':
+          parts.push(this.generateCircle(el));
+          break;
+        case 'arc':
+          parts.push(this.generateArc(el));
+          break;
+        case 'rectangle':
+          parts.push(this.generateRectangle(el));
+          break;
+        case 'polyline':
+          parts.push(this.generatePolyline(el));
+          break;
+        default:
+          parts.push('# Unsupported element type: ' + el.type);
+      }
+    });
+    return '# Add elements (fallback)\n' + parts.join('\n');
+  }
+
   private static generateRadialDimensions(dimensions: any[]): string {
     if (dimensions.length === 0) return '';
 
@@ -291,7 +342,7 @@ export class DrawingCodeGenerator {
   private static generateLinearDimension(dimension: any, index: number): string {
     const [p1, p2] = dimension.measurePoints;
     const [baseX, baseY] = dimension.dimensionLinePosition;
-    
+
     return 'dim' + (index + 1) + ' = msp.add_linear_dim(\n' +
            '    base=(' + baseX + ', ' + baseY + '),\n' +
            '    p1=(' + p1[0] + ', ' + p1[1] + '),\n' +
@@ -306,7 +357,7 @@ export class DrawingCodeGenerator {
   private static generateAlignedDimension(dimension: any, index: number): string {
     const [p1, p2] = dimension.measurePoints;
     const distance = 200;
-    
+
     return 'dim' + (index + 1) + ' = msp.add_aligned_dim(\n' +
            '    p1=(' + p1[0] + ', ' + p1[1] + '),\n' +
            '    p2=(' + p2[0] + ', ' + p2[1] + '),\n' +
@@ -320,7 +371,7 @@ export class DrawingCodeGenerator {
 
   private static generateRadialDimension(dimension: any, index: number): string {
     const [center, point] = dimension.measurePoints;
-    
+
     return 'dim' + (index + 1) + ' = msp.add_radius_dim(\n' +
            '    center=(' + center[0] + ', ' + center[1] + '),\n' +
            '    mpoint=(' + point[0] + ', ' + point[1] + '),\n' +
@@ -332,7 +383,7 @@ export class DrawingCodeGenerator {
 
   private static generateAngularDimension(dimension: any, index: number): string {
     const [center, p1, p2] = dimension.measurePoints;
-    
+
     return 'dim' + (index + 1) + ' = msp.add_angular_dim_3p(\n' +
            '    base=(' + center[0] + ', ' + center[1] + '),\n' +
            '    p1=(' + p1[0] + ', ' + p1[1] + '),\n' +
@@ -350,7 +401,7 @@ export class DrawingCodeGenerator {
 
     const hatchCode = hatching.map((hatch, index) => {
       const points = hatch.boundaryPoints.map((p: number[]) => '(' + p[0] + ', ' + p[1] + ')').join(', ');
-      
+
       return 'hatch' + (index + 1) + ' = msp.add_hatch(dxfattribs={"layer": "' + (hatch.properties.layer || 'HATCHING') + '"})\n' +
              'hatch' + (index + 1) + '.set_pattern_fill("' + hatch.pattern + '", scale=' + hatch.scale + ', angle=' + hatch.angle + ')\n' +
              'hatch' + (index + 1) + '.paths.add_polyline_path([' + points + '], is_closed=True)';
@@ -360,10 +411,10 @@ export class DrawingCodeGenerator {
   }
 
   private static generateSave(title: string): string {
-    const filename = title ? 
-      title.replace(/[^a-zA-Z0-9\s-_]/g, '').replace(/\s+/g, '_').toLowerCase() + '.dxf' : 
+    const filename = title ?
+      title.replace(/[^a-zA-Z0-9\s-_]/g, '').replace(/\s+/g, '_').toLowerCase() + '.dxf' :
       'drawing.dxf';
-    
+
     return '# Save the drawing\ndoc.saveas("' + filename + '")';
   }
 }

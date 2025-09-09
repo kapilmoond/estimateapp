@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 // Drawing specification types
 export interface DrawingElement {
   id: string;
+  name?: string; // logical, human-meaningful name provided by LLM for regeneration reference
   type: 'line' | 'circle' | 'arc' | 'rectangle' | 'polyline';
   coordinates: number[][];
   properties: {
@@ -14,6 +15,7 @@ export interface DrawingElement {
 
 export interface DimensionElement {
   id: string;
+  name?: string; // logical name for this dimension
   type: 'linear' | 'aligned' | 'radial' | 'angular';
   points: number[][];
   properties: {

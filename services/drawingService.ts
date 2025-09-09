@@ -22,8 +22,14 @@ export class DrawingService {
   static saveDrawing(drawing: Omit<ProjectDrawing, 'id' | 'timestamp'>): ProjectDrawing {
     const drawings = this.loadAllDrawings();
 
+    // Minimize payload to avoid localStorage quota issues
+    const slimResult = this.slimDrawingResult(drawing.result);
+    const slimSpec = this.slimSpecification(drawing.specification);
+
     const newDrawing: ProjectDrawing = {
       ...drawing,
+      specification: slimSpec,
+      result: slimResult,
       id: this.generateId(),
       timestamp: Date.now(),
       includeInContext: drawing.includeInContext ?? true,
@@ -64,8 +70,8 @@ export class DrawingService {
   static getLatestProjectDrawing(projectId: string): ProjectDrawing | null {
     const projectDrawings = this.loadProjectDrawings(projectId);
     if (projectDrawings.length === 0) return null;
-    
-    return projectDrawings.reduce((latest, current) => 
+
+    return projectDrawings.reduce((latest, current) =>
       current.timestamp > latest.timestamp ? current : latest
     );
   }
@@ -76,7 +82,7 @@ export class DrawingService {
   static updateDrawing(updatedDrawing: ProjectDrawing): void {
     const drawings = this.loadAllDrawings();
     const index = drawings.findIndex(d => d.id === updatedDrawing.id);
-    
+
     if (index !== -1) {
       drawings[index] = { ...updatedDrawing, timestamp: Date.now() };
       this.saveAllDrawings(drawings);
@@ -118,10 +124,10 @@ export class DrawingService {
     totalSize: number;
   } {
     const projectDrawings = this.loadProjectDrawings(projectId);
-    
+
     return {
       totalDrawings: projectDrawings.length,
-      latestTimestamp: projectDrawings.length > 0 
+      latestTimestamp: projectDrawings.length > 0
         ? Math.max(...projectDrawings.map(d => d.timestamp))
         : 0,
       totalSize: JSON.stringify(projectDrawings).length
@@ -133,21 +139,21 @@ export class DrawingService {
    */
   static exportProjectDrawings(projectId: string): void {
     const projectDrawings = this.loadProjectDrawings(projectId);
-    
+
     const exportData = {
       projectId,
       exportTimestamp: Date.now(),
       drawings: projectDrawings
     };
-    
+
     const dataStr = JSON.stringify(exportData, null, 2);
     const dataBlob = new Blob([dataStr], { type: 'application/json' });
-    
+
     const link = document.createElement('a');
     link.href = URL.createObjectURL(dataBlob);
     link.download = `project_${projectId}_drawings.json`;
     link.click();
-    
+
     URL.revokeObjectURL(link.href);
   }
 
@@ -157,19 +163,19 @@ export class DrawingService {
   static async importProjectDrawings(file: File, targetProjectId: string): Promise<number> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      
+
       reader.onload = (e) => {
         try {
           const content = e.target?.result as string;
           const importData = JSON.parse(content);
-          
+
           if (!importData.drawings || !Array.isArray(importData.drawings)) {
             throw new Error('Invalid drawings file format');
           }
-          
+
           const existingDrawings = this.loadAllDrawings();
           let importedCount = 0;
-          
+
           importData.drawings.forEach((drawing: any) => {
             const newDrawing: ProjectDrawing = {
               ...drawing,
@@ -177,18 +183,18 @@ export class DrawingService {
               projectId: targetProjectId, // Use target project ID
               timestamp: Date.now()
             };
-            
+
             existingDrawings.push(newDrawing);
             importedCount++;
           });
-          
+
           this.saveAllDrawings(existingDrawings);
           resolve(importedCount);
         } catch (error) {
           reject(new Error('Failed to import drawings: ' + (error as Error).message));
         }
       };
-      
+
       reader.onerror = () => reject(new Error('Failed to read file'));
       reader.readAsText(file);
     });
@@ -200,7 +206,7 @@ export class DrawingService {
   static cleanupOldDrawings(maxPerProject: number = 10): number {
     const allDrawings = this.loadAllDrawings();
     const projectGroups = new Map<string, ProjectDrawing[]>();
-    
+
     // Group by project
     allDrawings.forEach(drawing => {
       if (!projectGroups.has(drawing.projectId)) {
@@ -208,20 +214,20 @@ export class DrawingService {
       }
       projectGroups.get(drawing.projectId)!.push(drawing);
     });
-    
+
     const keptDrawings: ProjectDrawing[] = [];
     let removedCount = 0;
-    
+
     // Keep only latest N drawings per project
     projectGroups.forEach(projectDrawings => {
       const sorted = projectDrawings.sort((a, b) => b.timestamp - a.timestamp);
       const toKeep = sorted.slice(0, maxPerProject);
       const toRemove = sorted.slice(maxPerProject);
-      
+
       keptDrawings.push(...toKeep);
       removedCount += toRemove.length;
     });
-    
+
     this.saveAllDrawings(keptDrawings);
     return removedCount;
   }
@@ -236,12 +242,12 @@ export class DrawingService {
   } {
     const allDrawings = this.loadAllDrawings();
     const sizePerProject: { [projectId: string]: number } = {};
-    
+
     allDrawings.forEach(drawing => {
       const size = JSON.stringify(drawing).length;
       sizePerProject[drawing.projectId] = (sizePerProject[drawing.projectId] || 0) + size;
     });
-    
+
     return {
       totalDrawings: allDrawings.length,
       totalSize: JSON.stringify(allDrawings).length,
@@ -253,13 +259,13 @@ export class DrawingService {
    * Search drawings by title or description
    */
   static searchDrawings(query: string, projectId?: string): ProjectDrawing[] {
-    const drawings = projectId 
+    const drawings = projectId
       ? this.loadProjectDrawings(projectId)
       : this.loadAllDrawings();
-    
+
     const lowerQuery = query.toLowerCase();
-    
-    return drawings.filter(drawing => 
+
+    return drawings.filter(drawing =>
       drawing.title.toLowerCase().includes(lowerQuery) ||
       drawing.description.toLowerCase().includes(lowerQuery)
     );
@@ -278,7 +284,7 @@ export class DrawingService {
         // Clean up old drawings and try again
         const removedCount = this.cleanupOldDrawings(5);
         console.log(`Cleaned up ${removedCount} old drawings due to storage limit`);
-        
+
         try {
           localStorage.setItem(this.STORAGE_KEY, JSON.stringify(drawings));
         } catch (retryError) {
@@ -301,10 +307,26 @@ export class DrawingService {
       typeof drawing.projectId === 'string' &&
       typeof drawing.title === 'string' &&
       typeof drawing.description === 'string' &&
-      drawing.specification &&
+      drawing.specification !== undefined &&
       typeof drawing.generatedCode === 'string' &&
       drawing.result &&
       typeof drawing.timestamp === 'number'
     );
+  }
+
+  // Reduce size of DrawingResult before storing
+  private static slimDrawingResult(result: DrawingResult): DrawingResult {
+    const title = result.title;
+    const description = result.description;
+    const pythonCode = (result.pythonCode || '').trim();
+    const dxfContent = result.dxfContent; // keep full DXF content for persistence and downloads
+    const executionLog = (result.executionLog || '').slice(0, 2000); // cap log to 2KB
+    return { title, description, pythonCode, dxfContent, executionLog } as DrawingResult;
+  }
+
+  // Keep full structured specification (elements, dimensions, names) to support regeneration
+  private static slimSpecification(spec: any): any {
+    if (!spec) return null;
+    return spec; // preserve as-is; spec JSON is compact compared to images and required for regen
   }
 }

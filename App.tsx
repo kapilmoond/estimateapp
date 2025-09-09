@@ -39,6 +39,9 @@ import { ProjectService, ProjectData } from './services/projectService';
 import { DrawingResultsDisplay } from './components/DrawingResultsDisplay';
 import { EzdxfDrawingService, DrawingResult } from './services/ezdxfDrawingService';
 import { DrawingService, ProjectDrawing } from './services/drawingService';
+import { DrawingSpecificationParser } from './services/drawingSpecificationParser';
+import { DrawingCodeGenerator } from './services/drawingCodeGenerator';
+import { DrawingSettingsService } from './services/drawingSettingsService';
 import { CompactFileUpload } from './components/CompactFileUpload';
 import { LLMService } from './services/llmService';
 import { RAGService } from './services/ragService';
@@ -330,10 +333,10 @@ const App: React.FC = () => {
   };
 
   const handleDrawingRegenerate = (instructions: string, previousCode?: string) => {
-    // Include previous Python code explicitly so the LLM edits only what is required
+    // Treat as a structured modification using previous specification; Python code is only a signal now
     const enhancedInput = `${currentMessage}\n\nMODIFICATIONS REQUESTED:\n${instructions}`;
     setCurrentMessage(enhancedInput);
-    handleDrawingRequest(undefined, previousCode);
+    handleDrawingRequest(undefined, previousCode, instructions);
   };
 
   const handleContextUpdate = () => {
@@ -778,7 +781,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleDrawingRequest = async (userInput?: string, previousPythonCode?: string) => {
+  const handleDrawingRequest = async (userInput?: string, previousPythonCode?: string, modificationInstructions?: string) => {
     const inputText = userInput || currentMessage;
     if (!inputText.trim()) {
       setError('Please provide drawing requirements');
@@ -799,73 +802,41 @@ const App: React.FC = () => {
       const title = inputText.match(/(?:draw|create|generate)\s+(?:a\s+)?(.+?)(?:\s+for|\s+with|\.|$)/i)?.[1]?.trim() ||
                    `Technical Drawing ${new Date().toLocaleDateString()}`;
 
-      // Gather context
-      const projectContext = finalizedScope || ThreadService.getAllContextForMode('discussion');
-      const designContext = designs.filter(d => d.includeInContext !== false)
-        .map(d => `**${d.componentName}:**\n${d.designContent}`)
-        .join('\n\n');
+      // Build structured specification using LLM (JSON only)
+      const projectId = ProjectService.getCurrentProjectId() || 'default';
+      const previous = DrawingService.getLatestProjectDrawing(projectId);
+      const previousSpec = previous?.specification;
 
-      // Include summaries of selected drawings as context
-      const drawingsContextSummary = savedDrawings
-        .filter(d => d.includeInContext !== false)
-        .map(d => `• ${d.title}: ${d.description}`)
-        .join('\n');
+      const spec = await DrawingSpecificationParser.parseDescription(
+        inputText,
+        Boolean(previousPythonCode),
+        previousSpec,
+        modificationInstructions
+      );
 
-      const drawingGuidelines = GuidelinesService.getActiveGuidelines();
-      const drawingGuidelinesText = GuidelinesService.formatGuidelinesForPrompt(drawingGuidelines);
+      // Generate Python from spec
+      const settings = DrawingSettingsService.loadSettings();
+      const pythonCode = DrawingCodeGenerator.generatePythonCode(spec, settings);
 
-      // Add template context if templates are selected
-      let templateContext = '';
-      if (selectedTemplates.length > 0) {
-        templateContext = `\n\n**MASTER TEMPLATES FOR DRAWING GUIDANCE:**\n`;
-        selectedTemplates.forEach((template, index) => {
-          templateContext += `\n**Template ${index + 1}: ${template.name}**\n`;
-          templateContext += `Project Type: ${template.projectType}\n`;
-          templateContext += `\n**COMPLETE DRAWING PROCEDURE:**\n${template.stepByStepProcedure}\n`;
-        });
-
-        if (templateInstructions.trim()) {
-          templateContext += `\n**CUSTOM TEMPLATE INSTRUCTIONS:**\n${templateInstructions}\n`;
-        }
-      }
-
-      // Use the new ezdxf drawing service
-      const drawingRequest = {
-        title,
-        description: inputText.substring(0, 200) + (inputText.length > 200 ? '...' : ''),
-        userRequirements: inputText,
-        projectContext,
-        designContext: [designContext, drawingsContextSummary].filter(Boolean).join('\n\n**DRAWINGS CONTEXT:**\n'),
-        guidelines: drawingGuidelinesText,
-        referenceText: referenceText + templateContext,
-        previousPythonCode: previousPythonCode || undefined,
-      };
-
-      // Generate the drawing using the new service
-      const pythonCode = await EzdxfDrawingService.generateDrawingCode(drawingRequest);
+      // Execute code on local server
       const result = await EzdxfDrawingService.executeDrawingCode(pythonCode, title);
 
-      // Save the drawing to persistence (similar to design system)
+      // Save the drawing to persistence with full spec for regeneration
       try {
-        const projectId = ProjectService.getCurrentProjectId() || 'default';
-
         const savedDrawing = DrawingService.saveDrawing({
           projectId,
           title,
-          description: drawingRequest.description,
-          specification: drawingRequest, // Store the drawing request as specification
+          description: inputText.substring(0, 200) + (inputText.length > 200 ? '...' : ''),
+          specification: spec,
           generatedCode: pythonCode,
           result,
-          settings: {} // Could add drawing settings here if needed
+          settings
         });
 
         console.log('Drawing saved to persistence:', savedDrawing.id);
-
-        // Refresh the saved drawings list
         loadSavedDrawings();
       } catch (error) {
         console.error('Error saving drawing to persistence:', error);
-        // Continue without crashing - drawing still works, just not saved
       }
 
       // Handle the result

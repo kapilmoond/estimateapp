@@ -42,6 +42,7 @@ export class DrawingSpecificationParser {
 3. Keep all other elements unchanged unless specifically requested
 4. Maintain the same JSON structure and format
 5. Preserve existing coordinates, dimensions, and properties unless modification affects them
+6. Preserve all existing element and dimension "name" fields so regeneration can reference them; only rename if the element itself is replaced.
 
 **EXISTING DRAWING SPECIFICATION TO MODIFY:**
 ${JSON.stringify(previousSpecification, null, 2)}
@@ -70,13 +71,16 @@ ${description}
 **YOUR TASK:**
 Provide exact specifications for each drawing element with precise coordinates and attributes.
 
-**REQUIRED JSON FORMAT:**
+- Every element and dimension MUST include a stable logical name field: "name" (string). Use concise, meaningful names like "foundation_edge_A", "wall_centerline_1", "dim_length_A". Preserve names across modifications unless the element is removed.
+
+**REQUIRED JSON FORMAT (grouped arrays supported):**
 {
   "title": "Drawing Title",
   "scale": 1,
   "units": "mm",
   "lines": [
     {
+      "name": "edge_A",
       "startPoint": [x1, y1],
       "endPoint": [x2, y2],
       "lineType": "CONTINUOUS",
@@ -360,12 +364,14 @@ Respond with ONLY the JSON object.`;
     // Validate and normalize elements
     if (Array.isArray(spec.elements)) {
       normalized.elements = spec.elements.map((element: any, index: number) => ({
-        id: `element_${index + 1}`,
+        id: element.id || `element_${index + 1}`,
+        name: element.name || `element_${index + 1}`,
         type: element.type || 'line',
         coordinates: element.coordinates || [[0, 0], [100, 0]],
         properties: {
           layer: element.properties?.layer || 'CONSTRUCTION',
-          color: element.properties?.color || 7
+          color: element.properties?.color || 7,
+          lineType: element.properties?.lineType
         }
       }));
     }
@@ -373,17 +379,28 @@ Respond with ONLY the JSON object.`;
     // Validate and normalize dimensions
     if (Array.isArray(spec.dimensions)) {
       normalized.dimensions = spec.dimensions.map((dimension: any, index: number) => ({
-        id: `dimension_${index + 1}`,
+        id: dimension.id || `dimension_${index + 1}`,
+        name: dimension.name || `dimension_${index + 1}`,
         type: dimension.type || 'linear',
         points: dimension.points || [[0, 0], [100, 0]],
         properties: {
-          layer: 'DIMENSIONS',
+          layer: dimension.properties?.layer || 'DIMENSIONS',
           textHeight: dimension.properties?.textHeight || 100,
           arrowSize: dimension.properties?.arrowSize || 50,
-          position: dimension.properties?.position || [0, -200]
+          position: dimension.properties?.position || [0, -200],
+          text: dimension.properties?.text
         }
       }));
     }
+
+    // Pass through grouped arrays if provided (used by code generator)
+    const passthrough: any = normalized as any;
+    ['lines','circles','arcs','rectangles','polylines','linearDimensions','radialDimensions','hatching','layers']
+      .forEach((k) => {
+        if (Array.isArray(spec[k])) {
+          passthrough[k] = spec[k];
+        }
+      });
 
     return normalized;
   }
@@ -396,6 +413,7 @@ Respond with ONLY the JSON object.`;
       elements: [
         {
           id: 'line1',
+          name: 'baseline_A',
           type: 'line',
           coordinates: [[0, 0], [2000, 0]],
           properties: { layer: 'CONSTRUCTION' }
@@ -404,6 +422,7 @@ Respond with ONLY the JSON object.`;
       dimensions: [
         {
           id: 'dim1',
+          name: 'dim_baseline_A',
           type: 'linear',
           points: [[0, 0], [2000, 0]],
           properties: {
