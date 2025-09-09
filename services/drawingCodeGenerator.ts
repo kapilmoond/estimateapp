@@ -28,13 +28,22 @@ CRITICAL EZDXF API CORRECTIONS - FOLLOW EXACTLY:
    text = msp.add_text("Your Text", dxfattribs={'insert': (x, y), 'height': 50, 'layer': 'TEXT'})
    # DO NOT call set_placement at all - the insert point is already set
 
-3. DIMENSION RENDERING: Always call .render() after adding any dimension
+3. DIMENSION COLORS - NEVER set color on DIMSTYLE:
+   ❌ WRONG: dimstyle.dxf.color = 3  # This causes "Invalid DXF attribute" error
+   ✅ CORRECT: Set color on the dimension entity itself:
+   dim = msp.add_linear_dim(..., dxfattribs={'layer': 'DIMENSIONS', 'color': 3})
+   ✅ OR: Create a colored layer and put dimensions on that layer
 
-4. LAYER CREATION: Use doc.layers.new(name, dxfattribs={...})
+4. DIMENSION RENDERING: Always call .render() after adding any dimension
 
-SAFE TEXT EXAMPLE (copy this exactly):
-title_text = msp.add_text("TABLE DRAWING", dxfattribs={'insert': (0, 400), 'height': 50, 'layer': 'TEXT'})
-# No set_placement call needed - text is already positioned by 'insert'
+5. LAYER CREATION: Use doc.layers.new(name, dxfattribs={...})
+
+SAFE DIMENSION COLOR EXAMPLE (copy this exactly):
+# Create green dimension layer
+doc.layers.new("DIMENSIONS", dxfattribs={'color': 3, 'linetype': 'SOLID'})
+# Add dimension to the colored layer
+dim = msp.add_linear_dim(base=(0, -100), p1=(0, 0), p2=(100, 0), dimstyle="EZDXF", dxfattribs={'layer': 'DIMENSIONS'})
+dim.render()
 `;
 
     const prompt = basePrompt + safetyRider;
