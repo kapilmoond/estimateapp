@@ -335,23 +335,34 @@ export class DrawingCodeGenerator {
   }
 
   private static generateLinearDimension(dimension: any, index: number): string {
-    const [p1, p2] = dimension.measurePoints;
-    const [baseX, baseY] = dimension.dimensionLinePosition;
+    const pts = dimension.measurePoints || dimension.points || dimension.coordinates || [];
+    const p1 = Array.isArray(pts[0]) ? pts[0] : [0, 0];
+    const p2 = Array.isArray(pts[1]) ? pts[1] : [100, 0];
+    const base = dimension.dimensionLinePosition || dimension.properties?.position || [
+      (p1[0] + p2[0]) / 2,
+      (p1[1] + p2[1]) / 2 + 200
+    ];
+    const layer = (dimension.properties && dimension.properties.layer) ? dimension.properties.layer : 'DIMENSIONS';
 
     return 'dim' + (index + 1) + ' = msp.add_linear_dim(\n' +
-           '    base=(' + baseX + ', ' + baseY + '),\n' +
+           '    base=(' + base[0] + ', ' + base[1] + '),\n' +
            '    p1=(' + p1[0] + ', ' + p1[1] + '),\n' +
            '    p2=(' + p2[0] + ', ' + p2[1] + '),\n' +
            '    dimstyle="Standard",\n' +
            '    text="<>",\n' +
-           '    dxfattribs={"layer": "' + (dimension.properties.layer || 'DIMENSIONS') + '"}\n' +
+           '    dxfattribs={"layer": "' + layer + '"}\n' +
            ')\n' +
            'dim' + (index + 1) + '.render()';
   }
 
   private static generateAlignedDimension(dimension: any, index: number): string {
-    const [p1, p2] = dimension.measurePoints;
-    const distance = 200;
+    const pts = dimension.measurePoints || dimension.points || dimension.coordinates || [];
+    const p1 = Array.isArray(pts[0]) ? pts[0] : [0, 0];
+    const p2 = Array.isArray(pts[1]) ? pts[1] : [100, 0];
+    const distance = (dimension.properties && typeof dimension.properties.distance === 'number')
+      ? dimension.properties.distance
+      : (typeof dimension.distance === 'number' ? dimension.distance : 200);
+    const layer = (dimension.properties && dimension.properties.layer) ? dimension.properties.layer : 'DIMENSIONS';
 
     return 'dim' + (index + 1) + ' = msp.add_aligned_dim(\n' +
            '    p1=(' + p1[0] + ', ' + p1[1] + '),\n' +
@@ -359,32 +370,39 @@ export class DrawingCodeGenerator {
            '    distance=' + distance + ',\n' +
            '    dimstyle="Standard",\n' +
            '    text="<>",\n' +
-           '    dxfattribs={"layer": "' + (dimension.properties.layer || 'DIMENSIONS') + '"}\n' +
+           '    dxfattribs={"layer": "' + layer + '"}\n' +
            ')\n' +
            'dim' + (index + 1) + '.render()';
   }
 
   private static generateRadialDimension(dimension: any, index: number): string {
-    const [center, point] = dimension.measurePoints;
+    const pts = dimension.measurePoints || dimension.points || dimension.coordinates || [];
+    const center = Array.isArray(pts[0]) ? pts[0] : (dimension.center || [0, 0]);
+    const mpoint = Array.isArray(pts[1]) ? pts[1] : [100, 0];
+    const layer = (dimension.properties && dimension.properties.layer) ? dimension.properties.layer : 'DIMENSIONS';
 
     return 'dim' + (index + 1) + ' = msp.add_radius_dim(\n' +
            '    center=(' + center[0] + ', ' + center[1] + '),\n' +
-           '    mpoint=(' + point[0] + ', ' + point[1] + '),\n' +
+           '    mpoint=(' + mpoint[0] + ', ' + mpoint[1] + '),\n' +
            '    dimstyle="Standard",\n' +
-           '    dxfattribs={"layer": "' + (dimension.properties.layer || 'DIMENSIONS') + '"}\n' +
+           '    dxfattribs={"layer": "' + layer + '"}\n' +
            ')\n' +
            'dim' + (index + 1) + '.render()';
   }
 
   private static generateAngularDimension(dimension: any, index: number): string {
-    const [center, p1, p2] = dimension.measurePoints;
+    const pts = dimension.measurePoints || dimension.points || dimension.coordinates || [];
+    const center = Array.isArray(pts[0]) ? pts[0] : (dimension.center || [0, 0]);
+    const p1 = Array.isArray(pts[1]) ? pts[1] : [100, 0];
+    const p2 = Array.isArray(pts[2]) ? pts[2] : [0, 100];
+    const layer = (dimension.properties && dimension.properties.layer) ? dimension.properties.layer : 'DIMENSIONS';
 
     return 'dim' + (index + 1) + ' = msp.add_angular_dim_3p(\n' +
            '    base=(' + center[0] + ', ' + center[1] + '),\n' +
            '    p1=(' + p1[0] + ', ' + p1[1] + '),\n' +
            '    p2=(' + p2[0] + ', ' + p2[1] + '),\n' +
            '    dimstyle="Standard",\n' +
-           '    dxfattribs={"layer": "' + (dimension.properties.layer || 'DIMENSIONS') + '"}\n' +
+           '    dxfattribs={"layer": "' + layer + '"}\n' +
            ')\n' +
            'dim' + (index + 1) + '.render()';
   }
