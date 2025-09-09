@@ -100,7 +100,10 @@ export class DrawingCodeGenerator {
     }
 
     return '# Configure dimension style from user settings\n' +
-           'dimstyle = doc.dimstyles.get("Standard")\n' +
+           'style_name = ' + '"' + dim.styleName + '"' + '\n' +
+           'if style_name not in doc.dimstyles:\n' +
+           '    doc.dimstyles.new(style_name)\n' +
+           'dimstyle = doc.dimstyles.get(style_name)\n' +
            '\n' +
            '# Text settings from user preferences\n' +
            'dimstyle.dxf.dimtxt = ' + dim.textHeight + '        # Text height from settings\n' +
@@ -138,7 +141,7 @@ export class DrawingCodeGenerator {
            (dim.arrowType === 'auto' ? '\n' +
            '# Auto mode: Fallback to tick marks if arrows fail\n' +
            'try:\n' +
-           '    test_dim = msp.add_linear_dim(base=(0, -1000), p1=(0, -1000), p2=(100, -1000), dimstyle="Standard")\n' +
+           '    test_dim = msp.add_linear_dim(base=(0, -1000), p1=(0, -1000), p2=(100, -1000), dimstyle=style_name)\n' +
            '    test_dim.render()\n' +
            '    msp.delete_entity(test_dim)\n' +
            'except:\n' +
@@ -221,7 +224,7 @@ export class DrawingCodeGenerator {
              '    base=(' + dim.dimensionLinePosition[0] + ', ' + dim.dimensionLinePosition[1] + '),\n' +
              '    p1=(' + dim.point1[0] + ', ' + dim.point1[1] + '),\n' +
              '    p2=(' + dim.point2[0] + ', ' + dim.point2[1] + '),\n' +
-             '    dimstyle="Standard",\n' +
+             '    dimstyle=style_name,\n' +
              '    text="<>",                    # CRITICAL: Auto measurement text\n' +
              '    dxfattribs={"layer": "' + dim.layer + '", "color": ' + dim.color + '}\n' +
              ')\n' +
@@ -266,7 +269,7 @@ export class DrawingCodeGenerator {
       return 'rdim' + (index + 1) + ' = msp.add_radius_dim(\n' +
              '    center=(' + dim.centerPoint[0] + ', ' + dim.centerPoint[1] + '),\n' +
              '    mpoint=(' + dim.radiusPoint[0] + ', ' + dim.radiusPoint[1] + '),\n' +
-             '    dimstyle="Standard",\n' +
+             '    dimstyle=style_name,\n' +
              '    dxfattribs={"layer": "' + dim.layer + '", "color": ' + dim.color + '}\n' +
              ')\n' +
              'rdim' + (index + 1) + '.render()';
@@ -348,7 +351,7 @@ export class DrawingCodeGenerator {
            '    base=(' + base[0] + ', ' + base[1] + '),\n' +
            '    p1=(' + p1[0] + ', ' + p1[1] + '),\n' +
            '    p2=(' + p2[0] + ', ' + p2[1] + '),\n' +
-           '    dimstyle="Standard",\n' +
+           '    dimstyle=style_name,\n' +
            '    text="<>",\n' +
            '    dxfattribs={"layer": "' + layer + '"}\n' +
            ')\n' +
@@ -368,7 +371,7 @@ export class DrawingCodeGenerator {
            '    p1=(' + p1[0] + ', ' + p1[1] + '),\n' +
            '    p2=(' + p2[0] + ', ' + p2[1] + '),\n' +
            '    distance=' + distance + ',\n' +
-           '    dimstyle="Standard",\n' +
+           '    dimstyle=style_name,\n' +
            '    text="<>",\n' +
            '    dxfattribs={"layer": "' + layer + '"}\n' +
            ')\n' +
@@ -384,7 +387,7 @@ export class DrawingCodeGenerator {
     return 'dim' + (index + 1) + ' = msp.add_radius_dim(\n' +
            '    center=(' + center[0] + ', ' + center[1] + '),\n' +
            '    mpoint=(' + mpoint[0] + ', ' + mpoint[1] + '),\n' +
-           '    dimstyle="Standard",\n' +
+           '    dimstyle=style_name,\n' +
            '    dxfattribs={"layer": "' + layer + '"}\n' +
            ')\n' +
            'dim' + (index + 1) + '.render()';
@@ -401,7 +404,7 @@ export class DrawingCodeGenerator {
            '    base=(' + center[0] + ', ' + center[1] + '),\n' +
            '    p1=(' + p1[0] + ', ' + p1[1] + '),\n' +
            '    p2=(' + p2[0] + ', ' + p2[1] + '),\n' +
-           '    dimstyle="Standard",\n' +
+           '    dimstyle=style_name,\n' +
            '    dxfattribs={"layer": "' + layer + '"}\n' +
            ')\n' +
            'dim' + (index + 1) + '.render()';

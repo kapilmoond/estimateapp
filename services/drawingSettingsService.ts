@@ -76,6 +76,7 @@ export class DrawingSettingsService {
       },
       
       dimensions: {
+        styleName: stored.dimensions?.styleName || defaults.dimensions.styleName,
         textHeight: stored.dimensions?.textHeight ?? defaults.dimensions.textHeight,
         arrowSize: stored.dimensions?.arrowSize ?? defaults.dimensions.arrowSize,
         tickSize: stored.dimensions?.tickSize ?? defaults.dimensions.tickSize,

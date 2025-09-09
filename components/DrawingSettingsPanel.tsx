@@ -5,7 +5,7 @@ export interface DrawingSettings {
   documentFormat: 'R2010' | 'R2014' | 'R2018';
   units: 'mm' | 'm' | 'inches' | 'feet';
   scale: number;
-  
+
   // Layer Settings
   layers: {
     construction: { name: string; color: number; lineType: string };
@@ -13,9 +13,10 @@ export interface DrawingSettings {
     hatching: { name: string; color: number; lineType: string };
     text: { name: string; color: number; lineType: string };
   };
-  
+
   // Dimension Settings
   dimensions: {
+    styleName: string; // Name of the dimension style to use/create
     textHeight: number;
     arrowSize: number;
     tickSize: number;
@@ -30,7 +31,7 @@ export interface DrawingSettings {
     roundingValue: number;
     suppressZeros: boolean;
   };
-  
+
   // Text Settings
   text: {
     defaultHeight: number;
@@ -38,27 +39,27 @@ export interface DrawingSettings {
     widthFactor: number;
     obliqueAngle: number;
   };
-  
+
   // Line Settings
   lines: {
     defaultLineType: string;
     defaultLineWeight: number;
   };
-  
+
   // Hatching Settings
   hatching: {
     defaultPattern: string;
     defaultScale: number;
     defaultAngle: number;
   };
-  
+
   // Coordinate Settings
   coordinates: {
     originX: number;
     originY: number;
     coordinateSystem: 'bottom-left' | 'top-left' | 'center';
   };
-  
+
   // Spacing Settings
   spacing: {
     dimensionOffset: number;
@@ -116,7 +117,7 @@ export const DrawingSettingsPanel: React.FC<DrawingSettingsPanelProps> = ({
   const renderDocumentTab = () => (
     <div className="space-y-4">
       <h3 className="text-lg font-semibold text-gray-900">Document Settings</h3>
-      
+
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -218,7 +219,7 @@ export const DrawingSettingsPanel: React.FC<DrawingSettingsPanelProps> = ({
               <span className="w-4 h-4 rounded mr-2" style={{backgroundColor: `hsl(${layer.color * 360 / 255}, 70%, 50%)`}}></span>
               {layerType} Layer
             </h4>
-          
+
           <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -276,6 +277,19 @@ export const DrawingSettingsPanel: React.FC<DrawingSettingsPanelProps> = ({
         <div className="border border-gray-200 rounded-lg p-4">
           <h4 className="font-medium text-gray-900 mb-4">Text and Arrow Settings</h4>
           <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Dimension Style Name
+              </label>
+              <input
+                type="text"
+                value={localSettings.dimensions.styleName}
+                onChange={(e) => updateSettings('dimensions', 'styleName', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                placeholder="e.g., Standard"
+              />
+            </div>
+
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Text Height
@@ -850,6 +864,7 @@ export const getDefaultSettings = (): DrawingSettings => ({
   },
 
   dimensions: {
+    styleName: 'Standard',
     textHeight: 250,
     arrowSize: 100,
     tickSize: 50,

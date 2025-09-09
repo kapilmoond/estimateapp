@@ -42,6 +42,7 @@ import { DrawingService, ProjectDrawing } from './services/drawingService';
 import { DrawingSpecificationParser } from './services/drawingSpecificationParser';
 import { DrawingCodeGenerator } from './services/drawingCodeGenerator';
 import { DrawingSettingsService } from './services/drawingSettingsService';
+import { DrawingSettingsPanel } from './components/DrawingSettingsPanel';
 import { CompactFileUpload } from './components/CompactFileUpload';
 import { LLMService } from './services/llmService';
 import { RAGService } from './services/ragService';
@@ -107,6 +108,8 @@ const App: React.FC = () => {
   const [isGuidelinesOpen, setIsGuidelinesOpen] = useState<boolean>(false);
   const [isLLMSettingsOpen, setIsLLMSettingsOpen] = useState<boolean>(false);
   const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState<boolean>(false);
+  const [isDrawingSettingsOpen, setIsDrawingSettingsOpen] = useState<boolean>(false);
+
   const [includeKnowledgeBase, setIncludeKnowledgeBase] = useState<boolean>(false);
   const [currentProvider] = useState<string>(LLMService.getCurrentProvider());
   const [currentModel] = useState<string>(LLMService.getCurrentModel());
@@ -1201,6 +1204,12 @@ Create a new cost abstract that addresses the remake instructions using the exis
               LLM Settings
             </button>
             <button
+              onClick={() => setIsDrawingSettingsOpen(true)}
+              className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50"
+            >
+              Drawing Settings
+            </button>
+            <button
               onClick={() => setIsDiagnosticsOpen(true)}
               className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50"
             >
@@ -1657,6 +1666,8 @@ Create a new cost abstract that addresses the remake instructions using the exis
             onClose={() => setIsGuidelinesOpen(false)}
             onGuidelinesUpdate={loadGuidelines}
           />
+
+
         )}
 
         {isLLMSettingsOpen && (
@@ -1665,6 +1676,15 @@ Create a new cost abstract that addresses the remake instructions using the exis
             onClose={() => setIsLLMSettingsOpen(false)}
           />
         )}
+
+        {isDrawingSettingsOpen && (
+          <DrawingSettingsPanel
+            settings={DrawingSettingsService.loadSettings()}
+            onSettingsChange={(s) => DrawingSettingsService.saveSettings(s)}
+            onClose={() => setIsDrawingSettingsOpen(false)}
+          />
+        )}
+
 
         {isKnowledgeBaseOpen && (
           <KnowledgeBaseManager
