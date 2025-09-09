@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { DrawingResult } from '../services/ezdxfDrawingService';
 import { EzdxfDrawingService } from '../services/ezdxfDrawingService';
+import { DXFPreviewPanel } from './DXFPreviewPanel';
 
 interface DrawingResultsDisplayProps {
   result: DrawingResult;
@@ -16,6 +17,7 @@ export const DrawingResultsDisplay: React.FC<DrawingResultsDisplayProps> = ({
   const [regenerateInstructions, setRegenerateInstructions] = useState('');
   const [showRegenerateForm, setShowRegenerateForm] = useState(false);
   const [showPythonCode, setShowPythonCode] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
   const handleDownloadDXF = () => {
     try {
@@ -101,6 +103,13 @@ export const DrawingResultsDisplay: React.FC<DrawingResultsDisplayProps> = ({
 
       {/* Action Buttons */}
       <div className="flex flex-wrap items-center gap-3 mb-6">
+        <button
+          onClick={() => setShowPreview(true)}
+          className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium flex items-center gap-2"
+        >
+          👁️ Preview DXF
+        </button>
+
         <button
           onClick={handleDownloadDXF}
           className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2"
@@ -246,6 +255,14 @@ export const DrawingResultsDisplay: React.FC<DrawingResultsDisplayProps> = ({
           </div>
         </div>
       </div>
+
+      {/* DXF Preview Panel */}
+      <DXFPreviewPanel
+        result={result}
+        isVisible={showPreview}
+        onClose={() => setShowPreview(false)}
+        onDownload={handleDownloadDXF}
+      />
     </div>
   );
 };
