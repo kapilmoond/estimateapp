@@ -14,6 +14,7 @@ import { ThreadService } from './services/threadService';
 import { DesignService } from './services/designService';
 import { ContextService } from './services/contextService';
 import { DXFService, DXFStorageService } from './services/dxfService';
+import { TwoPhaseDrawingGenerator } from './services/twoPhaseDrawingGenerator';
 import { HTMLService } from './services/htmlService';
 import { TemplateService, MasterTemplate } from './services/templateService';
 import { Spinner } from './components/Spinner';
@@ -816,29 +817,68 @@ const App: React.FC = () => {
       const title = inputText.match(/(?:draw|create|generate)\s+(?:a\s+)?(.+?)(?:\s+for|\s+with|\.|$)/i)?.[1]?.trim() ||
                    `Technical Drawing ${new Date().toLocaleDateString()}`;
 
-      // Generate Python code directly using LLM
+      // TWO-PHASE DRAWING GENERATION SYSTEM
+      const drawingSettings = DrawingSettingsService.loadSettings();
       const isModification = Boolean(previousPythonCode && modificationInstructions);
-      const pythonCode = await DrawingCodeGenerator.generatePythonCode(
-        inputText,
-        isModification,
-        previousPythonCode,
-        modificationInstructions
-      );
+
+      let analysis: string;
+      let pythonCode: string;
+
+      if (isModification) {
+        // For modifications, we need the previous analysis from saved drawings
+        const savedDrawings = DrawingService.loadAllDrawings();
+        const previousDrawing = savedDrawings.find(d => d.generatedCode === previousPythonCode);
+        const previousAnalysis = previousDrawing?.specification || '';
+
+        // Phase 1: Modify the analysis
+        console.log('🔍 Phase 1: Modifying drawing analysis...');
+        analysis = await TwoPhaseDrawingGenerator.analyzeRequirements(
+          inputText,
+          drawingSettings,
+          true,
+          previousAnalysis,
+          modificationInstructions
+        );
+
+        // Phase 2: Generate modified Python code
+        console.log('🔧 Phase 2: Generating modified Python code...');
+        pythonCode = await TwoPhaseDrawingGenerator.generatePythonCode(
+          analysis,
+          drawingSettings,
+          true,
+          previousPythonCode,
+          modificationInstructions
+        );
+      } else {
+        // Phase 1: Analyze requirements and create detailed part list
+        console.log('🔍 Phase 1: Analyzing drawing requirements...');
+        analysis = await TwoPhaseDrawingGenerator.analyzeRequirements(
+          inputText,
+          drawingSettings
+        );
+
+        // Phase 2: Generate Python code from analysis
+        console.log('🔧 Phase 2: Generating Python code from analysis...');
+        pythonCode = await TwoPhaseDrawingGenerator.generatePythonCode(
+          analysis,
+          drawingSettings
+        );
+      }
 
       // Execute code on local server
       const result = await EzdxfDrawingService.executeDrawingCode(pythonCode, title);
 
-      // Save the drawing to persistence with Python code for regeneration
+      // Save the drawing to persistence with analysis and Python code
       try {
         const projectId = ProjectService.getCurrentProjectId() || 'default';
         const savedDrawing = DrawingService.saveDrawing({
           projectId,
           title,
           description: inputText.substring(0, 200) + (inputText.length > 200 ? '...' : ''),
-          specification: null, // No longer using JSON specifications
+          specification: analysis, // Store the Phase 1 analysis
           generatedCode: pythonCode,
           result,
-          settings: DrawingSettingsService.loadSettings()
+          settings: drawingSettings
         });
 
         console.log('Drawing saved to persistence:', savedDrawing.id);

@@ -54,6 +54,8 @@ export const DrawingResultsDisplay: React.FC<DrawingResultsDisplayProps> = ({
     }
   };
 
+
+
   const formatFileSize = (base64Content: string): string => {
     const bytes = (base64Content.length * 3) / 4;
     if (bytes < 1024) return `${bytes.toFixed(0)} B`;

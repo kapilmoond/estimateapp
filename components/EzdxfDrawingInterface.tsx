@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { EzdxfDrawingService, DrawingRequest, DrawingResult } from '../services/ezdxfDrawingService';
 import { DrawingCodeGenerator } from '../services/drawingCodeGenerator';
+import { TwoPhaseDrawingGenerator } from '../services/twoPhaseDrawingGenerator';
 
 import { DrawingSettingsPanel, DrawingSettings } from './DrawingSettingsPanel';
 import { DrawingSettingsService } from '../services/drawingSettingsService';
@@ -134,9 +135,23 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
     }
 
     try {
-      // Generate Python code directly using LLM with ezdxf tutorial context
-      const pythonCode = await DrawingCodeGenerator.generatePythonCode(userInput);
-      console.log('LLM-Generated Python Code:', pythonCode);
+      // TWO-PHASE DRAWING GENERATION SYSTEM
+
+      // Phase 1: Analyze requirements and create detailed part list
+      console.log('🔍 Phase 1: Analyzing drawing requirements...');
+      const analysis = await TwoPhaseDrawingGenerator.analyzeRequirements(
+        userInput,
+        drawingSettings
+      );
+      console.log('Phase 1 Analysis completed:', analysis.substring(0, 200) + '...');
+
+      // Phase 2: Generate Python code from analysis
+      console.log('🔧 Phase 2: Generating Python code from analysis...');
+      const pythonCode = await TwoPhaseDrawingGenerator.generatePythonCode(
+        analysis,
+        drawingSettings
+      );
+      console.log('Phase 2 Python code generated, length:', pythonCode.length);
 
       // Execute code on local server
       const title = extractTitle(userInput);
@@ -148,7 +163,7 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
           projectId: getCurrentProjectId(),
           title,
           description: extractDescription(userInput),
-          specification: null, // No longer using JSON specifications
+          specification: analysis, // Store the Phase 1 analysis
           generatedCode: pythonCode,
           result,
           settings: drawingSettings,
