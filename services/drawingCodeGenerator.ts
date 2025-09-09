@@ -216,7 +216,6 @@ export class DrawingCodeGenerator {
     if (dimensions.length === 0) return '';
 
     const dimCode = dimensions.map((dim, index) => {
-      const textHeight = dim.textHeight || 250;
       return '# Linear dimension ' + (index + 1) + ' - MUST show measurement value\n' +
              'dim' + (index + 1) + ' = msp.add_linear_dim(\n' +
              '    base=(' + dim.dimensionLinePosition[0] + ', ' + dim.dimensionLinePosition[1] + '),\n' +
@@ -227,11 +226,7 @@ export class DrawingCodeGenerator {
              '    dxfattribs={"layer": "' + dim.layer + '", "color": ' + dim.color + '}\n' +
              ')\n' +
              '# CRITICAL: Render dimension to make it visible\n' +
-             'dim' + (index + 1) + '.render()\n' +
-             '\n' +
-             '# Debug: Print dimension info\n' +
-             'print(f"Dimension ' + (index + 1) + ' created: {dim' + (index + 1) + '.dxf.measurement} units")\n' +
-             'print(f"Dimension ' + (index + 1) + ' text height: {dimstyle.dxf.dimtxt}")';
+             'dim' + (index + 1) + '.render()';
     });
 
     return '# Add linear dimensions with VISIBLE text and arrows/ticks\n' + dimCode.join('\n\n');
