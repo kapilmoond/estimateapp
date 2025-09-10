@@ -345,15 +345,38 @@ const App: React.FC = () => {
     }
   };
 
-  const handleNewProject = (projectName: string) => {
+  const handleNewProject = async (projectName: string) => {
     // Save current project if exists
     if (currentProject) {
-      saveCurrentProject();
+      await saveCurrentProject();
     }
 
-    // Create new project
-    const newProject = ProjectService.createProject(projectName);
-    loadProjectData(newProject);
+    try {
+      // Create new project using IndexedDB
+      const newProject = await EnhancedProjectService.createProject(projectName);
+      loadProjectData(newProject);
+      console.log('New project created successfully:', newProject.name);
+    } catch (error) {
+      console.error('Failed to create project with IndexedDB, trying localStorage fallback:', error);
+      try {
+        // Clean up localStorage first to free space
+        EnhancedProjectService.cleanupLocalStorage();
+
+        // Fallback to localStorage
+        const newProject = ProjectService.createProject(projectName);
+        loadProjectData(newProject);
+        console.log('New project created with localStorage fallback:', newProject.name);
+      } catch (fallbackError) {
+        console.error('Failed to create project with both IndexedDB and localStorage:', fallbackError);
+
+        // Check if it's a quota exceeded error
+        if (fallbackError instanceof Error && fallbackError.name === 'QuotaExceededError') {
+          alert('Storage quota exceeded! Please:\n\n1. Clear browser data for this site\n2. Export any important projects first\n3. Try creating the project again\n\nUse the Storage Manager to clean up data.');
+        } else {
+          alert('Failed to create project. Please try again or contact support if the issue persists.');
+        }
+      }
+    }
   };
 
   const handleProjectSelected = (project: ProjectData) => {
