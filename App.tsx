@@ -14,7 +14,7 @@ import { ThreadService } from './services/threadService';
 import { DesignService } from './services/designService';
 import { ContextService } from './services/contextService';
 import { DXFService, DXFStorageService } from './services/dxfService';
-import { TwoPhaseDrawingGenerator } from './services/twoPhaseDrawingGenerator';
+import { SimpleDrawingGenerator } from './services/simpleDrawingGenerator';
 import { HTMLService } from './services/htmlService';
 import { TemplateService, MasterTemplate } from './services/templateService';
 import { Spinner } from './components/Spinner';
@@ -43,7 +43,7 @@ import { DrawingResultsDisplay } from './components/DrawingResultsDisplay';
 import { EzdxfDrawingService, DrawingResult } from './services/ezdxfDrawingService';
 import { DrawingService, EnhancedDrawingService, ProjectDrawing } from './services/drawingService';
 
-import { DrawingCodeGenerator } from './services/drawingCodeGenerator';
+
 import { DrawingSettingsService } from './services/drawingSettingsService';
 import { DrawingSettingsPanel } from './components/DrawingSettingsPanel';
 import { CompactFileUpload } from './components/CompactFileUpload';
@@ -861,61 +861,19 @@ const App: React.FC = () => {
       const title = inputText.match(/(?:draw|create|generate)\s+(?:a\s+)?(.+?)(?:\s+for|\s+with|\.|$)/i)?.[1]?.trim() ||
                    `Technical Drawing ${new Date().toLocaleDateString()}`;
 
-      // TWO-PHASE DRAWING GENERATION SYSTEM
-      const drawingSettings = DrawingSettingsService.loadSettings();
-      const isModification = Boolean(previousPythonCode && modificationInstructions);
+      // SIMPLE STRUCTURED DRAWING GENERATION SYSTEM
+      console.log('📝 Generating structured drawing data...');
 
-      let analysis: string;
-      let pythonCode: string;
+      // Step 1: Get structured data from LLM
+      const structuredData = await SimpleDrawingGenerator.generateStructuredData(inputText);
+      console.log('✅ Structured data received:', structuredData);
 
-      if (isModification) {
-        // For modifications, we need the previous analysis from saved drawings
-        let savedDrawings: ProjectDrawing[] = [];
-        try {
-          savedDrawings = await EnhancedDrawingService.loadAllDrawings();
-        } catch (error) {
-          console.log('IndexedDB not available, using localStorage for modification lookup');
-          savedDrawings = DrawingService.loadAllDrawings();
-        }
-        const previousDrawing = savedDrawings.find(d => d.generatedCode === previousPythonCode);
-        const previousAnalysis = previousDrawing?.specification || '';
+      // Step 2: Generate Python code from structured data
+      const pythonCode = SimpleDrawingGenerator.generatePythonCode(structuredData);
+      console.log('✅ Python code generated, length:', pythonCode.length);
 
-        // Phase 1: Modify the analysis
-        console.log('🔍 Phase 1: Modifying drawing analysis...');
-        analysis = await TwoPhaseDrawingGenerator.analyzeRequirements(
-          inputText,
-          drawingSettings,
-          true,
-          previousAnalysis,
-          modificationInstructions
-        );
-
-        // Phase 2: Generate modified Python code with error correction
-        console.log('🔧 Phase 2: Generating modified Python code with error correction...');
-        pythonCode = await TwoPhaseDrawingGenerator.generatePythonCodeWithCorrection(
-          analysis,
-          drawingSettings,
-          inputText, // original prompt for error correction context
-          true,
-          previousPythonCode,
-          modificationInstructions
-        );
-      } else {
-        // Phase 1: Analyze requirements and create detailed part list
-        console.log('🔍 Phase 1: Analyzing drawing requirements...');
-        analysis = await TwoPhaseDrawingGenerator.analyzeRequirements(
-          inputText,
-          drawingSettings
-        );
-
-        // Phase 2: Generate Python code from analysis with error correction
-        console.log('🔧 Phase 2: Generating Python code from analysis with error correction...');
-        pythonCode = await TwoPhaseDrawingGenerator.generatePythonCodeWithCorrection(
-          analysis,
-          drawingSettings,
-          inputText // original prompt for error correction context
-        );
-      }
+      // For compatibility with existing code, create a simple analysis
+      const analysis = `Simple drawing: ${structuredData.title}\nLines: ${structuredData.lines.length}`;
 
       // Execute code on local server
       const result = await EzdxfDrawingService.executeDrawingCode(pythonCode, title);

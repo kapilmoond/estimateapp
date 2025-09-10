@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { EzdxfDrawingService, DrawingRequest, DrawingResult } from '../services/ezdxfDrawingService';
-import { DrawingCodeGenerator } from '../services/drawingCodeGenerator';
-import { TwoPhaseDrawingGenerator } from '../services/twoPhaseDrawingGenerator';
+
+import { SimpleDrawingGenerator } from '../services/simpleDrawingGenerator';
 
 import { DrawingSettingsPanel, DrawingSettings } from './DrawingSettingsPanel';
 import { DrawingSettingsService } from '../services/drawingSettingsService';
@@ -135,24 +135,19 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
     }
 
     try {
-      // TWO-PHASE DRAWING GENERATION SYSTEM
+      // SIMPLE STRUCTURED DRAWING GENERATION SYSTEM
+      console.log('📝 Generating structured drawing data...');
 
-      // Phase 1: Analyze requirements and create detailed part list
-      console.log('🔍 Phase 1: Analyzing drawing requirements...');
-      const analysis = await TwoPhaseDrawingGenerator.analyzeRequirements(
-        userInput,
-        drawingSettings
-      );
-      console.log('Phase 1 Analysis completed:', analysis.substring(0, 200) + '...');
+      // Step 1: Get structured data from LLM
+      const structuredData = await SimpleDrawingGenerator.generateStructuredData(userInput);
+      console.log('✅ Structured data received:', structuredData);
 
-      // Phase 2: Generate Python code from analysis with automatic error correction
-      console.log('🔧 Phase 2: Generating Python code from analysis with error correction...');
-      const pythonCode = await TwoPhaseDrawingGenerator.generatePythonCodeWithCorrection(
-        analysis,
-        drawingSettings,
-        userInput // original prompt for error correction context
-      );
-      console.log('Phase 2 Python code generated with error correction, length:', pythonCode.length);
+      // Step 2: Generate Python code from structured data
+      const pythonCode = SimpleDrawingGenerator.generatePythonCode(structuredData);
+      console.log('✅ Python code generated, length:', pythonCode.length);
+
+      // For compatibility with existing code, create a simple analysis
+      const analysis = `Simple drawing: ${structuredData.title}\nLines: ${structuredData.lines.length}`;
 
       // Execute code on local server (final execution after error correction)
       const title = extractTitle(userInput);

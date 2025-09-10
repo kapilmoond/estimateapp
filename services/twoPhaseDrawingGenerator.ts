@@ -1,27 +1,19 @@
 import { LLMService } from './llmService';
-import { EZDXF_TUTORIAL_CONTENT } from './ezdxfTutorialContent';
-import { DrawingSettings } from './drawingSettingsService';
-import { EzdxfDrawingService } from './ezdxfDrawingService';
 
-export interface DrawingPart {
-  name: string;
-  description: string;
-  dimensions: {
-    length?: number;
-    width?: number;
-    height?: number;
-    diameter?: number;
-    thickness?: number;
-    [key: string]: number | undefined;
-  };
-  position: {
-    x: number;
-    y: number;
-    z?: number;
-    rotation?: number;
-  };
-  material?: string;
-  notes?: string;
+// Simple structured data format for LLM response
+export interface LineData {
+  startX: number | null;
+  startY: number | null;
+  endX: number | null;
+  endY: number | null;
+  layer: string | null;
+  color: number | null;
+  linetype: string | null;
+}
+
+export interface StructuredDrawingData {
+  title: string;
+  lines: LineData[];
 }
 
 export interface DrawingAnalysis {
