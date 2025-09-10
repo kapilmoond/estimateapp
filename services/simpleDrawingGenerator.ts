@@ -63,6 +63,17 @@ export interface StructuredDrawingData {
   dimensions: DimensionData[];
 }
 
+export interface ModificationData {
+  delete: {
+    lines: number[];      // Array of line indices to delete
+    circles: number[];    // Array of circle indices to delete
+    arcs: number[];       // Array of arc indices to delete
+    points: number[];     // Array of point indices to delete
+    dimensions: number[]; // Array of dimension indices to delete
+  };
+  add: StructuredDrawingData; // New entities to add
+}
+
 export class SimpleDrawingGenerator {
   /**
    * Generate structured drawing data from user description
@@ -72,22 +83,119 @@ export class SimpleDrawingGenerator {
     previousData?: StructuredDrawingData,
     originalDescription?: string
   ): Promise<StructuredDrawingData> {
-    const prompt = this.createStructuredPrompt(description, previousData, originalDescription);
+    if (previousData && originalDescription) {
+      // MODIFICATION: Use delete/add system
+      const modificationData = await this.generateModificationData(description, previousData, originalDescription);
+      return this.applyModification(previousData, modificationData);
+    } else {
+      // NEW DRAWING: Use original system
+      const prompt = this.createStructuredPrompt(description, previousData, originalDescription);
 
-    console.log('📝 Structured Drawing Prompt:', prompt.substring(0, 200) + '...');
+      console.log('📝 Structured Drawing Prompt:', prompt.substring(0, 200) + '...');
+
+      try {
+        const response = await LLMService.generateContent(prompt);
+        console.log('✅ LLM Response received, length:', response.length);
+
+        const structuredData = this.parseStructuredResponse(response);
+        console.log('✅ Structured data parsed:', structuredData);
+
+        return structuredData;
+      } catch (error) {
+        console.error('❌ Structured data generation failed:', error);
+        throw new Error(`Structured data generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
+  }
+
+  /**
+   * Generate modification data with delete/add instructions
+   */
+  static async generateModificationData(
+    description: string,
+    previousData: StructuredDrawingData,
+    originalDescription: string
+  ): Promise<ModificationData> {
+    const prompt = this.createModificationPrompt(description, previousData, originalDescription);
+
+    console.log('📝 Modification Prompt:', prompt.substring(0, 200) + '...');
 
     try {
       const response = await LLMService.generateContent(prompt);
-      console.log('✅ LLM Response received, length:', response.length);
+      console.log('✅ Modification Response received, length:', response.length);
 
-      const structuredData = this.parseStructuredResponse(response);
-      console.log('✅ Structured data parsed:', structuredData);
+      const modificationData = this.parseModificationResponse(response);
+      console.log('✅ Modification data parsed:', modificationData);
 
-      return structuredData;
+      return modificationData;
     } catch (error) {
-      console.error('❌ Structured data generation failed:', error);
-      throw new Error(`Structured data generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('❌ Modification generation failed:', error);
+      throw new Error(`Modification generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  /**
+   * Apply modification to existing drawing data
+   */
+  static applyModification(previousData: StructuredDrawingData, modification: ModificationData): StructuredDrawingData {
+    console.log('🔄 Applying modification to existing drawing...');
+
+    // Start with previous data
+    const result: StructuredDrawingData = {
+      title: modification.add.title || previousData.title,
+      lines: [...previousData.lines],
+      circles: [...previousData.circles],
+      arcs: [...previousData.arcs],
+      points: [...previousData.points],
+      dimensions: [...previousData.dimensions]
+    };
+
+    // Delete entities (in reverse order to maintain indices)
+    modification.delete.lines.sort((a, b) => b - a).forEach(index => {
+      if (index >= 0 && index < result.lines.length) {
+        result.lines.splice(index, 1);
+        console.log(`🗑️ Deleted line at index ${index}`);
+      }
+    });
+
+    modification.delete.circles.sort((a, b) => b - a).forEach(index => {
+      if (index >= 0 && index < result.circles.length) {
+        result.circles.splice(index, 1);
+        console.log(`🗑️ Deleted circle at index ${index}`);
+      }
+    });
+
+    modification.delete.arcs.sort((a, b) => b - a).forEach(index => {
+      if (index >= 0 && index < result.arcs.length) {
+        result.arcs.splice(index, 1);
+        console.log(`🗑️ Deleted arc at index ${index}`);
+      }
+    });
+
+    modification.delete.points.sort((a, b) => b - a).forEach(index => {
+      if (index >= 0 && index < result.points.length) {
+        result.points.splice(index, 1);
+        console.log(`🗑️ Deleted point at index ${index}`);
+      }
+    });
+
+    modification.delete.dimensions.sort((a, b) => b - a).forEach(index => {
+      if (index >= 0 && index < result.dimensions.length) {
+        result.dimensions.splice(index, 1);
+        console.log(`🗑️ Deleted dimension at index ${index}`);
+      }
+    });
+
+    // Add new entities
+    result.lines.push(...modification.add.lines);
+    result.circles.push(...modification.add.circles);
+    result.arcs.push(...modification.add.arcs);
+    result.points.push(...modification.add.points);
+    result.dimensions.push(...modification.add.dimensions);
+
+    console.log(`✅ Applied modification: deleted ${modification.delete.lines.length + modification.delete.circles.length + modification.delete.arcs.length + modification.delete.points.length + modification.delete.dimensions.length} entities, added ${modification.add.lines.length + modification.add.circles.length + modification.add.arcs.length + modification.add.points.length + modification.add.dimensions.length} entities`);
+
+    return result;
   }
 
   /**
@@ -418,6 +526,90 @@ doc.saveas("${data.title || 'drawing'}.dxf")`;
   }
 
   /**
+   * Create modification prompt for delete/add system
+   */
+  private static createModificationPrompt(
+    description: string,
+    previousData: StructuredDrawingData,
+    originalDescription: string
+  ): string {
+    const ezdxfDocumentation = this.getEzdxfDocumentation();
+
+    // Add indices to entities for deletion reference
+    const indexedPreviousData = {
+      ...previousData,
+      lines: previousData.lines.map((line, index) => ({ ...line, index })),
+      circles: previousData.circles.map((circle, index) => ({ ...circle, index })),
+      arcs: previousData.arcs.map((arc, index) => ({ ...arc, index })),
+      points: previousData.points.map((point, index) => ({ ...point, index })),
+      dimensions: previousData.dimensions.map((dim, index) => ({ ...dim, index }))
+    };
+
+    return `You are a professional CAD engineer. Analyze the modification request and provide ONLY the required modification data in the exact JSON format below.
+
+${ezdxfDocumentation}
+
+ORIGINAL DRAWING REQUEST:
+${originalDescription}
+
+CURRENT DRAWING DATA (with indices for deletion reference):
+${JSON.stringify(indexedPreviousData, null, 2)}
+
+MODIFICATION REQUEST:
+${description}
+
+MODIFICATION INSTRUCTIONS:
+1. Analyze what entities need to be DELETED from the current drawing
+2. Specify what new entities need to be ADDED
+3. For deletion, provide the INDEX numbers of entities to remove
+4. For addition, provide complete new entity data
+5. If no deletion is needed, provide empty arrays
+6. If no addition is needed, provide empty arrays
+
+REQUIRED OUTPUT FORMAT (JSON only, no explanations):
+{
+  "delete": {
+    "lines": [index1, index2, ...],
+    "circles": [index1, index2, ...],
+    "arcs": [index1, index2, ...],
+    "points": [index1, index2, ...],
+    "dimensions": [index1, index2, ...]
+  },
+  "add": {
+    "title": "drawing_name",
+    "lines": [
+      {
+        "startX": number_or_null,
+        "startY": number_or_null,
+        "endX": number_or_null,
+        "endY": number_or_null,
+        "layer": "string_or_null",
+        "color": number_or_null,
+        "linetype": "string_or_null"
+      }
+    ],
+    "circles": [...],
+    "arcs": [...],
+    "points": [...],
+    "dimensions": [...]
+  }
+}
+
+EXAMPLES:
+- To change line color: DELETE old line by index, ADD new line with different color
+- To add windows: DELETE nothing (empty arrays), ADD new window entities
+- To move door: DELETE old door entities by index, ADD new door at new location
+- To resize dimension: DELETE old dimension by index, ADD new dimension with new size
+
+RULES:
+- Use entity INDEX numbers from the current drawing data above for deletion
+- Provide complete entity data for additions
+- Empty arrays are allowed if no deletion/addition needed
+- AUTOMATIC SIZING: App calculates proper text size, arrow size, and spacing
+- Provide ONLY the JSON object, nothing else`;
+  }
+
+  /**
    * Create structured prompt for LLM with ezdxf documentation
    */
   private static createStructuredPrompt(
@@ -696,4 +888,58 @@ ATTRIBUTES:
       };
     }
   }
+
+  /**
+   * Parse modification response from LLM
+   */
+  private static parseModificationResponse(response: string): ModificationData {
+    try {
+      // Clean the response
+      let cleanResponse = response.trim();
+
+      // Remove markdown code blocks if present
+      if (cleanResponse.startsWith('```json')) {
+        cleanResponse = cleanResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+      } else if (cleanResponse.startsWith('```')) {
+        cleanResponse = cleanResponse.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      }
+
+      // Parse JSON
+      const modificationData = JSON.parse(cleanResponse);
+
+      // Validate structure
+      if (!modificationData.delete || !modificationData.add) {
+        throw new Error('Invalid modification data structure: missing delete or add sections');
+      }
+
+      // Ensure delete section has all required arrays
+      const deleteSection = {
+        lines: modificationData.delete.lines || [],
+        circles: modificationData.delete.circles || [],
+        arcs: modificationData.delete.arcs || [],
+        points: modificationData.delete.points || [],
+        dimensions: modificationData.delete.dimensions || []
+      };
+
+      // Ensure add section has all required arrays
+      const addSection = {
+        title: modificationData.add.title || 'modified_drawing',
+        lines: modificationData.add.lines || [],
+        circles: modificationData.add.circles || [],
+        arcs: modificationData.add.arcs || [],
+        points: modificationData.add.points || [],
+        dimensions: modificationData.add.dimensions || []
+      };
+
+      return {
+        delete: deleteSection,
+        add: addSection
+      };
+    } catch (error) {
+      console.error('Error parsing modification response:', error);
+      console.error('Raw response:', response);
+      throw new Error(`Failed to parse modification response: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
 }

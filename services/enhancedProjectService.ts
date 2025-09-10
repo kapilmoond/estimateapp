@@ -41,36 +41,59 @@ export class EnhancedProjectService {
    */
   private static async migrateFromLocalStorage(): Promise<void> {
     try {
-      const legacyProjects = localStorage.getItem('hsr-projects');
-      if (legacyProjects) {
-        const projects = JSON.parse(legacyProjects);
-        
-        if (Array.isArray(projects)) {
-          for (const project of projects) {
-            // Ensure project has required fields
-            const enhancedProject = {
-              ...project,
-              createdAt: project.createdAt ? new Date(project.createdAt) : new Date(),
-              lastModified: project.lastModified ? new Date(project.lastModified) : new Date(),
-              // Migrate conversation history to separate storage
-              conversationHistory: project.conversationHistory || []
-            };
-            
-            // Save project (without conversation history to reduce size)
-            const { conversationHistory, ...projectWithoutHistory } = enhancedProject;
-            await IndexedDBService.save('projects', projectWithoutHistory);
-            
-            // Save conversation history separately
-            if (conversationHistory.length > 0) {
-              await IndexedDBService.saveConversation(project.id, conversationHistory);
+      // Check if migration is needed and avoid duplicates
+      const migrated = localStorage.getItem('hsr-projects-migrated');
+      if (!migrated) {
+        console.log('Checking for projects to migrate from localStorage to IndexedDB...');
+
+        // Check if IndexedDB already has projects to avoid duplicates
+        const existingProjects = await IndexedDBService.loadAll<ProjectData>('projects');
+
+        if (existingProjects.length === 0) {
+          const legacyProjects = localStorage.getItem('hsr-projects');
+          if (legacyProjects) {
+            const projects = JSON.parse(legacyProjects);
+
+            if (Array.isArray(projects) && projects.length > 0) {
+              console.log(`Migrating ${projects.length} projects from localStorage to IndexedDB...`);
+
+              for (const project of projects) {
+                // Check if project already exists in IndexedDB
+                const existingProject = await IndexedDBService.load<ProjectData>('projects', project.id);
+                if (!existingProject) {
+                  // Ensure project has required fields
+                  const enhancedProject = {
+                    ...project,
+                    createdAt: project.createdAt ? new Date(project.createdAt) : new Date(),
+                    lastModified: project.lastModified ? new Date(project.lastModified) : new Date(),
+                    // Migrate conversation history to separate storage
+                    conversationHistory: project.conversationHistory || []
+                  };
+
+                  // Save project (without conversation history to reduce size)
+                  const { conversationHistory, ...projectWithoutHistory } = enhancedProject;
+                  await IndexedDBService.save('projects', projectWithoutHistory);
+
+                  // Save conversation history separately
+                  if (conversationHistory.length > 0) {
+                    await IndexedDBService.saveConversation(project.id, conversationHistory);
+                  }
+
+                  console.log(`Migrated project: ${project.name}`);
+                } else {
+                  console.log(`Project already exists in IndexedDB: ${project.name}`);
+                }
+              }
+
+              console.log(`Migration completed successfully`);
             }
           }
-          
-          console.log(`Migrated ${projects.length} projects from localStorage to IndexedDB`);
-          
-          // Keep localStorage as backup for now, but mark as migrated
-          localStorage.setItem('hsr-projects-migrated', 'true');
+        } else {
+          console.log(`IndexedDB already has ${existingProjects.length} projects, skipping migration`);
         }
+
+        // Mark as migrated to prevent future attempts
+        localStorage.setItem('hsr-projects-migrated', 'true');
       }
     } catch (error) {
       console.error('Migration failed:', error);
