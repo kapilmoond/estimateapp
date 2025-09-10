@@ -138,8 +138,9 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
       // SIMPLE STRUCTURED DRAWING GENERATION SYSTEM
       console.log('📝 Generating structured drawing data...');
 
-      // Step 1: Get structured data from LLM
-      const structuredData = await SimpleDrawingGenerator.generateStructuredData(userInput);
+      // Step 1: Get structured data from LLM (with previous data for modifications)
+      const previousData = currentDrawing?.specification ? JSON.parse(currentDrawing.specification) : undefined;
+      const structuredData = await SimpleDrawingGenerator.generateStructuredData(userInput, previousData);
       console.log('✅ Structured data received:', structuredData);
 
       // Step 2: Generate Python code from structured data
@@ -159,7 +160,7 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
           projectId: getCurrentProjectId(),
           title,
           description: extractDescription(userInput),
-          specification: analysis, // Store the Phase 1 analysis
+          specification: JSON.stringify(structuredData), // Store structured data for modifications
           generatedCode: pythonCode,
           result,
           settings: drawingSettings,
