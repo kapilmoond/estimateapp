@@ -38,12 +38,29 @@ export interface PointData {
   color: number | null;
 }
 
+export interface DimensionData {
+  type: 'linear' | 'aligned' | null;
+  p1X: number | null;
+  p1Y: number | null;
+  p2X: number | null;
+  p2Y: number | null;
+  baseX: number | null;
+  baseY: number | null;
+  angle: number | null; // for rotated dimensions
+  distance: number | null; // for aligned dimensions
+  text: string | null; // custom text override
+  layer: string | null;
+  color: number | null;
+  dimstyle: string | null;
+}
+
 export interface StructuredDrawingData {
   title: string;
   lines: LineData[];
   circles: CircleData[];
   arcs: ArcData[];
   points: PointData[];
+  dimensions: DimensionData[];
 }
 
 export class SimpleDrawingGenerator {
@@ -81,6 +98,7 @@ export class SimpleDrawingGenerator {
     data.circles?.forEach(circle => circle.layer && layers.add(circle.layer));
     data.arcs?.forEach(arc => arc.layer && layers.add(arc.layer));
     data.points?.forEach(point => point.layer && layers.add(point.layer));
+    data.dimensions?.forEach(dim => dim.layer && layers.add(dim.layer));
 
     let code = `import ezdxf
 
@@ -198,11 +216,53 @@ msp = doc.modelspace()
       });
     }
 
+    // Add dimensions
+    if (data.dimensions && data.dimensions.length > 0) {
+      code += `\n# Add dimension entities\n`;
+
+      data.dimensions.forEach((dim) => {
+        const p1X = dim.p1X ?? 0;
+        const p1Y = dim.p1Y ?? 0;
+        const p2X = dim.p2X ?? 100;
+        const p2Y = dim.p2Y ?? 0;
+        const baseX = dim.baseX ?? 50;
+        const baseY = dim.baseY ?? 20;
+        const angle = dim.angle ?? null;
+        const distance = dim.distance ?? null;
+        const text = dim.text ? `"${dim.text}"` : null;
+        const layer = dim.layer ? `"${dim.layer}"` : null;
+        const color = dim.color ?? null;
+        const dimstyle = dim.dimstyle ? `"${dim.dimstyle}"` : '"EZDXF"';
+
+        // Build dxfattribs for dimension
+        const attrs: string[] = [];
+        if (layer) attrs.push(`"layer": ${layer}`);
+        if (color !== null) attrs.push(`"color": ${color}`);
+
+        const dxfattribs = attrs.length > 0 ? `, dxfattribs={${attrs.join(', ')}}` : '';
+        const textArg = text ? `, text=${text}` : '';
+        const dimstyleArg = `, dimstyle=${dimstyle}`;
+
+        if (dim.type === 'aligned') {
+          const distanceArg = distance !== null ? `, distance=${distance}` : '';
+          code += `dim = msp.add_aligned_dim(p1=(${p1X}, ${p1Y}), p2=(${p2X}, ${p2Y})${distanceArg}${dimstyleArg}${textArg}${dxfattribs})\n`;
+        } else if (angle !== null) {
+          // Rotated linear dimension
+          code += `dim = msp.add_linear_dim(base=(${baseX}, ${baseY}), p1=(${p1X}, ${p1Y}), p2=(${p2X}, ${p2Y}), angle=${angle}${dimstyleArg}${textArg}${dxfattribs})\n`;
+        } else {
+          // Standard linear dimension
+          code += `dim = msp.add_linear_dim(base=(${baseX}, ${baseY}), p1=(${p1X}, ${p1Y}), p2=(${p2X}, ${p2Y})${dimstyleArg}${textArg}${dxfattribs})\n`;
+        }
+        code += `dim.render()\n`;
+      });
+    }
+
     // Add default line if no entities provided
     if ((!data.lines || data.lines.length === 0) &&
         (!data.circles || data.circles.length === 0) &&
         (!data.arcs || data.arcs.length === 0) &&
-        (!data.points || data.points.length === 0)) {
+        (!data.points || data.points.length === 0) &&
+        (!data.dimensions || data.dimensions.length === 0)) {
       code += `# Add a default LINE entity\n`;
       code += `msp.add_line((0, 0), (10, 0))\n`;
     }
@@ -282,16 +342,35 @@ REQUIRED OUTPUT FORMAT (JSON only, no explanations):
       "layer": "string_or_null",
       "color": number_or_null
     }
+  ],
+  "dimensions": [
+    {
+      "type": "linear_or_aligned_or_null",
+      "p1X": number_or_null,
+      "p1Y": number_or_null,
+      "p2X": number_or_null,
+      "p2Y": number_or_null,
+      "baseX": number_or_null,
+      "baseY": number_or_null,
+      "angle": number_or_null,
+      "distance": number_or_null,
+      "text": "string_or_null",
+      "layer": "string_or_null",
+      "color": number_or_null,
+      "dimstyle": "string_or_null"
+    }
   ]
 }
 
 RULES:
 - Use null for any value you want to use default
 - Default values: coordinates=0, radius=5, angles=0/90, layer=null, color=null, linetype=null
+- Dimension defaults: type="linear", baseX/Y=midpoint+offset, distance=20, dimstyle="EZDXF"
 - Coordinates in millimeters, angles in degrees
 - Common linetypes: "CONTINUOUS", "DASHED", "DOTTED", "DASHDOT"
 - Colors: 1=red, 2=yellow, 3=green, 4=cyan, 5=blue, 6=magenta, 7=white
 - Empty arrays are allowed for entity types not needed
+- For dimensions: p1/p2 are measurement points, base is dimension line location
 - Provide ONLY the JSON object, nothing else`;
 
     return prompt;
@@ -320,8 +399,19 @@ ENTITIES:
 - Circle: Center point (cx,cy) with radius
 - Arc: Center point (cx,cy) with radius, start/end angles in degrees
 - Point: Single coordinate (x,y) for marking locations
+- Dimension: Measures distance between two points with annotation
 - All coordinates in millimeters, angles in degrees
 - Arc angles: counter-clockwise from positive X-axis (0° = right, 90° = up)
+
+DIMENSIONS:
+- Types: "linear" (horizontal/vertical/rotated), "aligned" (parallel to measured line)
+- Linear: Measures distance between two points with dimension line at base location
+- Aligned: Measures distance parallel to line between two points with offset
+- Base point: Location of dimension line (linear dimensions only)
+- Distance: Offset from measured line (aligned dimensions only)
+- Angle: Rotation angle in degrees (0=horizontal, 90=vertical)
+- Text override: Custom text instead of measured value
+- Dimstyle: "EZDXF" (default), "Standard", or custom style name
 
 ATTRIBUTES:
 - layer: Layer name (string) - app will create if needed
@@ -389,6 +479,21 @@ ATTRIBUTES:
           y: point.y,
           layer: point.layer,
           color: point.color
+        })),
+        dimensions: (parsed.dimensions || []).map((dim: any) => ({
+          type: dim.type,
+          p1X: dim.p1X,
+          p1Y: dim.p1Y,
+          p2X: dim.p2X,
+          p2Y: dim.p2Y,
+          baseX: dim.baseX,
+          baseY: dim.baseY,
+          angle: dim.angle,
+          distance: dim.distance,
+          text: dim.text,
+          layer: dim.layer,
+          color: dim.color,
+          dimstyle: dim.dimstyle
         }))
       };
     } catch (error) {
@@ -409,7 +514,8 @@ ATTRIBUTES:
         }],
         circles: [],
         arcs: [],
-        points: []
+        points: [],
+        dimensions: []
       };
     }
   }
