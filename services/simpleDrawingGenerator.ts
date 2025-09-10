@@ -87,9 +87,139 @@ export class SimpleDrawingGenerator {
   }
 
   /**
+   * Calculate drawing bounds from all entities
+   */
+  private static calculateDrawingBounds(data: StructuredDrawingData): { minX: number, minY: number, maxX: number, maxY: number, width: number, height: number } {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+    // Check lines
+    data.lines?.forEach(line => {
+      const startX = line.startX ?? 0;
+      const startY = line.startY ?? 0;
+      const endX = line.endX ?? 10;
+      const endY = line.endY ?? 0;
+      minX = Math.min(minX, startX, endX);
+      minY = Math.min(minY, startY, endY);
+      maxX = Math.max(maxX, startX, endX);
+      maxY = Math.max(maxY, startY, endY);
+    });
+
+    // Check circles
+    data.circles?.forEach(circle => {
+      const centerX = circle.centerX ?? 0;
+      const centerY = circle.centerY ?? 0;
+      const radius = circle.radius ?? 5;
+      minX = Math.min(minX, centerX - radius);
+      minY = Math.min(minY, centerY - radius);
+      maxX = Math.max(maxX, centerX + radius);
+      maxY = Math.max(maxY, centerY + radius);
+    });
+
+    // Check arcs
+    data.arcs?.forEach(arc => {
+      const centerX = arc.centerX ?? 0;
+      const centerY = arc.centerY ?? 0;
+      const radius = arc.radius ?? 5;
+      minX = Math.min(minX, centerX - radius);
+      minY = Math.min(minY, centerY - radius);
+      maxX = Math.max(maxX, centerX + radius);
+      maxY = Math.max(maxY, centerY + radius);
+    });
+
+    // Check points
+    data.points?.forEach(point => {
+      const x = point.x ?? 0;
+      const y = point.y ?? 0;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+    });
+
+    // Check dimension points
+    data.dimensions?.forEach(dim => {
+      const p1X = dim.p1X ?? 0;
+      const p1Y = dim.p1Y ?? 0;
+      const p2X = dim.p2X ?? 100;
+      const p2Y = dim.p2Y ?? 0;
+      minX = Math.min(minX, p1X, p2X);
+      minY = Math.min(minY, p1Y, p2Y);
+      maxX = Math.max(maxX, p1X, p2X);
+      maxY = Math.max(maxY, p1Y, p2Y);
+    });
+
+    // Fallback if no entities
+    if (minX === Infinity) {
+      minX = 0; minY = 0; maxX = 100; maxY = 100;
+    }
+
+    const width = maxX - minX;
+    const height = maxY - minY;
+
+    return { minX, minY, maxX, maxY, width, height };
+  }
+
+  /**
+   * Calculate appropriate dimension styling based on drawing size
+   */
+  private static calculateDimensionStyling(bounds: { width: number, height: number }) {
+    const drawingSize = Math.max(bounds.width, bounds.height);
+
+    // Scale factors based on drawing size
+    let textHeight: number;
+    let arrowSize: number;
+    let dimGap: number;
+    let extLineOffset: number;
+    let extLineExtension: number;
+
+    if (drawingSize <= 100) {
+      // Small drawings (up to 100mm)
+      textHeight = 2.5;
+      arrowSize = 1.25;
+      dimGap = 1.0;
+      extLineOffset = 1.25;
+      extLineExtension = 1.25;
+    } else if (drawingSize <= 500) {
+      // Medium drawings (100-500mm)
+      textHeight = 5.0;
+      arrowSize = 2.5;
+      dimGap = 2.0;
+      extLineOffset = 2.5;
+      extLineExtension = 2.5;
+    } else if (drawingSize <= 2000) {
+      // Large drawings (500-2000mm)
+      textHeight = 12.5;
+      arrowSize = 6.25;
+      dimGap = 5.0;
+      extLineOffset = 6.25;
+      extLineExtension = 6.25;
+    } else if (drawingSize <= 10000) {
+      // Very large drawings (2-10m)
+      textHeight = 25.0;
+      arrowSize = 12.5;
+      dimGap = 10.0;
+      extLineOffset = 12.5;
+      extLineExtension = 12.5;
+    } else {
+      // Huge drawings (>10m)
+      textHeight = 50.0;
+      arrowSize = 25.0;
+      dimGap = 20.0;
+      extLineOffset = 25.0;
+      extLineExtension = 25.0;
+    }
+
+    return { textHeight, arrowSize, dimGap, extLineOffset, extLineExtension };
+  }
+
+  /**
    * Generate Python code from structured data
    */
   static generatePythonCode(data: StructuredDrawingData): string {
+    // Calculate drawing bounds and appropriate styling
+    const bounds = this.calculateDrawingBounds(data);
+    const styling = this.calculateDimensionStyling(bounds);
+
     // Collect all unique layers from all entities
     const layers = new Set<string>();
 
@@ -107,6 +237,15 @@ doc = ezdxf.new("R2010", setup=True)
 
 # Add new entities to the modelspace
 msp = doc.modelspace()
+
+# Configure dimension styling based on drawing size
+# Drawing bounds: ${bounds.width.toFixed(1)}mm x ${bounds.height.toFixed(1)}mm
+dimstyle = doc.dimstyles.get("EZDXF")
+dimstyle.dxf.dimtxt = ${styling.textHeight}      # Text height
+dimstyle.dxf.dimasz = ${styling.arrowSize}       # Arrow size
+dimstyle.dxf.dimgap = ${styling.dimGap}          # Gap between dimension line and text
+dimstyle.dxf.dimexo = ${styling.extLineOffset}  # Extension line offset from measurement point
+dimstyle.dxf.dimexe = ${styling.extLineExtension} # Extension line extension beyond dimension line
 
 `;
 
@@ -371,6 +510,8 @@ RULES:
 - Colors: 1=red, 2=yellow, 3=green, 4=cyan, 5=blue, 6=magenta, 7=white
 - Empty arrays are allowed for entity types not needed
 - For dimensions: p1/p2 are measurement points, base is dimension line location
+- AUTOMATIC SIZING: App calculates proper text size, arrow size, and spacing based on total drawing size
+- Focus on placement and measurement - app handles all dimension styling automatically
 - Provide ONLY the JSON object, nothing else`;
 
     return prompt;
@@ -403,7 +544,7 @@ ENTITIES:
 - All coordinates in millimeters, angles in degrees
 - Arc angles: counter-clockwise from positive X-axis (0° = right, 90° = up)
 
-DIMENSIONS:
+DIMENSIONS (APP AUTO-SIZES TEXT/ARROWS):
 - Types: "linear" (horizontal/vertical/rotated), "aligned" (parallel to measured line)
 - Linear: Measures distance between two points with dimension line at base location
 - Aligned: Measures distance parallel to line between two points with offset
@@ -412,6 +553,8 @@ DIMENSIONS:
 - Angle: Rotation angle in degrees (0=horizontal, 90=vertical)
 - Text override: Custom text instead of measured value
 - Dimstyle: "EZDXF" (default), "Standard", or custom style name
+- IMPORTANT: App automatically calculates proper text size, arrow size, and spacing based on drawing size
+- DO NOT worry about dimension styling - focus only on placement and measurement points
 
 ATTRIBUTES:
 - layer: Layer name (string) - app will create if needed
