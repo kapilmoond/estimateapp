@@ -26,7 +26,7 @@ export class SimpleDrawingGenerator {
     console.log('📝 Structured Drawing Prompt:', prompt.substring(0, 200) + '...');
 
     try {
-      const response = await LLMService.generateResponse(prompt);
+      const response = await LLMService.generateContent(prompt);
       console.log('✅ LLM Response received, length:', response.length);
       
       const structuredData = this.parseStructuredResponse(response);
