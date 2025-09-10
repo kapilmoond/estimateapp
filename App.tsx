@@ -296,7 +296,7 @@ const App: React.FC = () => {
     console.log('Loaded project:', project.name, 'with', project.designs?.length || 0, 'designs');
   };
 
-  const saveCurrentProject = () => {
+  const saveCurrentProject = async () => {
     if (!currentProject) return;
 
     const updatedProject: ProjectData = {
@@ -317,8 +317,32 @@ const App: React.FC = () => {
       templateInstructions
     };
 
-    ProjectService.saveProject(updatedProject);
-    setCurrentProject(updatedProject);
+    try {
+      // Use IndexedDB for large project data
+      await EnhancedProjectService.saveProject(updatedProject);
+      setCurrentProject(updatedProject);
+      console.log('Project saved to IndexedDB successfully');
+    } catch (error) {
+      console.error('Failed to save to IndexedDB, trying localStorage fallback:', error);
+      try {
+        // Clean up localStorage first to free space
+        EnhancedProjectService.cleanupLocalStorage();
+
+        // Fallback to localStorage for smaller projects
+        ProjectService.saveProject(updatedProject);
+        setCurrentProject(updatedProject);
+        console.log('Project saved to localStorage as fallback');
+      } catch (fallbackError) {
+        console.error('Failed to save project to both IndexedDB and localStorage:', fallbackError);
+
+        // Check if it's a quota exceeded error
+        if (fallbackError instanceof Error && fallbackError.name === 'QuotaExceededError') {
+          alert('Storage quota exceeded! Your project data is too large. Please:\n\n1. Export your current data\n2. Clear old projects\n3. Try saving again\n\nUse the Storage Manager to clean up data.');
+        } else {
+          alert('Failed to save project. Please try again or contact support if the issue persists.');
+        }
+      }
+    }
   };
 
   const handleNewProject = (projectName: string) => {

@@ -3,11 +3,12 @@
  * Replaces localStorage-based ProjectService with modern browser storage
  */
 
-import { ProjectData } from '../types';
+import { ProjectData } from './projectService';
 import { IndexedDBService } from './indexedDBService';
 
 export class EnhancedProjectService {
   private static readonly CURRENT_PROJECT_KEY = 'current-project-id';
+  private static readonly LEGACY_STORAGE_KEY = 'hsr-projects';
   private static isInitialized = false;
 
   /**
@@ -99,7 +100,11 @@ export class EnhancedProjectService {
       designs: [],
       drawings: [],
       finalEstimateText: '',
+      referenceDocs: [],
+      outputMode: 'plain',
+      purifiedContext: '',
       selectedTemplates: [],
+      templateInstructions: '',
       hasScope: false,
       hasDesigns: false,
       hasDrawings: false,
@@ -324,5 +329,44 @@ export class EnhancedProjectService {
    */
   static isIndexedDBAvailable(): boolean {
     return IndexedDBService.isSupported();
+  }
+
+  /**
+   * Clean up localStorage to free space and prevent quota exceeded errors
+   */
+  static cleanupLocalStorage(): void {
+    try {
+      console.log('EnhancedProjectService: Cleaning up localStorage to free space...');
+
+      // Remove legacy project data that should now be in IndexedDB
+      const legacyProjects = localStorage.getItem(this.LEGACY_STORAGE_KEY);
+      if (legacyProjects) {
+        console.log('Removing legacy project data from localStorage');
+        localStorage.removeItem(this.LEGACY_STORAGE_KEY);
+      }
+
+      // Remove other large data that might be stored in localStorage
+      const keysToCheck = [
+        'hsr-designs',
+        'hsr-drawings',
+        'dxf-drawings',
+        'hsr-templates',
+        'knowledge-base-documents',
+        'conversation-history',
+        'drawing-cache'
+      ];
+
+      keysToCheck.forEach(key => {
+        const data = localStorage.getItem(key);
+        if (data && data.length > 10000) { // Remove items larger than 10KB
+          console.log(`Removing large localStorage item: ${key} (${data.length} chars)`);
+          localStorage.removeItem(key);
+        }
+      });
+
+      console.log('EnhancedProjectService: localStorage cleanup completed');
+    } catch (error) {
+      console.error('Error during localStorage cleanup:', error);
+    }
   }
 }

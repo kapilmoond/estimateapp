@@ -67,8 +67,12 @@ export class SimpleDrawingGenerator {
   /**
    * Generate structured drawing data from user description
    */
-  static async generateStructuredData(description: string, previousData?: StructuredDrawingData): Promise<StructuredDrawingData> {
-    const prompt = this.createStructuredPrompt(description, previousData);
+  static async generateStructuredData(
+    description: string,
+    previousData?: StructuredDrawingData,
+    originalDescription?: string
+  ): Promise<StructuredDrawingData> {
+    const prompt = this.createStructuredPrompt(description, previousData, originalDescription);
 
     console.log('📝 Structured Drawing Prompt:', prompt.substring(0, 200) + '...');
 
@@ -416,24 +420,54 @@ doc.saveas("${data.title || 'drawing'}.dxf")`;
   /**
    * Create structured prompt for LLM with ezdxf documentation
    */
-  private static createStructuredPrompt(description: string, previousData?: StructuredDrawingData): string {
+  private static createStructuredPrompt(
+    description: string,
+    previousData?: StructuredDrawingData,
+    originalDescription?: string
+  ): string {
     const ezdxfDocumentation = this.getEzdxfDocumentation();
 
     let prompt = `You are a professional CAD engineer. Analyze the drawing request and provide ONLY the required entity data in the exact JSON format below.
 
-${ezdxfDocumentation}
+${ezdxfDocumentation}`;
+
+    // Handle modification vs new drawing
+    if (previousData && originalDescription) {
+      // MODIFICATION: Include complete context
+      prompt += `
+
+ORIGINAL DRAWING REQUEST:
+${originalDescription}
+
+PREVIOUS DRAWING DATA (generated from original request):
+${JSON.stringify(previousData, null, 2)}
+
+NEW MODIFICATION REQUEST:
+${description}
+
+MODIFICATION INSTRUCTIONS:
+1. Start with the PREVIOUS DRAWING DATA above
+2. Apply the NEW MODIFICATION REQUEST to modify/add/remove entities as needed
+3. Keep all existing entities that are not affected by the modification
+4. Maintain the same coordinate system and scale
+5. Preserve layer organization and naming conventions`;
+    } else if (previousData) {
+      // MODIFICATION without original description (fallback)
+      prompt += `
 
 DRAWING REQUEST:
-${description}`;
-
-    // Include previous data for modifications
-    if (previousData) {
-      prompt += `
+${description}
 
 PREVIOUS DRAWING DATA (for modification):
 ${JSON.stringify(previousData, null, 2)}
 
 MODIFICATION INSTRUCTIONS: Modify the above drawing data according to the new request. Keep existing entities that are not affected by the modification.`;
+    } else {
+      // NEW DRAWING
+      prompt += `
+
+DRAWING REQUEST:
+${description}`;
     }
 
     prompt += `
