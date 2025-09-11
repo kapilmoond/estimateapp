@@ -39,19 +39,71 @@ export interface PointData {
 }
 
 export interface DimensionData {
-  type: 'linear' | 'aligned' | null;
-  p1X: number | null;
-  p1Y: number | null;
-  p2X: number | null;
-  p2Y: number | null;
-  baseX: number | null;
-  baseY: number | null;
-  angle: number | null; // for rotated dimensions
-  distance: number | null; // for aligned dimensions
-  text: string | null; // custom text override
+  type: 'linear' | 'aligned' | 'radius' | 'diameter' | 'angular' | 'arc' | null;
+  // Linear and aligned dimensions
+  p1X?: number | null;
+  p1Y?: number | null;
+  p2X?: number | null;
+  p2Y?: number | null;
+  baseX?: number | null;  // For linear dimensions
+  baseY?: number | null;  // For linear dimensions
+  distance?: number | null;  // For aligned dimensions
+  angle?: number | null;  // Rotation angle in degrees
+
+  // Radius and diameter dimensions
+  centerX?: number | null;  // Center point for radius/diameter
+  centerY?: number | null;
+  radius?: number | null;   // Radius value
+
+  // Angular and arc dimensions
+  startAngle?: number | null;  // Start angle in degrees
+  endAngle?: number | null;    // End angle in degrees
+
+  // Common properties
+  text?: string | null;  // Custom text override
+  location?: { x: number; y: number } | null;  // User defined text location
   layer: string | null;
   color: number | null;
   dimstyle: string | null;
+}
+
+export interface SplineData {
+  controlPoints?: { x: number; y: number; z?: number }[] | null;
+  fitPoints?: { x: number; y: number; z?: number }[] | null;
+  degree?: number | null;
+  closed?: boolean | null;
+  layer: string | null;
+  color: number | null;
+  linetype: string | null;
+}
+
+export interface HatchData {
+  pattern?: string | null;  // Pattern name like "ANSI31", "SOLID"
+  patternScale?: number | null;
+  patternAngle?: number | null;
+  color?: number | null;
+  boundaries: {
+    type: 'polyline' | 'edge';
+    vertices?: { x: number; y: number; bulge?: number }[] | null;
+    edges?: {
+      type: 'line' | 'arc' | 'ellipse';
+      startX?: number; startY?: number;
+      endX?: number; endY?: number;
+      centerX?: number; centerY?: number;
+      radius?: number;
+      startAngle?: number; endAngle?: number;
+    }[] | null;
+    isExternal?: boolean | null;
+  }[];
+  layer: string | null;
+}
+
+export interface MeshData {
+  vertices: { x: number; y: number; z: number }[];
+  faces: number[][];  // Array of vertex indices for each face
+  subdivisionLevels?: number | null;
+  layer: string | null;
+  color: number | null;
 }
 
 export interface StructuredDrawingData {
@@ -61,6 +113,9 @@ export interface StructuredDrawingData {
   arcs: ArcData[];
   points: PointData[];
   dimensions: DimensionData[];
+  splines: SplineData[];
+  hatches: HatchData[];
+  meshes: MeshData[];
 }
 
 export interface ModificationData {
@@ -70,6 +125,9 @@ export interface ModificationData {
     arcs: number[];       // Array of arc indices to delete
     points: number[];     // Array of point indices to delete
     dimensions: number[]; // Array of dimension indices to delete
+    splines: number[];    // Array of spline indices to delete
+    hatches: number[];    // Array of hatch indices to delete
+    meshes: number[];     // Array of mesh indices to delete
   };
   add: StructuredDrawingData; // New entities to add
 }
@@ -147,7 +205,10 @@ export class SimpleDrawingGenerator {
       circles: [...previousData.circles],
       arcs: [...previousData.arcs],
       points: [...previousData.points],
-      dimensions: [...previousData.dimensions]
+      dimensions: [...previousData.dimensions],
+      splines: [...(previousData.splines || [])],
+      hatches: [...(previousData.hatches || [])],
+      meshes: [...(previousData.meshes || [])]
     };
 
     // Delete entities (in reverse order to maintain indices)
@@ -186,14 +247,48 @@ export class SimpleDrawingGenerator {
       }
     });
 
+    modification.delete.splines.sort((a, b) => b - a).forEach(index => {
+      if (index >= 0 && index < result.splines.length) {
+        result.splines.splice(index, 1);
+        console.log(`🗑️ Deleted spline at index ${index}`);
+      }
+    });
+
+    modification.delete.hatches.sort((a, b) => b - a).forEach(index => {
+      if (index >= 0 && index < result.hatches.length) {
+        result.hatches.splice(index, 1);
+        console.log(`🗑️ Deleted hatch at index ${index}`);
+      }
+    });
+
+    modification.delete.meshes.sort((a, b) => b - a).forEach(index => {
+      if (index >= 0 && index < result.meshes.length) {
+        result.meshes.splice(index, 1);
+        console.log(`🗑️ Deleted mesh at index ${index}`);
+      }
+    });
+
     // Add new entities
     result.lines.push(...modification.add.lines);
     result.circles.push(...modification.add.circles);
     result.arcs.push(...modification.add.arcs);
     result.points.push(...modification.add.points);
     result.dimensions.push(...modification.add.dimensions);
+    result.splines.push(...modification.add.splines);
+    result.hatches.push(...modification.add.hatches);
+    result.meshes.push(...modification.add.meshes);
 
-    console.log(`✅ Applied modification: deleted ${modification.delete.lines.length + modification.delete.circles.length + modification.delete.arcs.length + modification.delete.points.length + modification.delete.dimensions.length} entities, added ${modification.add.lines.length + modification.add.circles.length + modification.add.arcs.length + modification.add.points.length + modification.add.dimensions.length} entities`);
+    const deletedCount = modification.delete.lines.length + modification.delete.circles.length +
+                        modification.delete.arcs.length + modification.delete.points.length +
+                        modification.delete.dimensions.length + modification.delete.splines.length +
+                        modification.delete.hatches.length + modification.delete.meshes.length;
+
+    const addedCount = modification.add.lines.length + modification.add.circles.length +
+                      modification.add.arcs.length + modification.add.points.length +
+                      modification.add.dimensions.length + modification.add.splines.length +
+                      modification.add.hatches.length + modification.add.meshes.length;
+
+    console.log(`✅ Applied modification: deleted ${deletedCount} entities, added ${addedCount} entities`);
 
     return result;
   }
@@ -250,14 +345,59 @@ export class SimpleDrawingGenerator {
 
     // Check dimension points
     data.dimensions?.forEach(dim => {
-      const p1X = dim.p1X ?? 0;
-      const p1Y = dim.p1Y ?? 0;
-      const p2X = dim.p2X ?? 100;
-      const p2Y = dim.p2Y ?? 0;
-      minX = Math.min(minX, p1X, p2X);
-      minY = Math.min(minY, p1Y, p2Y);
-      maxX = Math.max(maxX, p1X, p2X);
-      maxY = Math.max(maxY, p1Y, p2Y);
+      if (dim.type === 'linear' || dim.type === 'aligned') {
+        const p1X = dim.p1X ?? 0;
+        const p1Y = dim.p1Y ?? 0;
+        const p2X = dim.p2X ?? 100;
+        const p2Y = dim.p2Y ?? 0;
+        minX = Math.min(minX, p1X, p2X);
+        minY = Math.min(minY, p1Y, p2Y);
+        maxX = Math.max(maxX, p1X, p2X);
+        maxY = Math.max(maxY, p1Y, p2Y);
+      } else if (dim.type === 'radius' || dim.type === 'diameter' || dim.type === 'angular' || dim.type === 'arc') {
+        const centerX = dim.centerX ?? 0;
+        const centerY = dim.centerY ?? 0;
+        const radius = dim.radius ?? 50;
+        minX = Math.min(minX, centerX - radius);
+        minY = Math.min(minY, centerY - radius);
+        maxX = Math.max(maxX, centerX + radius);
+        maxY = Math.max(maxY, centerY + radius);
+      }
+    });
+
+    // Check spline points
+    data.splines?.forEach(spline => {
+      const points = spline.controlPoints || spline.fitPoints || [];
+      points.forEach(point => {
+        minX = Math.min(minX, point.x);
+        minY = Math.min(minY, point.y);
+        maxX = Math.max(maxX, point.x);
+        maxY = Math.max(maxY, point.y);
+      });
+    });
+
+    // Check hatch boundaries
+    data.hatches?.forEach(hatch => {
+      hatch.boundaries.forEach(boundary => {
+        if (boundary.vertices) {
+          boundary.vertices.forEach(vertex => {
+            minX = Math.min(minX, vertex.x);
+            minY = Math.min(minY, vertex.y);
+            maxX = Math.max(maxX, vertex.x);
+            maxY = Math.max(maxY, vertex.y);
+          });
+        }
+      });
+    });
+
+    // Check mesh vertices
+    data.meshes?.forEach(mesh => {
+      mesh.vertices.forEach(vertex => {
+        minX = Math.min(minX, vertex.x);
+        minY = Math.min(minY, vertex.y);
+        maxX = Math.max(maxX, vertex.x);
+        maxY = Math.max(maxY, vertex.y);
+      });
     });
 
     // Fallback if no entities
@@ -341,6 +481,9 @@ export class SimpleDrawingGenerator {
     data.arcs?.forEach(arc => arc.layer && layers.add(arc.layer));
     data.points?.forEach(point => point.layer && layers.add(point.layer));
     data.dimensions?.forEach(dim => dim.layer && layers.add(dim.layer));
+    data.splines?.forEach(spline => spline.layer && layers.add(spline.layer));
+    data.hatches?.forEach(hatch => hatch.layer && layers.add(hatch.layer));
+    data.meshes?.forEach(mesh => mesh.layer && layers.add(mesh.layer));
 
     let code = `import ezdxf
 
@@ -518,6 +661,94 @@ dimstyle.dxf.dimexe = ${styling.extLineExtension} # Extension line extension bey
       code += `msp.add_line((0, 0), (10, 0))\n`;
     }
 
+    // Add splines
+    if (data.splines && data.splines.length > 0) {
+      code += `# Add spline entities\n`;
+      data.splines.forEach((spline, index) => {
+        if (spline.controlPoints && spline.controlPoints.length > 0) {
+          const controlPointsStr = spline.controlPoints.map(p => `(${p.x}, ${p.y}${p.z !== undefined ? `, ${p.z}` : ''})`).join(', ');
+          code += `spline${index + 1} = msp.add_spline(control_points=[${controlPointsStr}], degree=${spline.degree ?? 3}, closed=${spline.closed ?? false})\n`;
+          code += `spline${index + 1}.dxf.layer = "${spline.layer || '0'}"\n`;
+          if (spline.color !== null) {
+            code += `spline${index + 1}.dxf.color = ${spline.color}\n`;
+          }
+          if (spline.linetype) {
+            code += `spline${index + 1}.dxf.linetype = "${spline.linetype}"\n`;
+          }
+        } else if (spline.fitPoints && spline.fitPoints.length > 0) {
+          const fitPointsStr = spline.fitPoints.map(p => `(${p.x}, ${p.y}${p.z !== undefined ? `, ${p.z}` : ''})`).join(', ');
+          code += `spline${index + 1} = msp.add_spline_fit_points(fit_points=[${fitPointsStr}], degree=${spline.degree ?? 3}, closed=${spline.closed ?? false})\n`;
+          code += `spline${index + 1}.dxf.layer = "${spline.layer || '0'}"\n`;
+          if (spline.color !== null) {
+            code += `spline${index + 1}.dxf.color = ${spline.color}\n`;
+          }
+          if (spline.linetype) {
+            code += `spline${index + 1}.dxf.linetype = "${spline.linetype}"\n`;
+          }
+        }
+        code += `\n`;
+      });
+    }
+
+    // Add hatches
+    if (data.hatches && data.hatches.length > 0) {
+      code += `# Add hatch entities\n`;
+      data.hatches.forEach((hatch, index) => {
+        code += `hatch${index + 1} = msp.add_hatch(color=${hatch.color ?? 7})\n`;
+        code += `hatch${index + 1}.dxf.layer = "${hatch.layer || '0'}"\n`;
+
+        hatch.boundaries.forEach((boundary, bIndex) => {
+          if (boundary.type === 'polyline' && boundary.vertices) {
+            const verticesStr = boundary.vertices.map(v => `(${v.x}, ${v.y}${v.bulge !== undefined ? `, ${v.bulge}` : ''})`).join(', ');
+            code += `with hatch${index + 1}.edit_boundary() as boundary_editor:\n`;
+            code += `    boundary_editor.add_polyline_path([${verticesStr}], is_closed=True, flags=1)\n`;
+          } else if (boundary.type === 'edge' && boundary.edges) {
+            code += `with hatch${index + 1}.edit_boundary() as boundary_editor:\n`;
+            code += `    edge_path = boundary_editor.add_edge_path(flags=1)\n`;
+            boundary.edges.forEach(edge => {
+              if (edge.type === 'line') {
+                code += `    edge_path.add_line((${edge.startX ?? 0}, ${edge.startY ?? 0}), (${edge.endX ?? 0}, ${edge.endY ?? 0}))\n`;
+              } else if (edge.type === 'arc') {
+                code += `    edge_path.add_arc((${edge.centerX ?? 0}, ${edge.centerY ?? 0}), ${edge.radius ?? 50}, ${edge.startAngle ?? 0}, ${edge.endAngle ?? 90})\n`;
+              }
+            });
+          }
+        });
+
+        if (hatch.pattern && hatch.pattern !== 'SOLID') {
+          code += `hatch${index + 1}.set_pattern_fill("${hatch.pattern}", scale=${hatch.patternScale ?? 1}, angle=${hatch.patternAngle ?? 0})\n`;
+        } else {
+          code += `hatch${index + 1}.set_solid_fill()\n`;
+        }
+        code += `\n`;
+      });
+    }
+
+    // Add meshes
+    if (data.meshes && data.meshes.length > 0) {
+      code += `# Add mesh entities\n`;
+      data.meshes.forEach((mesh, index) => {
+        const verticesStr = mesh.vertices.map(v => `(${v.x}, ${v.y}, ${v.z})`).join(', ');
+        const facesStr = mesh.faces.map(face => `[${face.join(', ')}]`).join(', ');
+
+        code += `mesh${index + 1} = msp.add_mesh()\n`;
+        code += `mesh${index + 1}.dxf.layer = "${mesh.layer || '0'}"\n`;
+        if (mesh.color !== null) {
+          code += `mesh${index + 1}.dxf.color = ${mesh.color}\n`;
+        }
+        code += `vertices = [${verticesStr}]\n`;
+        code += `for vertex in vertices:\n`;
+        code += `    mesh${index + 1}.vertices.append(vertex)\n`;
+        code += `faces = [${facesStr}]\n`;
+        code += `for face in faces:\n`;
+        code += `    mesh${index + 1}.faces.append(face)\n`;
+        if (mesh.subdivisionLevels && mesh.subdivisionLevels > 0) {
+          code += `mesh${index + 1}.dxf.subdivision_levels = ${mesh.subdivisionLevels}\n`;
+        }
+        code += `\n`;
+      });
+    }
+
     code += `
 # Save the DXF document
 doc.saveas("${data.title || 'drawing'}.dxf")`;
@@ -542,7 +773,10 @@ doc.saveas("${data.title || 'drawing'}.dxf")`;
       circles: previousData.circles.map((circle, index) => ({ ...circle, index })),
       arcs: previousData.arcs.map((arc, index) => ({ ...arc, index })),
       points: previousData.points.map((point, index) => ({ ...point, index })),
-      dimensions: previousData.dimensions.map((dim, index) => ({ ...dim, index }))
+      dimensions: previousData.dimensions.map((dim, index) => ({ ...dim, index })),
+      splines: previousData.splines.map((spline, index) => ({ ...spline, index })),
+      hatches: previousData.hatches.map((hatch, index) => ({ ...hatch, index })),
+      meshes: previousData.meshes.map((mesh, index) => ({ ...mesh, index }))
     };
 
     return `You are a professional CAD engineer. Analyze the modification request and provide ONLY the required modification data in the exact JSON format below.
@@ -573,25 +807,21 @@ REQUIRED OUTPUT FORMAT (JSON only, no explanations):
     "circles": [index1, index2, ...],
     "arcs": [index1, index2, ...],
     "points": [index1, index2, ...],
-    "dimensions": [index1, index2, ...]
+    "dimensions": [index1, index2, ...],
+    "splines": [index1, index2, ...],
+    "hatches": [index1, index2, ...],
+    "meshes": [index1, index2, ...]
   },
   "add": {
     "title": "drawing_name",
-    "lines": [
-      {
-        "startX": number_or_null,
-        "startY": number_or_null,
-        "endX": number_or_null,
-        "endY": number_or_null,
-        "layer": "string_or_null",
-        "color": number_or_null,
-        "linetype": "string_or_null"
-      }
-    ],
+    "lines": [...],
     "circles": [...],
     "arcs": [...],
     "points": [...],
-    "dimensions": [...]
+    "dimensions": [...],
+    "splines": [...],
+    "hatches": [...],
+    "meshes": [...]
   }
 }
 
@@ -747,46 +977,88 @@ RULES:
    * Get ezdxf documentation for prompt
    */
   private static getEzdxfDocumentation(): string {
-    return `EZDXF DOCUMENTATION REFERENCE:
+    return `COMPREHENSIVE EZDXF DOCUMENTATION REFERENCE:
 
 LAYERS (AUTO-CREATED BY APP):
 - DO NOT create layers in your response - the app will auto-create them
 - Just specify layer names in entity data - app handles layer creation
-- Common layer names: "CONSTRUCTION", "WALLS", "DOORS", "WINDOWS", "DIMENSIONS", "TEXT", "CENTERLINES"
-- Layer colors: 1=red, 2=yellow, 3=green, 4=cyan, 5=blue, 6=magenta, 7=white
+- Common layer names: "CONSTRUCTION", "WALLS", "DOORS", "WINDOWS", "DIMENSIONS", "TEXT", "CENTERLINES", "HATCHING", "SPLINES", "MESHES"
+- Layer colors: 1=red, 2=yellow, 3=green, 4=cyan, 5=blue, 6=magenta, 7=white, 8=dark_gray, 9=light_gray
 - Entities inherit layer properties automatically
 
 LINETYPES:
-- Standard linetypes: "CONTINUOUS", "DASHED", "DOTTED", "DASHDOT", "CENTER"
+- Standard: "CONTINUOUS", "DASHED", "DOTTED", "DASHDOT", "DASHDOTDOT", "DIVIDE", "CENTER", "PHANTOM", "HIDDEN", "BORDER", "BORDER2", "BORDERX2"
 - Use standard names only - app handles linetype setup
-- CONTINUOUS = solid lines, DASHED = broken lines, DOTTED = dotted lines
+- CONTINUOUS = solid lines, DASHED = broken lines, DOTTED = dotted lines, CENTER = centerlines, HIDDEN = hidden edges
 
-ENTITIES:
+BASIC ENTITIES:
 - Line: Connects two points (x1,y1) to (x2,y2)
 - Circle: Center point (cx,cy) with radius
 - Arc: Center point (cx,cy) with radius, start/end angles in degrees
 - Point: Single coordinate (x,y) for marking locations
-- Dimension: Measures distance between two points with annotation
 - All coordinates in millimeters, angles in degrees
 - Arc angles: counter-clockwise from positive X-axis (0° = right, 90° = up)
 
 DIMENSIONS (APP AUTO-SIZES TEXT/ARROWS):
-- Types: "linear" (horizontal/vertical/rotated), "aligned" (parallel to measured line)
+- Types: "linear", "aligned", "radius", "diameter", "angular", "arc"
 - Linear: Measures distance between two points with dimension line at base location
 - Aligned: Measures distance parallel to line between two points with offset
-- Base point: Location of dimension line (linear dimensions only)
-- Distance: Offset from measured line (aligned dimensions only)
-- Angle: Rotation angle in degrees (0=horizontal, 90=vertical)
-- Text override: Custom text instead of measured value
-- Dimstyle: "EZDXF" (default), "Standard", or custom style name
+- Radius: Measures radius of circles/arcs, requires centerX, centerY, radius, angle
+- Diameter: Measures diameter of circles/arcs, requires centerX, centerY, radius, angle
+- Angular: Measures angles between lines or arcs, requires centerX, centerY, startAngle, endAngle
+- Arc: Measures arc length, requires centerX, centerY, radius, startAngle, endAngle
 - IMPORTANT: App automatically calculates proper text size, arrow size, and spacing based on drawing size
-- DO NOT worry about dimension styling - focus only on placement and measurement points
+
+SPLINES (SMOOTH CURVES):
+- Control points: Define spline by control points for precise curve definition
+- Fit points: Define spline by points the curve passes through (less precise)
+- Degree: Curve degree (1=linear, 2=quadratic, 3=cubic, etc.) - use 3 for smooth curves
+- Closed: Whether spline forms a closed loop (true/false)
+- 3D support: Include z coordinate for 3D splines
+- Example: {"controlPoints": [{"x": 0, "y": 0}, {"x": 50, "y": 100}, {"x": 100, "y": 0}], "degree": 3, "closed": false}
+
+HATCHES (FILLED AREAS):
+- Patterns: "SOLID", "ANSI31", "ANSI32", "ANSI33", "ANSI34", "ANSI35", "ANSI36", "ANSI37", "ANSI38", "BRICK", "CROSS", "DOTS", "EARTH", "ESCHER", "FLEX", "GRASS", "GRAVEL", "HEX", "HONEY", "HOUND", "INSUL", "LINE", "MUDST", "NET", "NET3", "PLAST", "PLASTI", "SACNCR", "SQUARE", "STARS", "STEEL", "SWAMP", "TRANS", "TRIANG", "ZIGZAG"
+- Boundaries: Define filled area using polyline vertices or edge paths
+- Polyline boundaries: Array of vertices with x, y coordinates (and optional bulge for arcs)
+- Edge boundaries: Array of edges (lines, arcs, ellipses) defining complex shapes
+- Scale: Pattern scaling (0.1-10.0, default 1.0)
+- Angle: Pattern rotation (0-360 degrees, default 0)
+- Multiple boundaries: Support for islands and complex shapes
+- Example: {"pattern": "ANSI31", "patternScale": 1.0, "patternAngle": 45, "boundaries": [{"type": "polyline", "vertices": [{"x": 0, "y": 0}, {"x": 100, "y": 0}, {"x": 100, "y": 100}, {"x": 0, "y": 100}]}]}
+
+MESHES (3D SURFACES):
+- Vertices: 3D points defining mesh geometry (x, y, z coordinates)
+- Faces: Arrays of vertex indices defining triangular/quad faces (0-based indexing)
+- Subdivision: Smoothing level for curved surfaces (0-4 levels, default 0)
+- Professional 3D modeling capabilities for complex surfaces
+- Triangular faces: Use 3 vertex indices [0, 1, 2]
+- Quad faces: Use 4 vertex indices [0, 1, 2, 3]
+- Example: {"vertices": [{"x": 0, "y": 0, "z": 0}, {"x": 100, "y": 0, "z": 0}, {"x": 50, "y": 100, "z": 50}], "faces": [[0, 1, 2]], "subdivisionLevels": 1}
+
+PROFESSIONAL CAD FEATURES:
+- Radius Dimensions: Automatic leader lines and text positioning
+- Diameter Dimensions: Crossing diameter lines with center marks
+- Angular Dimensions: Arc-based angle measurement with extension lines
+- Arc Dimensions: Precise arc length measurement along curves
+- Rational Splines: Advanced curve control with weights and knot vectors
+- Polyface Meshes: Complex 3D surfaces with multiple faces and vertices
+- Pattern Hatching: Comprehensive pattern library with custom scaling and rotation
+- Complex Linetypes: Patterns with text, shapes, and custom spacing
 
 ATTRIBUTES:
 - layer: Layer name (string) - app will create if needed
 - color: Color index (1-255) or null for layer default
 - linetype: Linetype name or null for layer default
-- Use null for any attribute to use defaults`;
+- Use null for any attribute to use defaults
+
+COORDINATE SYSTEM:
+- Origin (0,0) at bottom-left
+- X-axis: positive to the right
+- Y-axis: positive upward
+- Z-axis: positive out of screen (for 3D entities)
+- All measurements in millimeters
+- Angles in degrees (0° = positive X-axis, counter-clockwise)`;
   }
 
   /**
@@ -859,10 +1131,40 @@ ATTRIBUTES:
           baseY: dim.baseY,
           angle: dim.angle,
           distance: dim.distance,
+          centerX: dim.centerX,
+          centerY: dim.centerY,
+          radius: dim.radius,
+          startAngle: dim.startAngle,
+          endAngle: dim.endAngle,
           text: dim.text,
+          location: dim.location,
           layer: dim.layer,
           color: dim.color,
           dimstyle: dim.dimstyle
+        })),
+        splines: (parsed.splines || []).map((spline: any) => ({
+          controlPoints: spline.controlPoints,
+          fitPoints: spline.fitPoints,
+          degree: spline.degree,
+          closed: spline.closed,
+          layer: spline.layer,
+          color: spline.color,
+          linetype: spline.linetype
+        })),
+        hatches: (parsed.hatches || []).map((hatch: any) => ({
+          pattern: hatch.pattern,
+          patternScale: hatch.patternScale,
+          patternAngle: hatch.patternAngle,
+          color: hatch.color,
+          boundaries: hatch.boundaries || [],
+          layer: hatch.layer
+        })),
+        meshes: (parsed.meshes || []).map((mesh: any) => ({
+          vertices: mesh.vertices || [],
+          faces: mesh.faces || [],
+          subdivisionLevels: mesh.subdivisionLevels,
+          layer: mesh.layer,
+          color: mesh.color
         }))
       };
     } catch (error) {
@@ -884,7 +1186,10 @@ ATTRIBUTES:
         circles: [],
         arcs: [],
         points: [],
-        dimensions: []
+        dimensions: [],
+        splines: [],
+        hatches: [],
+        meshes: []
       };
     }
   }
@@ -918,7 +1223,10 @@ ATTRIBUTES:
         circles: modificationData.delete.circles || [],
         arcs: modificationData.delete.arcs || [],
         points: modificationData.delete.points || [],
-        dimensions: modificationData.delete.dimensions || []
+        dimensions: modificationData.delete.dimensions || [],
+        splines: modificationData.delete.splines || [],
+        hatches: modificationData.delete.hatches || [],
+        meshes: modificationData.delete.meshes || []
       };
 
       // Ensure add section has all required arrays
@@ -928,7 +1236,10 @@ ATTRIBUTES:
         circles: modificationData.add.circles || [],
         arcs: modificationData.add.arcs || [],
         points: modificationData.add.points || [],
-        dimensions: modificationData.add.dimensions || []
+        dimensions: modificationData.add.dimensions || [],
+        splines: modificationData.add.splines || [],
+        hatches: modificationData.add.hatches || [],
+        meshes: modificationData.add.meshes || []
       };
 
       return {

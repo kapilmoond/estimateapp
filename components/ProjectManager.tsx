@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ProjectService, ProjectSummary, ProjectData } from '../services/projectService';
+import { EnhancedProjectService } from '../services/enhancedProjectService';
 
 interface ProjectManagerProps {
   isOpen: boolean;
@@ -27,9 +28,19 @@ export const ProjectManager: React.FC<ProjectManagerProps> = ({
     }
   }, [isOpen]);
 
-  const loadProjects = () => {
-    const projectSummaries = ProjectService.getProjectSummaries();
-    setProjects(projectSummaries);
+  const loadProjects = async () => {
+    try {
+      // Try to load from IndexedDB first
+      const projectSummaries = await EnhancedProjectService.getProjectSummaries();
+      setProjects(projectSummaries);
+      console.log(`Loaded ${projectSummaries.length} projects from IndexedDB`);
+    } catch (error) {
+      console.error('Error loading projects from IndexedDB, falling back to localStorage:', error);
+      // Fallback to localStorage
+      const projectSummaries = ProjectService.getProjectSummaries();
+      setProjects(projectSummaries);
+      console.log(`Loaded ${projectSummaries.length} projects from localStorage`);
+    }
   };
 
   const handleNewProject = () => {
@@ -52,9 +63,18 @@ export const ProjectManager: React.FC<ProjectManagerProps> = ({
     }
   };
 
-  const handleDeleteProject = (projectId: string, projectName: string) => {
+  const handleDeleteProject = async (projectId: string, projectName: string) => {
     if (confirm(`Are you sure you want to delete "${projectName}"? This action cannot be undone.`)) {
-      ProjectService.deleteProject(projectId);
+      try {
+        // Try to delete from IndexedDB first
+        await EnhancedProjectService.deleteProject(projectId);
+        console.log(`Deleted project ${projectName} from IndexedDB`);
+      } catch (error) {
+        console.error('Error deleting from IndexedDB, trying localStorage:', error);
+        // Fallback to localStorage
+        ProjectService.deleteProject(projectId);
+        console.log(`Deleted project ${projectName} from localStorage`);
+      }
       loadProjects();
     }
   };

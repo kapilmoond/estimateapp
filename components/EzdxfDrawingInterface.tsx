@@ -49,22 +49,38 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
 
   // Load drawings on component mount and when project changes
   useEffect(() => {
-    try {
-      const projectId = getCurrentProjectId();
-      const drawings = DrawingService.loadProjectDrawings(projectId);
-      setProjectDrawings(drawings);
+    const loadDrawings = async () => {
+      try {
+        const projectId = getCurrentProjectId();
 
-      // Load the latest drawing if available
-      const latestDrawing = DrawingService.getLatestProjectDrawing(projectId);
-      if (latestDrawing) {
-        setCurrentDrawing(latestDrawing);
-        // Restore the drawing result to display
-        onDrawingGenerated(latestDrawing.result);
+        // Try to load from IndexedDB first
+        let drawings: ProjectDrawing[] = [];
+        try {
+          drawings = await EnhancedDrawingService.loadProjectDrawings(projectId);
+          console.log(`Loaded ${drawings.length} drawings from IndexedDB for project ${projectId}`);
+        } catch (error) {
+          console.error('Error loading from IndexedDB, falling back to localStorage:', error);
+          // Fallback to localStorage
+          drawings = DrawingService.loadProjectDrawings(projectId);
+          console.log(`Loaded ${drawings.length} drawings from localStorage for project ${projectId}`);
+        }
+
+        setProjectDrawings(drawings);
+
+        // Load the latest drawing if available
+        if (drawings.length > 0) {
+          const latestDrawing = drawings.sort((a, b) => b.timestamp - a.timestamp)[0];
+          setCurrentDrawing(latestDrawing);
+          // Restore the drawing result to display
+          onDrawingGenerated(latestDrawing.result);
+        }
+      } catch (error) {
+        console.error('Error loading drawings:', error);
+        // Continue without crashing the app
       }
-    } catch (error) {
-      console.error('Error loading drawings:', error);
-      // Continue without crashing the app
-    }
+    };
+
+    loadDrawings();
   }, []);
 
 
@@ -383,9 +399,18 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
             </button>
 
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (confirm(`Clear all ${projectDrawings.length} drawings for this project?`)) {
-                  DrawingService.deleteProjectDrawings(getCurrentProjectId());
+                  try {
+                    // Try to clear from IndexedDB first
+                    await EnhancedDrawingService.deleteProjectDrawings(getCurrentProjectId());
+                    console.log('Cleared drawings from IndexedDB');
+                  } catch (error) {
+                    console.error('Error clearing from IndexedDB, trying localStorage:', error);
+                    // Fallback to localStorage
+                    DrawingService.deleteProjectDrawings(getCurrentProjectId());
+                    console.log('Cleared drawings from localStorage');
+                  }
                   setProjectDrawings([]);
                   setCurrentDrawing(null);
                   onDrawingsChanged && onDrawingsChanged();
@@ -442,15 +467,26 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
 
                     {/* Toggle include in context */}
                     <button
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.stopPropagation();
                         const updatedDrawing: ProjectDrawing = {
                           ...drawing,
                           includeInContext: drawing.includeInContext === false ? true : false,
                         };
-                        DrawingService.updateDrawing(updatedDrawing);
-                        const refreshed = DrawingService.loadProjectDrawings(getCurrentProjectId());
-                        setProjectDrawings(refreshed);
+
+                        try {
+                          // Try to update in IndexedDB first
+                          await EnhancedDrawingService.updateDrawing(updatedDrawing);
+                          const refreshed = await EnhancedDrawingService.loadProjectDrawings(getCurrentProjectId());
+                          setProjectDrawings(refreshed);
+                        } catch (error) {
+                          console.error('Error updating in IndexedDB, trying localStorage:', error);
+                          // Fallback to localStorage
+                          DrawingService.updateDrawing(updatedDrawing);
+                          const refreshed = DrawingService.loadProjectDrawings(getCurrentProjectId());
+                          setProjectDrawings(refreshed);
+                        }
+
                         if (currentDrawing?.id === drawing.id) {
                           setCurrentDrawing(updatedDrawing);
                         }
@@ -465,12 +501,22 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
 
                     {/* Delete */}
                     <button
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.stopPropagation();
                         if (confirm('Delete this drawing?')) {
-                          DrawingService.deleteDrawing(drawing.id);
-                          const updated = DrawingService.loadProjectDrawings(getCurrentProjectId());
-                          setProjectDrawings(updated);
+                          try {
+                            // Try to delete from IndexedDB first
+                            await EnhancedDrawingService.deleteDrawing(drawing.id);
+                            const updated = await EnhancedDrawingService.loadProjectDrawings(getCurrentProjectId());
+                            setProjectDrawings(updated);
+                          } catch (error) {
+                            console.error('Error deleting from IndexedDB, trying localStorage:', error);
+                            // Fallback to localStorage
+                            DrawingService.deleteDrawing(drawing.id);
+                            const updated = DrawingService.loadProjectDrawings(getCurrentProjectId());
+                            setProjectDrawings(updated);
+                          }
+
                           if (currentDrawing?.id === drawing.id) {
                             setCurrentDrawing(null);
                           }

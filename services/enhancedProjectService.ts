@@ -3,7 +3,7 @@
  * Replaces localStorage-based ProjectService with modern browser storage
  */
 
-import { ProjectData } from './projectService';
+import { ProjectData, ProjectSummary } from './projectService';
 import { IndexedDBService } from './indexedDBService';
 
 export class EnhancedProjectService {
@@ -248,6 +248,30 @@ export class EnhancedProjectService {
     
     return this.loadProject(currentId);
   }
+
+  /**
+   * Get all projects from IndexedDB
+   */
+  static async getAllProjects(): Promise<ProjectData[]> {
+    await this.initialize();
+    return IndexedDBService.loadAll<ProjectData>('projects');
+  }
+
+  /**
+   * Get project summaries for listing
+   */
+  static async getProjectSummaries(): Promise<ProjectSummary[]> {
+    const projects = await this.getAllProjects();
+    return projects.map(p => ({
+      id: p.id,
+      name: p.name,
+      createdAt: p.createdAt,
+      lastModified: p.lastModified,
+      step: p.step
+    }));
+  }
+
+
 
   /**
    * Update project name
