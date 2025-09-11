@@ -1009,6 +1009,27 @@ DIMENSIONS (APP AUTO-SIZES TEXT/ARROWS):
 - Arc: Measures arc length, requires centerX, centerY, radius, startAngle, endAngle
 - IMPORTANT: App automatically calculates proper text size, arrow size, and spacing based on drawing size
 
+DIMENSION POSITIONING RULES (CRITICAL FOR PROPER EXTENSION LINES):
+- For HORIZONTAL dimensions (measuring horizontal distances):
+  * p1 and p2 have same Y coordinate but different X coordinates
+  * baseY should be ABOVE or BELOW the measurement line (offset vertically by 50-100mm minimum)
+  * baseX should be between p1X and p2X (usually midpoint: (p1X + p2X) / 2)
+  * Example: measuring from (0,0) to (400,0), base should be (200, -50) or (200, 50)
+  * Extension lines will automatically connect (0,0) and (400,0) to the dimension line at Y=-50
+
+- For VERTICAL dimensions (measuring vertical distances):
+  * p1 and p2 have same X coordinate but different Y coordinates
+  * baseX should be LEFT or RIGHT of the measurement line (offset horizontally by 50-100mm minimum)
+  * baseY should be between p1Y and p2Y (usually midpoint: (p1Y + p2Y) / 2)
+  * Example: measuring from (100,600) to (100,2600), base should be (50, 1600) or (150, 1600)
+  * Extension lines will automatically connect (100,600) and (100,2600) to the dimension line at X=50
+
+- CRITICAL: Base point must be offset from the construction line to create proper extension lines
+- Extension lines automatically connect measurement points (p1, p2) to dimension line (base)
+- Dimension line is drawn at the base location, parallel to measurement direction
+- Text is placed on or near the dimension line showing the measured distance
+- Minimum offset: 50mm for small drawings, 100mm+ for large drawings
+
 SPLINES (SMOOTH CURVES):
 - Control points: Define spline by control points for precise curve definition
 - Fit points: Define spline by points the curve passes through (less precise)
