@@ -21,6 +21,7 @@ export const ProjectManager: React.FC<ProjectManagerProps> = ({
   const [newProjectName, setNewProjectName] = useState('');
   const [showNewProjectForm, setShowNewProjectForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [loadingProjectId, setLoadingProjectId] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -55,11 +56,37 @@ export const ProjectManager: React.FC<ProjectManagerProps> = ({
     onClose();
   };
 
-  const handleSelectProject = (projectId: string) => {
-    const project = ProjectService.loadProject(projectId);
-    if (project) {
-      onProjectSelected(project);
-      onClose();
+  const handleSelectProject = async (projectId: string) => {
+    setLoadingProjectId(projectId);
+
+    try {
+      // Try to load from IndexedDB first
+      const project = await EnhancedProjectService.loadProject(projectId);
+      if (project) {
+        console.log(`Loaded project "${project.name}" from IndexedDB`);
+        onProjectSelected(project);
+        onClose();
+        return;
+      }
+    } catch (error) {
+      console.error('Error loading project from IndexedDB:', error);
+    }
+
+    // Fallback to localStorage
+    try {
+      const project = ProjectService.loadProject(projectId);
+      if (project) {
+        console.log(`Loaded project "${project.name}" from localStorage (fallback)`);
+        onProjectSelected(project);
+        onClose();
+      } else {
+        alert('Project not found. It may have been deleted or corrupted.');
+      }
+    } catch (error) {
+      console.error('Error loading project from localStorage:', error);
+      alert('Failed to load project. Please try again.');
+    } finally {
+      setLoadingProjectId(null);
     }
   };
 
@@ -236,9 +263,10 @@ export const ProjectManager: React.FC<ProjectManagerProps> = ({
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => handleSelectProject(project.id)}
-                        className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+                        disabled={loadingProjectId === project.id}
+                        className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm disabled:bg-gray-400 disabled:cursor-not-allowed"
                       >
-                        Open
+                        {loadingProjectId === project.id ? '⏳ Opening...' : 'Open'}
                       </button>
                       <button
                         onClick={() => handleDeleteProject(project.id, project.name)}

@@ -284,6 +284,15 @@ const App: React.FC = () => {
 
   const loadProjectData = (project: ProjectData) => {
     setCurrentProject(project);
+
+    // Set as current project in both services
+    try {
+      EnhancedProjectService.setCurrentProject(project.id);
+    } catch (error) {
+      console.error('Error setting current project in EnhancedProjectService:', error);
+    }
+    ProjectService.setCurrentProject(project.id); // Fallback
+
     setStep(project.step);
     setConversationHistory(project.conversationHistory);
     setCurrentMessage(project.currentMessage);
