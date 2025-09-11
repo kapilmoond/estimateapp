@@ -167,20 +167,42 @@ export class EnhancedProjectService {
    */
   static async loadProject(projectId: string): Promise<ProjectData | null> {
     await this.initialize();
-    
+
     const project = await IndexedDBService.load<ProjectData>('projects', projectId);
     if (!project) return null;
-    
+
     // Load conversation history separately
     const conversationHistory = await IndexedDBService.loadConversation(projectId);
-    
+
+    // Ensure all required properties exist with defaults
     return {
       ...project,
       conversationHistory: conversationHistory || [
         { role: 'model', text: 'Hello! I am your AI assistant for construction estimation. Please describe the project you want to build, and we can define its scope together.' }
       ],
       createdAt: new Date(project.createdAt),
-      lastModified: new Date(project.lastModified)
+      lastModified: new Date(project.lastModified),
+      // Ensure progress indicators exist
+      hasScope: project.hasScope ?? false,
+      hasDesigns: project.hasDesigns ?? false,
+      hasDrawings: project.hasDrawings ?? false,
+      hasEstimate: project.hasEstimate ?? false,
+      // Ensure arrays exist
+      designs: project.designs || [],
+      drawings: project.drawings || [],
+      keywords: project.keywords || [],
+      hsrItems: project.hsrItems || [],
+      referenceDocs: project.referenceDocs || [],
+      selectedTemplates: project.selectedTemplates || [],
+      // Ensure strings exist
+      finalizedScope: project.finalizedScope || '',
+      currentMessage: project.currentMessage || '',
+      finalEstimateText: project.finalEstimateText || '',
+      purifiedContext: project.purifiedContext || '',
+      templateInstructions: project.templateInstructions || '',
+      // Ensure other properties exist
+      outputMode: project.outputMode || 'discussion',
+      step: project.step || 'scoping'
     };
   }
 
@@ -265,10 +287,16 @@ export class EnhancedProjectService {
     return projects.map(p => ({
       id: p.id,
       name: p.name,
-      createdAt: p.createdAt,
-      lastModified: p.lastModified,
-      step: p.step
-    }));
+      createdAt: new Date(p.createdAt),
+      lastModified: new Date(p.lastModified),
+      progress: {
+        hasScope: p.hasScope || false,
+        hasDesigns: p.hasDesigns || false,
+        hasDrawings: p.hasDrawings || false,
+        hasEstimate: p.hasEstimate || false,
+        conversationCount: p.conversationHistory?.length || 0
+      }
+    })).sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime());
   }
 
 

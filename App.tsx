@@ -191,13 +191,31 @@ const App: React.FC = () => {
       loadGuidelines();
 
       // Try to load current project
-      const savedProject = ProjectService.loadCurrentProject();
-      if (savedProject) {
-        loadProjectData(savedProject);
-      } else {
-        // No saved project, load individual data (legacy support)
-        loadDesigns();
-        loadDrawings();
+      try {
+        const savedProject = await EnhancedProjectService.loadCurrentProject();
+        if (savedProject) {
+          loadProjectData(savedProject);
+        } else {
+          // Fallback to localStorage
+          const legacyProject = ProjectService.loadCurrentProject();
+          if (legacyProject) {
+            loadProjectData(legacyProject);
+          } else {
+            // No saved project, load individual data (legacy support)
+            loadDesigns();
+            loadDrawings();
+          }
+        }
+      } catch (error) {
+        console.error('Error loading current project from IndexedDB:', error);
+        // Fallback to localStorage
+        const legacyProject = ProjectService.loadCurrentProject();
+        if (legacyProject) {
+          loadProjectData(legacyProject);
+        } else {
+          loadDesigns();
+          loadDrawings();
+        }
       }
 
       // Initialize context if not exists
