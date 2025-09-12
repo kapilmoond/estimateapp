@@ -108,6 +108,7 @@ export interface MeshData {
 
 export interface StructuredDrawingData {
   title: string;
+  description?: string;
   lines: LineData[];
   circles: CircleData[];
   arcs: ArcData[];
@@ -911,6 +912,7 @@ ${description}`;
 REQUIRED OUTPUT FORMAT (JSON only, no explanations):
 {
   "title": "drawing_name",
+  "description": "One-line description of what this drawing shows (e.g., 'Foundation plan with reinforcement details', 'Beam elevation with dimensions')",
   "lines": [
     {
       "startX": number_or_null,
@@ -1126,6 +1128,7 @@ COORDINATE SYSTEM:
 
       return {
         title: parsed.title,
+        description: parsed.description || 'Technical drawing generated with ezdxf',
         lines: (parsed.lines || []).map((line: any) => ({
           startX: line.startX,
           startY: line.startY,
@@ -1212,6 +1215,7 @@ COORDINATE SYSTEM:
       // Return default structure if parsing fails
       return {
         title: 'drawing',
+        description: 'Simple technical drawing',
         lines: [{
           startX: 0,
           startY: 0,

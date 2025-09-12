@@ -1561,6 +1561,14 @@ Create a new cost abstract that addresses the remake instructions using the exis
           {/* Technical Drawing Results */}
           {outputMode === 'drawing' && (
             <div className="space-y-6">
+              {/* Drawing Context Selector - Always visible when drawings exist */}
+              {savedDrawings.length > 0 && (
+                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">📐 Drawing Management</h3>
+                  <DrawingContextSelector drawings={savedDrawings} onChange={loadSavedDrawings} />
+                </div>
+              )}
+
               {/* Display Generated Drawings */}
               {drawingResults.map((result, index) => (
                 <DrawingResultsDisplay

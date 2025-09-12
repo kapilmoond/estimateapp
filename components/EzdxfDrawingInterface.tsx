@@ -176,7 +176,7 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
         const savedDrawing = await EnhancedDrawingService.saveDrawing({
           projectId: getCurrentProjectId(),
           title,
-          description: extractDescription(userInput),
+          description: structuredData.description || extractDescription(userInput),
           specification: JSON.stringify(structuredData), // Store structured data for modifications
           generatedCode: pythonCode,
           result,
@@ -196,7 +196,7 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
           const fallbackDrawing = DrawingService.saveDrawing({
             projectId: getCurrentProjectId(),
             title,
-            description: extractDescription(userInput),
+            description: structuredData.description || extractDescription(userInput),
             specification: analysis,
             generatedCode: pythonCode,
             result,

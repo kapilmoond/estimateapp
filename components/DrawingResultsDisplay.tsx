@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { DrawingResult } from '../services/ezdxfDrawingService';
 import { EzdxfDrawingService } from '../services/ezdxfDrawingService';
-import { DXFPreviewPanel } from './DXFPreviewPanel';
 
 interface DrawingResultsDisplayProps {
   result: DrawingResult;
@@ -17,7 +16,6 @@ export const DrawingResultsDisplay: React.FC<DrawingResultsDisplayProps> = ({
   const [regenerateInstructions, setRegenerateInstructions] = useState('');
   const [showRegenerateForm, setShowRegenerateForm] = useState(false);
   const [showPythonCode, setShowPythonCode] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
 
   const handleDownloadDXF = () => {
     try {
@@ -97,18 +95,8 @@ export const DrawingResultsDisplay: React.FC<DrawingResultsDisplayProps> = ({
         </div>
       </div>
 
-      {/* Preview removed per requirement: only DXF download offered */}
-
-
-
       {/* Action Buttons */}
       <div className="flex flex-wrap items-center gap-3 mb-6">
-        <button
-          onClick={() => setShowPreview(true)}
-          className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium flex items-center gap-2"
-        >
-          👁️ Preview DXF
-        </button>
 
         <button
           onClick={handleDownloadDXF}
@@ -233,36 +221,15 @@ export const DrawingResultsDisplay: React.FC<DrawingResultsDisplayProps> = ({
         </div>
       </div>
 
-      {/* Technical Details */}
-      <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
-        <h4 className="text-sm font-medium text-gray-700 mb-2">Technical Details:</h4>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs text-gray-600">
-          <div>
-            <span className="font-medium">DXF Version:</span>
-            <div>AutoCAD R2018</div>
-          </div>
-          <div>
-            <span className="font-medium">Units:</span>
-            <div>Millimeters</div>
-          </div>
-          <div>
-            <span className="font-medium">Layers:</span>
-            <div>Professional CAD</div>
-          </div>
-          <div>
-            <span className="font-medium">Compatibility:</span>
-            <div>All major CAD software</div>
-          </div>
+      {/* Drawing Description */}
+      {result.description && result.description !== 'Technical drawing generated with ezdxf' && (
+        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <h4 className="text-sm font-medium text-blue-700 mb-2">📝 Drawing Description:</h4>
+          <p className="text-sm text-blue-800">{result.description}</p>
         </div>
-      </div>
+      )}
 
-      {/* DXF Preview Panel */}
-      <DXFPreviewPanel
-        result={result}
-        isVisible={showPreview}
-        onClose={() => setShowPreview(false)}
-        onDownload={handleDownloadDXF}
-      />
+
     </div>
   );
 };
