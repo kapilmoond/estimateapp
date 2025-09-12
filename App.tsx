@@ -117,6 +117,7 @@ const App: React.FC = () => {
   const [includeKnowledgeBase, setIncludeKnowledgeBase] = useState<boolean>(false);
   const [currentProvider] = useState<string>(LLMService.getCurrentProvider());
   const [currentModel] = useState<string>(LLMService.getCurrentModel());
+  const [selectedPromptForView, setSelectedPromptForView] = useState<{ message: ChatMessage; index: number } | null>(null);
 
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [contextKey, setContextKey] = useState<number>(0); // Force re-render of context
@@ -748,8 +749,28 @@ const App: React.FC = () => {
           lastMessage.text += `\n\n**IMPORTANT:** Reference the available component designs and their quantities when relevant to this discussion. Include specific quantities and specifications from the designs when discussing costs, materials, or construction details.`;
         }
 
+        // Construct the full prompt that will be sent to LLM for transparency
+        const fullPromptForUser = constructFullPromptDisplay(conversationPrompt, enhancedReferenceText);
+
         const modelResponse = await continueConversation(conversationPrompt, enhancedReferenceText, outputMode);
-        setConversationHistory(prev => [...prev, { role: 'model', text: modelResponse }]);
+
+        // Store the full prompt in the user message for transparency
+        const updatedUserMessage = {
+          ...newMessage,
+          fullPrompt: fullPromptForUser,
+          timestamp: Date.now()
+        };
+
+        setConversationHistory(prev => {
+          const updated = [...prev];
+          updated[updated.length - 1] = updatedUserMessage; // Update the user message with full prompt
+          updated.push({
+            role: 'model',
+            text: modelResponse,
+            timestamp: Date.now()
+          });
+          return updated;
+        });
 
         // Extract and save LLM summary
         const llmSummary = ContextService.extractLLMSummary(modelResponse);
@@ -1510,6 +1531,24 @@ Create a new cost abstract that addresses the remake instructions using the exis
                   }`}
                 >
                   <div className="whitespace-pre-wrap">{message.text}</div>
+
+                  {/* Show "View Full Prompt" button for user messages with fullPrompt */}
+                  {message.role === 'user' && message.fullPrompt && (
+                    <div className="mt-2 pt-2 border-t border-blue-500 border-opacity-30">
+                      <button
+                        onClick={() => setSelectedPromptForView({ message, index })}
+                        className="text-xs bg-blue-500 bg-opacity-20 hover:bg-opacity-30 px-2 py-1 rounded transition-colors"
+                        title="View the complete prompt sent to LLM including context and knowledge base"
+                      >
+                        🔍 View Full Prompt
+                      </button>
+                      {message.timestamp && (
+                        <span className="text-xs opacity-75 ml-2">
+                          {new Date(message.timestamp).toLocaleTimeString()}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -1881,8 +1920,92 @@ Create a new cost abstract that addresses the remake instructions using the exis
           onClose={() => setShowNSRateAnalysis(false)}
         />
       )}
+
+      {/* Full Prompt Viewer Modal */}
+      {selectedPromptForView && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full mx-4 max-h-[90vh] overflow-hidden">
+            <div className="p-6 border-b bg-blue-50">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-gray-900">
+                  🔍 Complete LLM Prompt - Message #{selectedPromptForView.index + 1}
+                </h2>
+                <button
+                  onClick={() => setSelectedPromptForView(null)}
+                  className="text-gray-500 hover:text-gray-700 text-xl"
+                >
+                  ×
+                </button>
+              </div>
+              <p className="text-sm text-gray-600 mt-2">
+                This is the complete prompt that was sent to the LLM, including all context, knowledge base content, and system instructions.
+              </p>
+              {selectedPromptForView.message.timestamp && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Sent at: {new Date(selectedPromptForView.message.timestamp).toLocaleString()}
+                </p>
+              )}
+            </div>
+
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
+              <div className="bg-gray-50 rounded-lg p-4 border">
+                <div className="mb-4">
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">📝 User Message</h3>
+                  <div className="bg-blue-50 p-3 rounded border border-blue-200">
+                    <div className="whitespace-pre-wrap text-sm">{selectedPromptForView.message.text}</div>
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">🤖 Complete LLM Prompt</h3>
+                  <div className="bg-white p-4 rounded border border-gray-300 max-h-96 overflow-y-auto">
+                    <pre className="whitespace-pre-wrap text-xs font-mono text-gray-700">
+                      {selectedPromptForView.message.fullPrompt}
+                    </pre>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-4 border-t">
+                  <div className="text-sm text-gray-600">
+                    <strong>Prompt Length:</strong> {selectedPromptForView.message.fullPrompt?.length.toLocaleString()} characters
+                  </div>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(selectedPromptForView.message.fullPrompt || '');
+                      alert('Full prompt copied to clipboard!');
+                    }}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                  >
+                    📋 Copy Full Prompt
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
+};
+
+// Helper function to construct full prompt display for transparency
+const constructFullPromptDisplay = (conversationPrompt: ChatMessage[], enhancedReferenceText: string): string => {
+  let fullPrompt = '';
+
+  // Add system context
+  if (enhancedReferenceText) {
+    fullPrompt += '=== SYSTEM CONTEXT ===\n';
+    fullPrompt += enhancedReferenceText;
+    fullPrompt += '\n\n';
+  }
+
+  // Add conversation history
+  fullPrompt += '=== CONVERSATION HISTORY ===\n';
+  conversationPrompt.forEach((msg, index) => {
+    fullPrompt += `${index + 1}. ${msg.role.toUpperCase()}: ${msg.text}\n\n`;
+  });
+
+  return fullPrompt;
 };
 
 export default App;

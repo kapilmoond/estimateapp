@@ -9,6 +9,8 @@ export interface HsrItem {
 export interface ChatMessage {
     role: 'user' | 'model';
     text: string;
+    fullPrompt?: string; // The complete prompt sent to LLM (including context, knowledge base, etc.)
+    timestamp?: number; // When the message was created
 }
 
 export interface KeywordsByItem {
