@@ -39,17 +39,18 @@ export class RAGService {
     }
 
     if (ragContext.chunkCount === 0) {
-      console.log('❌ RAG Enhancement: No relevant chunks found');
+      console.log('❌ RAG Enhancement: No relevant chunks found after progressive search');
       return { enhancedPrompt: originalPrompt, ragContext };
     }
 
     // Use the context directly from RAG service
     const contextText = ragContext.context;
     console.log(`✅ RAG Enhancement: Context text length: ${contextText.length} characters`);
+    console.log(`📊 RAG Enhancement: Sources used: [${ragContext.sources.join(', ')}]`);
 
     // Create enhanced prompt
     const enhancedPrompt = this.createEnhancedPrompt(originalPrompt, contextText, ragContext);
-    console.log(`✅ RAG Enhancement: Enhanced prompt length: ${enhancedPrompt.length} characters`);
+    console.log(`✅ RAG Enhancement: Enhanced prompt length: ${enhancedPrompt.length} characters (${enhancedPrompt.length - originalPrompt.length} added)`);
 
     return { enhancedPrompt, ragContext };
   }
@@ -127,12 +128,16 @@ export class RAGService {
    * Create enhanced prompt with knowledge base context
    */
   private static createEnhancedPrompt(
-    originalPrompt: string, 
-    contextText: string, 
+    originalPrompt: string,
+    contextText: string,
     ragContext: RAGContext
   ): string {
+    const sourcesList = ragContext.sources.length > 0
+      ? `\nSources: ${ragContext.sources.join(', ')}`
+      : '';
+
     const contextHeader = `KNOWLEDGE BASE CONTEXT:
-The following information is from the user's personal knowledge base documents. Use this information to provide more accurate and relevant responses when applicable.
+The following information is from the user's personal knowledge base documents (${ragContext.chunkCount} relevant chunks found using progressive similarity search). Use this information to provide more accurate and relevant responses when applicable.${sourcesList}
 
 ${contextText}
 
@@ -145,7 +150,7 @@ ${contextText}
 USER REQUEST:
 ${originalPrompt}
 
-Please use the knowledge base context above when relevant to provide a more informed response. If the knowledge base contains relevant information, reference it in your response. If not, proceed with your general knowledge.`;
+Please use the knowledge base context above when relevant to provide a more informed response. If the knowledge base contains relevant information, reference it in your response and mention which source documents you're drawing from. If the context is not directly relevant, proceed with your general knowledge but acknowledge that you've reviewed the available knowledge base.`;
 
     return enhancedPrompt;
   }

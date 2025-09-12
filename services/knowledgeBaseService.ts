@@ -227,42 +227,226 @@ export class EnhancedKnowledgeBaseService {
     }
   }
 
-  // Search documents by query (simple text matching)
+  // Enhanced search with progressive similarity threshold
   static async searchDocuments(query: string, limit: number = 10): Promise<DocumentChunk[]> {
     try {
       const documents = await this.loadDocuments();
       const activeDocuments = documents.filter(doc => doc.isActive);
 
-      console.log(`🔍 Knowledge Base Search: Total documents: ${documents.length}, Active: ${activeDocuments.length}`);
-      console.log(`🔍 Knowledge Base Search: Query: "${query}"`);
+      console.log(`🔍 Enhanced RAG Search: Total documents: ${documents.length}, Active: ${activeDocuments.length}`);
+      console.log(`🔍 Enhanced RAG Search: Query: "${query}", Target chunks: ${limit}`);
 
-      const matchingChunks: DocumentChunk[] = [];
-      const queryLower = query.toLowerCase();
+      return await this.progressiveSimilaritySearch(query, activeDocuments, limit);
+    } catch (error) {
+      console.error('Error in enhanced search:', error);
+      return [];
+    }
+  }
 
-      for (const doc of activeDocuments) {
-        console.log(`📄 Searching document: ${doc.fileName} (${doc.chunks.length} chunks)`);
-        for (const chunk of doc.chunks) {
-          if (chunk.content.toLowerCase().includes(queryLower)) {
-            matchingChunks.push(chunk);
-            console.log(`✅ Found match in ${doc.fileName}: "${chunk.content.substring(0, 100)}..."`);
-          }
+  // Progressive similarity threshold search - starts high, decreases until chunks found
+  private static async progressiveSimilaritySearch(
+    query: string,
+    documents: any[],
+    targetChunks: number
+  ): Promise<DocumentChunk[]> {
+    const queryTerms = this.extractSearchTerms(query);
+    console.log(`🎯 Progressive Search: Extracted terms: [${queryTerms.join(', ')}]`);
+
+    // Progressive thresholds: start high (exact matches) and decrease
+    const maxThreshold = 1.0;
+    const minThreshold = 0.01;
+    const decrement = 0.001;
+
+    let bestChunks: Array<{chunk: DocumentChunk, score: number, source: string}> = [];
+    let currentThreshold = maxThreshold;
+
+    console.log(`🔄 Progressive Search: Starting with threshold ${maxThreshold}, target: ${targetChunks} chunks`);
+
+    while (currentThreshold >= minThreshold) {
+      const roundedThreshold = Math.round(currentThreshold * 1000) / 1000; // Round to 3 decimal places
+
+      // Search all chunks with current threshold
+      const candidateChunks = this.searchWithThreshold(query, queryTerms, documents, roundedThreshold);
+
+      if (candidateChunks.length > 0) {
+        console.log(`✅ Progressive Search: Found ${candidateChunks.length} chunks at threshold ${roundedThreshold}`);
+        bestChunks = candidateChunks;
+
+        // If we have enough chunks, stop searching
+        if (bestChunks.length >= targetChunks) {
+          console.log(`🎯 Progressive Search: Target reached! Using ${bestChunks.length} chunks at threshold ${roundedThreshold}`);
+          break;
         }
       }
 
-      console.log(`🔍 Knowledge Base Search: Found ${matchingChunks.length} matching chunks`);
+      // Decrease threshold for next iteration
+      currentThreshold -= decrement;
 
-      // Sort by relevance (simple: by query frequency in chunk)
-      matchingChunks.sort((a, b) => {
-        const aMatches = (a.content.toLowerCase().match(new RegExp(queryLower, 'g')) || []).length;
-        const bMatches = (b.content.toLowerCase().match(new RegExp(queryLower, 'g')) || []).length;
-        return bMatches - aMatches;
-      });
-
-      return matchingChunks.slice(0, limit);
-    } catch (error) {
-      console.error('Error searching documents:', error);
-      return [];
+      // Log progress every 0.1 threshold decrease
+      if (Math.round(currentThreshold * 10) % 1 === 0) {
+        console.log(`🔄 Progressive Search: Threshold ${roundedThreshold} → ${Math.round(currentThreshold * 1000) / 1000}, found: ${candidateChunks.length}`);
+      }
     }
+
+    // Final results
+    const finalChunks = bestChunks
+      .sort((a, b) => b.score - a.score) // Sort by relevance score
+      .slice(0, targetChunks) // Take only the requested number
+      .map(item => item.chunk);
+
+    console.log(`🏁 Progressive Search Complete: Found ${finalChunks.length}/${targetChunks} chunks`);
+    if (bestChunks.length > 0) {
+      const finalThreshold = Math.round((maxThreshold - currentThreshold + decrement) * 1000) / 1000;
+      console.log(`📊 Progressive Search Stats: Best threshold: ${finalThreshold}, Sources: [${[...new Set(bestChunks.slice(0, targetChunks).map(item => item.source))].join(', ')}]`);
+    }
+
+    return finalChunks;
+  }
+
+  // Extract meaningful search terms from query
+  private static extractSearchTerms(query: string): string[] {
+    // Remove common stop words and extract meaningful terms
+    const stopWords = new Set([
+      'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by',
+      'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did',
+      'will', 'would', 'could', 'should', 'may', 'might', 'can', 'this', 'that', 'these', 'those',
+      'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them', 'my', 'your',
+      'his', 'her', 'its', 'our', 'their', 'what', 'when', 'where', 'why', 'how', 'which', 'who'
+    ]);
+
+    return query
+      .toLowerCase()
+      .replace(/[^\w\s]/g, ' ') // Remove punctuation
+      .split(/\s+/) // Split by whitespace
+      .filter(term => term.length > 2 && !stopWords.has(term)) // Filter meaningful terms
+      .slice(0, 10); // Limit to top 10 terms
+  }
+
+  // Search chunks with specific similarity threshold
+  private static searchWithThreshold(
+    originalQuery: string,
+    queryTerms: string[],
+    documents: any[],
+    threshold: number
+  ): Array<{chunk: DocumentChunk, score: number, source: string}> {
+    const results: Array<{chunk: DocumentChunk, score: number, source: string}> = [];
+    const queryLower = originalQuery.toLowerCase();
+
+    for (const doc of documents) {
+      for (const chunk of doc.chunks) {
+        const chunkLower = chunk.content.toLowerCase();
+
+        // Calculate similarity score
+        const score = this.calculateSimilarityScore(queryLower, queryTerms, chunkLower);
+
+        // Include chunk if score meets threshold
+        if (score >= threshold) {
+          results.push({
+            chunk,
+            score,
+            source: doc.fileName
+          });
+        }
+      }
+    }
+
+    return results;
+  }
+
+  // Calculate similarity score between query and chunk
+  private static calculateSimilarityScore(
+    queryLower: string,
+    queryTerms: string[],
+    chunkLower: string
+  ): number {
+    let score = 0;
+    const chunkWords = chunkLower.split(/\s+/);
+    const chunkWordSet = new Set(chunkWords);
+
+    // 1. Exact phrase match (highest weight)
+    if (chunkLower.includes(queryLower)) {
+      score += 1.0;
+    }
+
+    // 2. Individual term matches (weighted by term frequency)
+    let termMatches = 0;
+    for (const term of queryTerms) {
+      if (chunkWordSet.has(term)) {
+        termMatches++;
+        // Count frequency of term in chunk
+        const termFreq = (chunkLower.match(new RegExp(term, 'g')) || []).length;
+        score += (termFreq / chunkWords.length) * 0.5; // Weighted by frequency
+      }
+    }
+
+    // 3. Term coverage bonus (percentage of query terms found)
+    if (queryTerms.length > 0) {
+      const coverage = termMatches / queryTerms.length;
+      score += coverage * 0.3;
+    }
+
+    // 4. Partial word matches (lower weight)
+    for (const term of queryTerms) {
+      if (term.length > 3) { // Only for longer terms
+        const partialMatches = chunkWords.filter(word =>
+          word.includes(term) || term.includes(word)
+        ).length;
+        score += (partialMatches / chunkWords.length) * 0.1;
+      }
+    }
+
+    // 5. Semantic proximity bonus (words appearing near each other)
+    if (termMatches > 1) {
+      score += this.calculateProximityBonus(queryTerms, chunkWords) * 0.2;
+    }
+
+    return Math.min(score, 1.0); // Cap at 1.0
+  }
+
+  // Calculate bonus for terms appearing close to each other
+  private static calculateProximityBonus(queryTerms: string[], chunkWords: string[]): number {
+    let proximityScore = 0;
+    const positions: {[term: string]: number[]} = {};
+
+    // Find positions of query terms in chunk
+    queryTerms.forEach(term => {
+      positions[term] = [];
+      chunkWords.forEach((word, index) => {
+        if (word === term) {
+          positions[term].push(index);
+        }
+      });
+    });
+
+    // Calculate proximity between terms
+    const termPairs = [];
+    for (let i = 0; i < queryTerms.length; i++) {
+      for (let j = i + 1; j < queryTerms.length; j++) {
+        termPairs.push([queryTerms[i], queryTerms[j]]);
+      }
+    }
+
+    termPairs.forEach(([term1, term2]) => {
+      const pos1 = positions[term1] || [];
+      const pos2 = positions[term2] || [];
+
+      if (pos1.length > 0 && pos2.length > 0) {
+        // Find minimum distance between any occurrence of the two terms
+        let minDistance = Infinity;
+        pos1.forEach(p1 => {
+          pos2.forEach(p2 => {
+            minDistance = Math.min(minDistance, Math.abs(p1 - p2));
+          });
+        });
+
+        // Closer terms get higher bonus (max bonus when distance = 1)
+        if (minDistance < 10) { // Only consider if within 10 words
+          proximityScore += 1 / minDistance;
+        }
+      }
+    });
+
+    return Math.min(proximityScore / termPairs.length, 1.0);
   }
 
   // Get RAG context for a query
