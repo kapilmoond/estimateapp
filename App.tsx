@@ -165,6 +165,14 @@ const App: React.FC = () => {
     }
   }, [conversationHistory, finalizedScope, designs, drawings, finalEstimateText, selectedTemplates]);
 
+  // Load drawings when current project changes
+  useEffect(() => {
+    if (currentProject) {
+      console.log('Current project changed, loading drawings for:', currentProject.id);
+      loadSavedDrawings();
+    }
+  }, [currentProject?.id]);
+
   useEffect(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
@@ -194,12 +202,12 @@ const App: React.FC = () => {
       try {
         const savedProject = await EnhancedProjectService.loadCurrentProject();
         if (savedProject) {
-          loadProjectData(savedProject);
+          await loadProjectData(savedProject);
         } else {
           // Fallback to localStorage
           const legacyProject = ProjectService.loadCurrentProject();
           if (legacyProject) {
-            loadProjectData(legacyProject);
+            await loadProjectData(legacyProject);
           } else {
             // No saved project, load individual data (legacy support)
             loadDesigns();
@@ -211,7 +219,7 @@ const App: React.FC = () => {
         // Fallback to localStorage
         const legacyProject = ProjectService.loadCurrentProject();
         if (legacyProject) {
-          loadProjectData(legacyProject);
+          await loadProjectData(legacyProject);
         } else {
           loadDesigns();
           loadDrawings();
@@ -267,22 +275,25 @@ const App: React.FC = () => {
       }
 
       setSavedDrawings(drawings);
+      console.log('Set savedDrawings state:', drawings.length, 'drawings');
 
       // Load all drawing results for display (do not overwrite previous)
       if (drawings.length > 0) {
-        setDrawingResults(drawings
+        const results = drawings
           .sort((a, b) => b.timestamp - a.timestamp)
-          .map(d => d.result)
-        );
+          .map(d => d.result);
+        setDrawingResults(results);
+        console.log('Set drawingResults state:', results.length, 'results');
       } else {
         setDrawingResults([]);
+        console.log('No drawings found, cleared drawingResults');
       }
     } catch (error) {
       console.error('Error loading saved drawings:', error);
     }
   };
 
-  const loadProjectData = (project: ProjectData) => {
+  const loadProjectData = async (project: ProjectData) => {
     setCurrentProject(project);
 
     // Set as current project in both services
@@ -309,6 +320,10 @@ const App: React.FC = () => {
     // Load project-specific designs and drawings
     setDesigns(project.designs || []);
     setDrawings(project.drawings || []);
+
+    // Load persistent drawings from storage for this project
+    console.log('Loading saved drawings for project:', project.id);
+    await loadSavedDrawings();
 
     setReferenceDocs(project.referenceDocs);
     setOutputMode(project.outputMode);
@@ -381,7 +396,7 @@ const App: React.FC = () => {
     try {
       // Create new project using IndexedDB
       const newProject = await EnhancedProjectService.createProject(projectName);
-      loadProjectData(newProject);
+      await loadProjectData(newProject);
       console.log('New project created successfully:', newProject.name);
     } catch (error) {
       console.error('Failed to create project with IndexedDB, trying localStorage fallback:', error);
@@ -391,7 +406,7 @@ const App: React.FC = () => {
 
         // Fallback to localStorage
         const newProject = ProjectService.createProject(projectName);
-        loadProjectData(newProject);
+        await loadProjectData(newProject);
         console.log('New project created with localStorage fallback:', newProject.name);
       } catch (fallbackError) {
         console.error('Failed to create project with both IndexedDB and localStorage:', fallbackError);
@@ -406,14 +421,14 @@ const App: React.FC = () => {
     }
   };
 
-  const handleProjectSelected = (project: ProjectData) => {
+  const handleProjectSelected = async (project: ProjectData) => {
     // Save current project if exists
     if (currentProject) {
       saveCurrentProject();
     }
 
     // Load selected project
-    loadProjectData(project);
+    await loadProjectData(project);
   };
 
   const handleDrawingGenerated = (result: DrawingResult) => {
@@ -1559,6 +1574,11 @@ Create a new cost abstract that addresses the remake instructions using the exis
           {/* Technical Drawing Results */}
           {outputMode === 'drawing' && (
             <div className="space-y-6">
+              {/* Debug Info */}
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm">
+                <strong>Debug:</strong> savedDrawings: {savedDrawings.length}, drawingResults: {drawingResults.length}, currentProject: {currentProject?.id || 'none'}
+              </div>
+
               {/* Drawing Context Selector - Always visible when drawings exist */}
               {savedDrawings.length > 0 && (
                 <div className="bg-white border border-gray-200 rounded-lg p-4">
