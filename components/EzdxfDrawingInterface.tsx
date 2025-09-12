@@ -7,6 +7,7 @@ import { DrawingSettingsPanel, DrawingSettings } from './DrawingSettingsPanel';
 import { DrawingSettingsService } from '../services/drawingSettingsService';
 import { DrawingService, EnhancedDrawingService, ProjectDrawing } from '../services/drawingService';
 import { ProjectService } from '../services/projectService';
+import { RAGService } from '../services/ragService';
 
 interface EzdxfDrawingInterfaceProps {
   userInput: string;
@@ -14,6 +15,7 @@ interface EzdxfDrawingInterfaceProps {
   designContext: string;
   guidelines: string;
   referenceText: string;
+  includeKnowledgeBase?: boolean; // Whether to include knowledge base context
   onDrawingGenerated: (result: DrawingResult) => void;
   onError: (error: string) => void;
   onGenerateDrawing?: () => Promise<void>; // Function to trigger drawing generation
@@ -26,6 +28,7 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
   designContext,
   guidelines,
   referenceText,
+  includeKnowledgeBase = false,
   onDrawingGenerated,
   onError,
   onGenerateDrawing,
@@ -151,13 +154,25 @@ export const EzdxfDrawingInterface: React.FC<EzdxfDrawingInterfaceProps> = ({
     }
 
     try {
+      // Enhance drawing input with knowledge base if enabled
+      let enhancedDrawingInput = userInput;
+      if (includeKnowledgeBase) {
+        console.log('🔍 Enhancing drawing request with knowledge base context...');
+        const { enhancedPrompt } = await RAGService.enhancePromptWithKnowledgeBase(
+          userInput,
+          includeKnowledgeBase
+        );
+        enhancedDrawingInput = enhancedPrompt;
+        console.log('✅ Drawing request enhanced with knowledge base context');
+      }
+
       // SIMPLE STRUCTURED DRAWING GENERATION SYSTEM
       console.log('📝 Generating structured drawing data...');
 
-      // Step 1: Get structured data from LLM (with previous data for modifications)
+      // Step 1: Get structured data from LLM (with previous data for modifications and enhanced input)
       const previousData = currentDrawing?.specification ? JSON.parse(currentDrawing.specification) : undefined;
       const originalDescription = currentDrawing?.description || undefined;
-      const structuredData = await SimpleDrawingGenerator.generateStructuredData(userInput, previousData, originalDescription, guidelines);
+      const structuredData = await SimpleDrawingGenerator.generateStructuredData(enhancedDrawingInput, previousData, originalDescription, guidelines);
       console.log('✅ Structured data received:', structuredData);
 
       // Step 2: Generate Python code from structured data

@@ -950,11 +950,23 @@ const App: React.FC = () => {
       const title = inputText.match(/(?:draw|create|generate)\s+(?:a\s+)?(.+?)(?:\s+for|\s+with|\.|$)/i)?.[1]?.trim() ||
                    `Technical Drawing ${new Date().toLocaleDateString()}`;
 
+      // Enhance drawing input with knowledge base if enabled
+      let enhancedDrawingInput = inputText;
+      if (includeKnowledgeBase) {
+        console.log('🔍 Enhancing drawing request with knowledge base context...');
+        const { enhancedPrompt } = await RAGService.enhancePromptWithKnowledgeBase(
+          inputText,
+          includeKnowledgeBase
+        );
+        enhancedDrawingInput = enhancedPrompt;
+        console.log('✅ Drawing request enhanced with knowledge base context');
+      }
+
       // SIMPLE STRUCTURED DRAWING GENERATION SYSTEM
       console.log('📝 Generating structured drawing data...');
 
-      // Step 1: Get structured data from LLM
-      const structuredData = await SimpleDrawingGenerator.generateStructuredData(inputText);
+      // Step 1: Get structured data from LLM (with enhanced input including knowledge base)
+      const structuredData = await SimpleDrawingGenerator.generateStructuredData(enhancedDrawingInput);
       console.log('✅ Structured data received:', structuredData);
 
       // Step 2: Generate Python code from structured data
