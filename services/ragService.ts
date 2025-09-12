@@ -14,32 +14,42 @@ export class RAGService {
     includeKnowledgeBase: boolean = false,
     maxContextLength: number = this.MAX_CONTEXT_LENGTH
   ): Promise<{ enhancedPrompt: string; ragContext: RAGContext | null }> {
+    console.log(`🔍 RAG Enhancement: includeKnowledgeBase=${includeKnowledgeBase}, prompt="${originalPrompt.substring(0, 100)}..."`);
+
     if (!includeKnowledgeBase) {
+      console.log('❌ RAG Enhancement: Knowledge base not enabled');
       return { enhancedPrompt: originalPrompt, ragContext: null };
     }
 
     // Search for relevant context using enhanced service
     let ragContext: RAGContext;
     try {
+      console.log('🔍 RAG Enhancement: Searching IndexedDB...');
       ragContext = await EnhancedKnowledgeBaseService.getRAGContext(originalPrompt, this.MAX_CHUNKS);
+      console.log(`✅ RAG Enhancement: IndexedDB search completed, found ${ragContext.chunkCount} chunks`);
     } catch (error) {
       console.error('Error getting RAG context from IndexedDB, falling back to localStorage:', error);
       // Fallback to localStorage
+      console.log('🔄 RAG Enhancement: Falling back to localStorage...');
       ragContext = KnowledgeBaseService.searchRelevantChunks(
         originalPrompt,
         this.MAX_CHUNKS
       );
+      console.log(`✅ RAG Enhancement: localStorage search completed, found ${ragContext.chunkCount || ragContext.relevantChunks?.length || 0} chunks`);
     }
 
     if (ragContext.chunkCount === 0) {
+      console.log('❌ RAG Enhancement: No relevant chunks found');
       return { enhancedPrompt: originalPrompt, ragContext };
     }
 
     // Use the context directly from RAG service
     const contextText = ragContext.context;
+    console.log(`✅ RAG Enhancement: Context text length: ${contextText.length} characters`);
 
     // Create enhanced prompt
     const enhancedPrompt = this.createEnhancedPrompt(originalPrompt, contextText, ragContext);
+    console.log(`✅ RAG Enhancement: Enhanced prompt length: ${enhancedPrompt.length} characters`);
 
     return { enhancedPrompt, ragContext };
   }

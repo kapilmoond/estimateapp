@@ -233,16 +233,23 @@ export class EnhancedKnowledgeBaseService {
       const documents = await this.loadDocuments();
       const activeDocuments = documents.filter(doc => doc.isActive);
 
+      console.log(`🔍 Knowledge Base Search: Total documents: ${documents.length}, Active: ${activeDocuments.length}`);
+      console.log(`🔍 Knowledge Base Search: Query: "${query}"`);
+
       const matchingChunks: DocumentChunk[] = [];
       const queryLower = query.toLowerCase();
 
       for (const doc of activeDocuments) {
+        console.log(`📄 Searching document: ${doc.fileName} (${doc.chunks.length} chunks)`);
         for (const chunk of doc.chunks) {
           if (chunk.content.toLowerCase().includes(queryLower)) {
             matchingChunks.push(chunk);
+            console.log(`✅ Found match in ${doc.fileName}: "${chunk.content.substring(0, 100)}..."`);
           }
         }
       }
+
+      console.log(`🔍 Knowledge Base Search: Found ${matchingChunks.length} matching chunks`);
 
       // Sort by relevance (simple: by query frequency in chunk)
       matchingChunks.sort((a, b) => {
@@ -264,22 +271,28 @@ export class EnhancedKnowledgeBaseService {
       const relevantChunks = await this.searchDocuments(query, maxChunks);
       const documents = await this.loadDocuments();
 
-      const context = relevantChunks.map(chunk => {
+      console.log(`🔍 RAG Search: Found ${relevantChunks.length} chunks for query: "${query}"`);
+
+      // Build context text properly from chunks
+      const contextParts = relevantChunks.map(chunk => {
         const doc = documents.find(d => d.id === chunk.documentId);
-        return {
-          content: chunk.content,
-          source: doc ? doc.fileName : 'Unknown',
-          relevanceScore: 1.0 // Simple implementation
-        };
-      }).join('\n\n');
+        const source = doc ? doc.fileName : 'Unknown';
+        return `--- FROM: ${source} ---\n${chunk.content}`;
+      });
+
+      const context = contextParts.join('\n\n');
+
+      const sources = [...new Set(relevantChunks.map(chunk => {
+        const doc = documents.find(d => d.id === chunk.documentId);
+        return doc ? doc.fileName : 'Unknown';
+      }))];
+
+      console.log(`✅ RAG Context: ${context.length} characters from ${sources.length} sources`);
 
       return {
         query,
         context,
-        sources: [...new Set(relevantChunks.map(chunk => {
-          const doc = documents.find(d => d.id === chunk.documentId);
-          return doc ? doc.fileName : 'Unknown';
-        }))],
+        sources,
         chunkCount: relevantChunks.length,
         totalTokens: context.length // Approximate
       };
