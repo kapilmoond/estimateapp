@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { KnowledgeBaseDocument, KnowledgeBaseStats, KnowledgeBaseConfig } from '../types';
-import { KnowledgeBaseService } from '../services/knowledgeBaseService';
+import { EnhancedKnowledgeBaseService, KnowledgeBaseService } from '../services/knowledgeBaseService';
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -33,10 +33,24 @@ export const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({
     }
   }, [isOpen]);
 
-  const loadData = () => {
-    setDocuments(KnowledgeBaseService.loadDocuments());
-    setStats(KnowledgeBaseService.getStats());
-    setConfig(KnowledgeBaseService.getConfig());
+  const loadData = async () => {
+    try {
+      // Try to load from IndexedDB first
+      const docs = await EnhancedKnowledgeBaseService.loadDocuments();
+      const statsData = await EnhancedKnowledgeBaseService.getStats();
+      const configData = await EnhancedKnowledgeBaseService.getConfig();
+
+      setDocuments(docs);
+      setStats(statsData);
+      setConfig(configData);
+      console.log(`Loaded ${docs.length} documents from IndexedDB`);
+    } catch (error) {
+      console.error('Error loading from IndexedDB, falling back to localStorage:', error);
+      // Fallback to localStorage
+      setDocuments(KnowledgeBaseService.loadDocuments());
+      setStats(KnowledgeBaseService.getStats());
+      setConfig(KnowledgeBaseService.getConfig());
+    }
   };
 
   const readFileContent = async (file: File): Promise<string> => {
@@ -135,12 +149,21 @@ export const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({
     try {
       for (const file of Array.from(files)) {
         setUploadProgress(`Processing ${file.name}...`);
-        
-        const content = await readFileContent(file);
-        await KnowledgeBaseService.addDocument(file, content);
+
+        try {
+          // Try to use enhanced service first (IndexedDB)
+          await EnhancedKnowledgeBaseService.addDocument(file);
+          console.log(`Successfully added ${file.name} to IndexedDB`);
+        } catch (indexedDBError) {
+          console.error('Error adding to IndexedDB, falling back to localStorage:', indexedDBError);
+          // Fallback to localStorage
+          const content = await readFileContent(file);
+          await KnowledgeBaseService.addDocument(file, content);
+          console.log(`Successfully added ${file.name} to localStorage`);
+        }
       }
-      
-      loadData();
+
+      await loadData();
       onKnowledgeBaseUpdate();
       setUploadProgress('');
     } catch (err: any) {
@@ -151,27 +174,61 @@ export const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({
     }
   }, [onKnowledgeBaseUpdate]);
 
-  const handleRemoveDocument = (documentId: string) => {
-    KnowledgeBaseService.removeDocument(documentId);
-    loadData();
+  const handleRemoveDocument = async (documentId: string) => {
+    try {
+      // Try IndexedDB first
+      await EnhancedKnowledgeBaseService.removeDocument(documentId);
+      console.log(`Removed document ${documentId} from IndexedDB`);
+    } catch (error) {
+      console.error('Error removing from IndexedDB, trying localStorage:', error);
+      // Fallback to localStorage
+      KnowledgeBaseService.removeDocument(documentId);
+    }
+    await loadData();
     onKnowledgeBaseUpdate();
   };
 
-  const handleToggleDocument = (documentId: string) => {
-    KnowledgeBaseService.toggleDocumentStatus(documentId);
-    loadData();
+  const handleToggleDocument = async (documentId: string) => {
+    try {
+      // Try IndexedDB first
+      await EnhancedKnowledgeBaseService.toggleDocumentStatus(documentId);
+      console.log(`Toggled document ${documentId} status in IndexedDB`);
+    } catch (error) {
+      console.error('Error toggling in IndexedDB, trying localStorage:', error);
+      // Fallback to localStorage
+      KnowledgeBaseService.toggleDocumentStatus(documentId);
+    }
+    await loadData();
     onKnowledgeBaseUpdate();
   };
 
-  const handleConfigUpdate = (newConfig: Partial<KnowledgeBaseConfig>) => {
-    KnowledgeBaseService.saveConfig(newConfig);
-    setConfig(KnowledgeBaseService.getConfig());
+  const handleConfigUpdate = async (newConfig: Partial<KnowledgeBaseConfig>) => {
+    try {
+      // Try IndexedDB first
+      await EnhancedKnowledgeBaseService.saveConfig(newConfig as KnowledgeBaseConfig);
+      const updatedConfig = await EnhancedKnowledgeBaseService.getConfig();
+      setConfig(updatedConfig);
+      console.log('Config updated in IndexedDB');
+    } catch (error) {
+      console.error('Error updating config in IndexedDB, trying localStorage:', error);
+      // Fallback to localStorage
+      KnowledgeBaseService.saveConfig(newConfig);
+      setConfig(KnowledgeBaseService.getConfig());
+    }
   };
 
-  const handleClearAll = () => {
+  const handleClearAll = async () => {
     if (confirm('Are you sure you want to clear all knowledge base documents? This action cannot be undone.')) {
-      KnowledgeBaseService.clearAll();
-      loadData();
+      try {
+        // Try IndexedDB first
+        await EnhancedKnowledgeBaseService.clearAll();
+        console.log('Cleared all documents from IndexedDB');
+      } catch (error) {
+        console.error('Error clearing IndexedDB, trying localStorage:', error);
+        // Fallback to localStorage
+        KnowledgeBaseService.clearAll();
+      }
+      await loadData();
       onKnowledgeBaseUpdate();
     }
   };

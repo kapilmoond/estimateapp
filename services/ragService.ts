@@ -1,5 +1,5 @@
 import { RAGContext, DocumentChunk } from '../types';
-import { KnowledgeBaseService } from './knowledgeBaseService';
+import { EnhancedKnowledgeBaseService, KnowledgeBaseService } from './knowledgeBaseService';
 import { FileParsingService, ParsedFile } from './fileParsingService';
 
 export class RAGService {
@@ -9,30 +9,34 @@ export class RAGService {
   /**
    * Generate enhanced prompt with knowledge base context
    */
-  static enhancePromptWithKnowledgeBase(
+  static async enhancePromptWithKnowledgeBase(
     originalPrompt: string,
     includeKnowledgeBase: boolean = false,
     maxContextLength: number = this.MAX_CONTEXT_LENGTH
-  ): { enhancedPrompt: string; ragContext: RAGContext | null } {
+  ): Promise<{ enhancedPrompt: string; ragContext: RAGContext | null }> {
     if (!includeKnowledgeBase) {
       return { enhancedPrompt: originalPrompt, ragContext: null };
     }
 
-    // Search for relevant context
-    const ragContext = KnowledgeBaseService.searchRelevantChunks(
-      originalPrompt, 
-      this.MAX_CHUNKS
-    );
+    // Search for relevant context using enhanced service
+    let ragContext: RAGContext;
+    try {
+      ragContext = await EnhancedKnowledgeBaseService.getRAGContext(originalPrompt, this.MAX_CHUNKS);
+    } catch (error) {
+      console.error('Error getting RAG context from IndexedDB, falling back to localStorage:', error);
+      // Fallback to localStorage
+      ragContext = KnowledgeBaseService.searchRelevantChunks(
+        originalPrompt,
+        this.MAX_CHUNKS
+      );
+    }
 
-    if (ragContext.relevantChunks.length === 0) {
+    if (ragContext.chunkCount === 0) {
       return { enhancedPrompt: originalPrompt, ragContext };
     }
 
-    // Build context from relevant chunks
-    const contextText = this.buildContextFromChunks(
-      ragContext.relevantChunks, 
-      maxContextLength
-    );
+    // Use the context directly from RAG service
+    const contextText = ragContext.context;
 
     // Create enhanced prompt
     const enhancedPrompt = this.createEnhancedPrompt(originalPrompt, contextText, ragContext);

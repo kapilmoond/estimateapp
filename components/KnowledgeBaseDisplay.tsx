@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { KnowledgeBaseDocument, RAGContext, KnowledgeBaseStats } from '../types';
-import { KnowledgeBaseService } from '../services/knowledgeBaseService';
+import { EnhancedKnowledgeBaseService, KnowledgeBaseService } from '../services/knowledgeBaseService';
 import { RAGService } from '../services/ragService';
 
 interface KnowledgeBaseDisplayProps {
@@ -25,9 +25,20 @@ export const KnowledgeBaseDisplay: React.FC<KnowledgeBaseDisplayProps> = ({
     loadData();
   }, []);
 
-  const loadData = () => {
-    setDocuments(KnowledgeBaseService.loadDocuments());
-    setStats(KnowledgeBaseService.getStats());
+  const loadData = async () => {
+    try {
+      // Try IndexedDB first
+      const docs = await EnhancedKnowledgeBaseService.loadDocuments();
+      const statsData = await EnhancedKnowledgeBaseService.getStats();
+      setDocuments(docs);
+      setStats(statsData);
+      console.log(`Loaded ${docs.length} documents from IndexedDB for display`);
+    } catch (error) {
+      console.error('Error loading from IndexedDB, falling back to localStorage:', error);
+      // Fallback to localStorage
+      setDocuments(KnowledgeBaseService.loadDocuments());
+      setStats(KnowledgeBaseService.getStats());
+    }
   };
 
   const handleSearch = async () => {

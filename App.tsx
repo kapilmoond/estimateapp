@@ -702,7 +702,7 @@ const App: React.FC = () => {
 
         // Add knowledge base context if enabled
         if (includeKnowledgeBase) {
-          const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+          const { enhancedPrompt } = await RAGService.enhancePromptWithKnowledgeBase(
             currentMessage,
             includeKnowledgeBase
           );
@@ -830,7 +830,7 @@ const App: React.FC = () => {
       // Enhance user input with knowledge base if enabled
       let enhancedUserInput = userInput;
       if (includeKnowledgeBase) {
-        const { enhancedPrompt } = RAGService.enhancePromptWithKnowledgeBase(
+        const { enhancedPrompt } = await RAGService.enhancePromptWithKnowledgeBase(
           userInput,
           includeKnowledgeBase
         );
@@ -1574,11 +1574,6 @@ Create a new cost abstract that addresses the remake instructions using the exis
           {/* Technical Drawing Results */}
           {outputMode === 'drawing' && (
             <div className="space-y-6">
-              {/* Debug Info */}
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm">
-                <strong>Debug:</strong> savedDrawings: {savedDrawings.length}, drawingResults: {drawingResults.length}, currentProject: {currentProject?.id || 'none'}
-              </div>
-
               {/* Drawing Context Selector - Always visible when drawings exist */}
               {savedDrawings.length > 0 && (
                 <div className="bg-white border border-gray-200 rounded-lg p-4">
