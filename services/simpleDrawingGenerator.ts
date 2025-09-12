@@ -140,7 +140,8 @@ export class SimpleDrawingGenerator {
   static async generateStructuredData(
     description: string,
     previousData?: StructuredDrawingData,
-    originalDescription?: string
+    originalDescription?: string,
+    userGuidelines?: string
   ): Promise<StructuredDrawingData> {
     if (previousData && originalDescription) {
       // MODIFICATION: Use delete/add system
@@ -148,7 +149,7 @@ export class SimpleDrawingGenerator {
       return this.applyModification(previousData, modificationData);
     } else {
       // NEW DRAWING: Use original system
-      const prompt = this.createStructuredPrompt(description, previousData, originalDescription);
+      const prompt = this.createStructuredPrompt(description, previousData, originalDescription, userGuidelines);
 
       console.log('📝 Structured Drawing Prompt:', prompt.substring(0, 200) + '...');
 
@@ -494,8 +495,8 @@ doc = ezdxf.new("R2010", setup=True)
 # Add new entities to the modelspace
 msp = doc.modelspace()
 
-# Configure dimension styling based on drawing size
-# Drawing bounds: ${bounds.width.toFixed(1)}mm x ${bounds.height.toFixed(1)}mm
+# Configure dimension styling - LLM will determine appropriate values based on drawing requirements
+# Drawing bounds: ${bounds.width.toFixed(1)} x ${bounds.height.toFixed(1)} units
 dimstyle = doc.dimstyles.get("EZDXF")
 dimstyle.dxf.dimtxt = ${styling.textHeight}      # Text height
 dimstyle.dxf.dimasz = ${styling.arrowSize}       # Arrow size
@@ -860,13 +861,25 @@ RULES:
   private static createStructuredPrompt(
     description: string,
     previousData?: StructuredDrawingData,
-    originalDescription?: string
+    originalDescription?: string,
+    userGuidelines?: string
   ): string {
     const ezdxfDocumentation = this.getEzdxfDocumentation();
 
     let prompt = `You are a professional CAD engineer. Analyze the drawing request and provide ONLY the required entity data in the exact JSON format below.
 
-${ezdxfDocumentation}`;
+IMPORTANT GUIDELINES:
+- Determine appropriate units (mm, m, inches, feet) based on the drawing type and user instructions
+- Choose dimension style (text height, arrow size, decimal places) based on drawing scale and requirements
+- Use professional CAD standards appropriate for the specific engineering discipline
+- If user provides specific guidelines or instructions, follow them exactly
+- Coordinate values should be appropriate for the chosen unit system
+- Dimension text should reflect the chosen units and precision requirements
+
+${userGuidelines ? `USER-SPECIFIC GUIDELINES:
+${userGuidelines}
+
+` : ''}${ezdxfDocumentation}`;
 
     // Handle modification vs new drawing
     if (previousData && originalDescription) {
@@ -1028,26 +1041,24 @@ DIMENSIONS (APP AUTO-SIZES TEXT/ARROWS):
 DIMENSION POSITIONING RULES (CRITICAL FOR PROPER EXTENSION LINES):
 - For HORIZONTAL dimensions (measuring horizontal distances):
   * p1 and p2 have same Y coordinate but different X coordinates
-  * baseY should be ABOVE or BELOW the measurement line (offset vertically by 50-100mm minimum)
+  * baseY should be ABOVE or BELOW the measurement line (offset vertically by appropriate amount)
   * baseX should be between p1X and p2X (usually midpoint: (p1X + p2X) / 2)
   * NO angle parameter needed (default angle=0 for horizontal)
-  * Example: measuring from (0,0) to (400,0), base should be (200, -50) or (200, 50)
-  * Extension lines will automatically connect (0,0) and (400,0) to the dimension line at Y=-50
+  * Extension lines will automatically connect measurement points to the dimension line
 
 - For VERTICAL dimensions (measuring vertical distances):
   * p1 and p2 have same X coordinate but different Y coordinates
-  * baseX should be LEFT or RIGHT of the measurement line (offset horizontally by 50-100mm minimum)
+  * baseX should be LEFT or RIGHT of the measurement line (offset horizontally by appropriate amount)
   * baseY should be between p1Y and p2Y (usually midpoint: (p1Y + p2Y) / 2)
   * CRITICAL: Must include "angle": 90 in the dimension data for vertical dimensions
-  * Example: measuring from (100,600) to (100,2600), base should be (50, 1600) with angle=90
-  * Extension lines will automatically connect (100,600) and (100,2600) to the dimension line at X=50
+  * Extension lines will automatically connect measurement points to the dimension line
 
 - CRITICAL EZDXF REQUIREMENT: Vertical dimensions MUST have angle=90 or they won't display properly
 - Base point must be offset from the construction line to create proper extension lines
 - Extension lines automatically connect measurement points (p1, p2) to dimension line (base)
 - Dimension line is drawn at the base location, parallel to measurement direction
 - Text is placed on or near the dimension line showing the measured distance
-- Minimum offset: 50mm for small drawings, 100mm+ for large drawings
+- Offset distances should be proportional to drawing size and chosen unit system
 
 SPLINES (SMOOTH CURVES):
 - Control points: Define spline by control points for precise curve definition

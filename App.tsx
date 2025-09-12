@@ -117,7 +117,7 @@ const App: React.FC = () => {
   const [includeKnowledgeBase, setIncludeKnowledgeBase] = useState<boolean>(false);
   const [currentProvider] = useState<string>(LLMService.getCurrentProvider());
   const [currentModel] = useState<string>(LLMService.getCurrentModel());
-  const [showProjectData, setShowProjectData] = useState<boolean>(false);
+
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [contextKey, setContextKey] = useState<number>(0); // Force re-render of context
   const [isContextManagerOpen, setIsContextManagerOpen] = useState<boolean>(false);
@@ -1394,8 +1394,6 @@ Create a new cost abstract that addresses the remake instructions using the exis
           currentProvider={currentProvider}
           outputMode={outputMode}
           uploadedFiles={referenceDocs}
-          onNewProject={resetState}
-          onToggleProjectData={() => setShowProjectData(!showProjectData)}
           onTestLLM={async () => {
             try {
               setLoadingMessage('Testing LLM service...');
@@ -1739,58 +1737,7 @@ Create a new cost abstract that addresses the remake instructions using the exis
 
         </div>
 
-        {/* Project Data Display */}
-        {showProjectData && (
-          <div className="mt-6 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-semibold text-gray-900">📊 Project Data</h3>
-              <button
-                onClick={() => setShowProjectData(false)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                ✕
-              </button>
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <div>
-                <h4 className="font-medium text-gray-700 mb-2">Discussions</h4>
-                <p className="text-2xl font-bold text-blue-600">{conversationHistory.length - 1}</p>
-                <p className="text-sm text-gray-500">Messages exchanged</p>
-              </div>
-
-              <div>
-                <h4 className="font-medium text-gray-700 mb-2">Designs</h4>
-                <p className="text-2xl font-bold text-green-600">{designs.length}</p>
-                <p className="text-sm text-gray-500">Components designed</p>
-              </div>
-
-              <div>
-                <h4 className="font-medium text-gray-700 mb-2">Drawings</h4>
-                <p className="text-2xl font-bold text-purple-600">{savedDrawings.length}</p>
-                <p className="text-sm text-gray-500">Technical drawings</p>
-              </div>
-
-              <div>
-                <h4 className="font-medium text-gray-700 mb-2">Guidelines</h4>
-                <p className="text-2xl font-bold text-orange-600">{guidelines.filter(g => g.isActive).length}</p>
-                <p className="text-sm text-gray-500">Active guidelines</p>
-              </div>
-
-              <div>
-                <h4 className="font-medium text-gray-700 mb-2">HSR Items</h4>
-                <p className="text-2xl font-bold text-red-600">{hsrItems.length}</p>
-                <p className="text-sm text-gray-500">Cost items found</p>
-              </div>
-
-              <div>
-                <h4 className="font-medium text-gray-700 mb-2">Current Provider</h4>
-                <p className="text-lg font-semibold text-gray-800">{currentProvider}</p>
-                <p className="text-sm text-gray-500">{currentModel}</p>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Modal Components */}
         {isGuidelinesOpen && (

@@ -21,8 +21,6 @@ interface CollapsibleControlPanelProps {
   uploadedFiles: ReferenceDoc[];
 
   // Project Actions
-  onNewProject: () => void;
-  onToggleProjectData: () => void;
   onTestLLM: () => void;
 
   // Template Props
@@ -50,8 +48,6 @@ export const CollapsibleControlPanel: React.FC<CollapsibleControlPanelProps> = (
   currentProvider,
   outputMode,
   uploadedFiles,
-  onNewProject,
-  onToggleProjectData,
   onTestLLM,
   conversationHistory,
   finalizedScope,
@@ -89,19 +85,7 @@ export const CollapsibleControlPanel: React.FC<CollapsibleControlPanelProps> = (
               </button>
             )}
 
-            <button
-              onClick={onNewProject}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
-            >
-              🔄 New Project
-            </button>
 
-            <button
-              onClick={onToggleProjectData}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
-            >
-              📊 Project Data
-            </button>
 
             {onOpenTemplateSelector && (
               <button
