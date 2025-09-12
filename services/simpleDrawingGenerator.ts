@@ -640,12 +640,26 @@ dimstyle.dxf.dimexe = ${styling.extLineExtension} # Extension line extension bey
         if (dim.type === 'aligned') {
           const distanceArg = distance !== null ? `, distance=${distance}` : '';
           code += `dim = msp.add_aligned_dim(p1=(${p1X}, ${p1Y}), p2=(${p2X}, ${p2Y})${distanceArg}${dimstyleArg}${textArg}${dxfattribs})\n`;
-        } else if (angle !== null) {
-          // Rotated linear dimension
-          code += `dim = msp.add_linear_dim(base=(${baseX}, ${baseY}), p1=(${p1X}, ${p1Y}), p2=(${p2X}, ${p2Y}), angle=${angle}${dimstyleArg}${textArg}${dxfattribs})\n`;
         } else {
-          // Standard linear dimension
-          code += `dim = msp.add_linear_dim(base=(${baseX}, ${baseY}), p1=(${p1X}, ${p1Y}), p2=(${p2X}, ${p2Y})${dimstyleArg}${textArg}${dxfattribs})\n`;
+          // Determine if this is a vertical dimension (same X coordinates)
+          const isVertical = p1X === p2X;
+          // Determine if this is a horizontal dimension (same Y coordinates)
+          const isHorizontal = p1Y === p2Y;
+
+          let angleArg = '';
+          if (angle !== null) {
+            // Explicit angle provided
+            angleArg = `, angle=${angle}`;
+          } else if (isVertical) {
+            // CRITICAL: Vertical dimensions require angle=90
+            angleArg = `, angle=90`;
+          } else if (isHorizontal) {
+            // Horizontal dimensions don't need angle (default is 0)
+            angleArg = '';
+          }
+
+          // Linear dimension with proper angle
+          code += `dim = msp.add_linear_dim(base=(${baseX}, ${baseY}), p1=(${p1X}, ${p1Y}), p2=(${p2X}, ${p2Y})${angleArg}${dimstyleArg}${textArg}${dxfattribs})\n`;
         }
         code += `dim.render()\n`;
       });
@@ -1014,6 +1028,7 @@ DIMENSION POSITIONING RULES (CRITICAL FOR PROPER EXTENSION LINES):
   * p1 and p2 have same Y coordinate but different X coordinates
   * baseY should be ABOVE or BELOW the measurement line (offset vertically by 50-100mm minimum)
   * baseX should be between p1X and p2X (usually midpoint: (p1X + p2X) / 2)
+  * NO angle parameter needed (default angle=0 for horizontal)
   * Example: measuring from (0,0) to (400,0), base should be (200, -50) or (200, 50)
   * Extension lines will automatically connect (0,0) and (400,0) to the dimension line at Y=-50
 
@@ -1021,10 +1036,12 @@ DIMENSION POSITIONING RULES (CRITICAL FOR PROPER EXTENSION LINES):
   * p1 and p2 have same X coordinate but different Y coordinates
   * baseX should be LEFT or RIGHT of the measurement line (offset horizontally by 50-100mm minimum)
   * baseY should be between p1Y and p2Y (usually midpoint: (p1Y + p2Y) / 2)
-  * Example: measuring from (100,600) to (100,2600), base should be (50, 1600) or (150, 1600)
+  * CRITICAL: Must include "angle": 90 in the dimension data for vertical dimensions
+  * Example: measuring from (100,600) to (100,2600), base should be (50, 1600) with angle=90
   * Extension lines will automatically connect (100,600) and (100,2600) to the dimension line at X=50
 
-- CRITICAL: Base point must be offset from the construction line to create proper extension lines
+- CRITICAL EZDXF REQUIREMENT: Vertical dimensions MUST have angle=90 or they won't display properly
+- Base point must be offset from the construction line to create proper extension lines
 - Extension lines automatically connect measurement points (p1, p2) to dimension line (base)
 - Dimension line is drawn at the base location, parallel to measurement direction
 - Text is placed on or near the dimension line showing the measured distance
