@@ -9,6 +9,7 @@ import {
 } from '../types';
 import { FileParsingService, ParsedFile } from './fileParsingService';
 import { IndexedDBService } from './indexedDBService';
+import { IntelligentChunkingService } from './intelligentChunkingService';
 
 /**
  * Enhanced Knowledge Base Service using IndexedDB
@@ -18,17 +19,19 @@ export class EnhancedKnowledgeBaseService {
   private static readonly CONFIG_KEY = 'kb-config';
 
   private static defaultConfig: KnowledgeBaseConfig = {
+    // New intelligent LLM-based settings
+    maxInputTextLength: 50000, // 50k characters per LLM call
+    summaryCompressionRatio: 0.1, // 10% compression ratio
+    maxSelectedChunks: 5, // Maximum chunks to include in final prompt
+    autoGenerateSummaries: true, // Automatically generate summaries for new documents
+    enableLLMSelection: true, // Always true for new system
+    // Deprecated fields (kept for migration compatibility)
     chunkSize: 1000,
     chunkOverlap: 200,
     maxChunks: 100,
     enableEmbeddings: false,
     embeddingModel: 'text-embedding-ada-002',
-    similarityThreshold: 0.7,
-    // LLM-based selection settings
-    enableLLMSelection: true, // Enable LLM-based chunk selection by default
-    autoGenerateSummaries: true, // Automatically generate summaries for new chunks
-    summaryCompressionRatio: 0.1, // 10% compression ratio
-    maxSelectedChunks: 5 // Maximum chunks to include in final prompt
+    similarityThreshold: 0.7
   };
 
   // Load all knowledge base documents from IndexedDB
@@ -54,6 +57,50 @@ export class EnhancedKnowledgeBaseService {
       console.error('Error saving knowledge base document to IndexedDB:', error);
       throw new Error('Failed to save knowledge base document');
     }
+  }
+
+  /**
+   * Process document with intelligent LLM chunking and summarization
+   */
+  static async processDocumentIntelligently(document: KnowledgeBaseDocument): Promise<void> {
+    try {
+      console.log(`🤖 Starting intelligent processing for: ${document.fileName}`);
+
+      // Get current configuration
+      const config = await this.getConfig();
+
+      // Process document with intelligent chunking
+      const summaryFile = await IntelligentChunkingService.processDocument(document, config);
+
+      // Update document with new chunks (for backward compatibility)
+      const updatedDocument: KnowledgeBaseDocument = {
+        ...document,
+        chunks: summaryFile.chunks,
+        updatedAt: new Date()
+      };
+
+      // Save updated document
+      await this.saveDocument(updatedDocument);
+
+      console.log(`✅ Intelligent processing complete: ${summaryFile.totalChunks} chunks created`);
+    } catch (error) {
+      console.error('Error in intelligent document processing:', error);
+      throw new Error(`Failed to process document intelligently: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Get document summary file (new intelligent format)
+   */
+  static async getDocumentSummaryFile(documentId: string) {
+    return await IntelligentChunkingService.loadSummaryFile(documentId);
+  }
+
+  /**
+   * List all processed documents with summaries
+   */
+  static async listProcessedDocuments() {
+    return await IntelligentChunkingService.listSummaryFiles();
   }
 
   // Add a new document to the knowledge base with professional parsing

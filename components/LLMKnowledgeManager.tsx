@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { KnowledgeBaseConfig, KnowledgeBaseDocument } from '../types';
+import { KnowledgeBaseConfig, KnowledgeBaseDocument, DocumentSummaryFile } from '../types';
 import { EnhancedKnowledgeBaseService, KnowledgeBaseService } from '../services/knowledgeBaseService';
 import { LLMKnowledgeService } from '../services/llmKnowledgeService';
+import { IntelligentChunkingService } from '../services/intelligentChunkingService';
 
 interface LLMKnowledgeManagerProps {
   isOpen: boolean;
@@ -16,8 +17,9 @@ export const LLMKnowledgeManager: React.FC<LLMKnowledgeManagerProps> = ({
 }) => {
   const [config, setConfig] = useState<KnowledgeBaseConfig | null>(null);
   const [documents, setDocuments] = useState<KnowledgeBaseDocument[]>([]);
-  const [isGeneratingSummaries, setIsGeneratingSummaries] = useState(false);
-  const [summaryProgress, setSummaryProgress] = useState('');
+  const [summaryFiles, setSummaryFiles] = useState<DocumentSummaryFile[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingProgress, setProcessingProgress] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -45,6 +47,10 @@ export const LLMKnowledgeManager: React.FC<LLMKnowledgeManagerProps> = ({
         docs = KnowledgeBaseService.loadDocuments();
       }
       setDocuments(docs);
+
+      // Load summary files (processed documents)
+      const summaries = await IntelligentChunkingService.listSummaryFiles();
+      setSummaryFiles(summaries);
     } catch (error) {
       console.error('Error loading LLM knowledge data:', error);
       setError('Failed to load knowledge base data');
@@ -71,63 +77,50 @@ export const LLMKnowledgeManager: React.FC<LLMKnowledgeManagerProps> = ({
     }
   };
 
-  const generateAllSummaries = async () => {
+  const processAllDocuments = async () => {
     if (!config) return;
 
-    setIsGeneratingSummaries(true);
+    setIsProcessing(true);
     setError(null);
-    setSummaryProgress('Starting summary generation...');
+    setProcessingProgress('Starting intelligent document processing...');
 
     try {
-      const activeDocuments = documents.filter(doc => doc.isActive);
-      
-      for (let i = 0; i < activeDocuments.length; i++) {
-        const doc = activeDocuments[i];
-        setSummaryProgress(`Generating summaries for ${doc.fileName} (${i + 1}/${activeDocuments.length})...`);
+      const result = await LLMKnowledgeService.processAllDocuments();
 
-        const updatedDoc = await LLMKnowledgeService.generateDocumentSummaries(
-          doc,
-          config.summaryCompressionRatio
-        );
-
-        // Save updated document
-        try {
-          await EnhancedKnowledgeBaseService.saveDocument(updatedDoc);
-        } catch (error) {
-          // Fallback to localStorage (though this won't work perfectly due to different structure)
-          console.warn('Failed to save to IndexedDB, document summaries may not persist');
-        }
+      if (result.failed > 0) {
+        setError(`Processing completed with ${result.failed} failures:\n${result.errors.join('\n')}`);
       }
 
-      setSummaryProgress('Summary generation completed!');
-      await loadData(); // Reload to show updated summaries
-      
+      setProcessingProgress(`Processing completed! ${result.processed} documents processed successfully.`);
+      await loadData(); // Reload to show updated data
+
       setTimeout(() => {
-        setSummaryProgress('');
-      }, 3000);
+        setProcessingProgress('');
+      }, 5000);
     } catch (error) {
-      console.error('Error generating summaries:', error);
-      setError(`Failed to generate summaries: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('Error processing documents:', error);
+      setError(`Failed to process documents: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
-      setIsGeneratingSummaries(false);
+      setIsProcessing(false);
     }
   };
 
-  const getSummaryStats = () => {
-    let totalChunks = 0;
-    let chunksWithSummaries = 0;
+  const getProcessingStats = () => {
+    const totalDocuments = documents.filter(doc => doc.isActive).length;
+    const processedDocuments = summaryFiles.length;
+    const totalChunks = summaryFiles.reduce((sum, file) => sum + file.totalChunks, 0);
 
-    documents.forEach(doc => {
-      totalChunks += doc.chunks.length;
-      chunksWithSummaries += doc.chunks.filter(chunk => chunk.summaryGenerated && chunk.summary).length;
-    });
-
-    return { totalChunks, chunksWithSummaries };
+    return {
+      totalDocuments,
+      processedDocuments,
+      totalChunks,
+      pendingDocuments: totalDocuments - processedDocuments
+    };
   };
 
   if (!isOpen) return null;
 
-  const stats = getSummaryStats();
+  const stats = getProcessingStats();
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -135,7 +128,7 @@ export const LLMKnowledgeManager: React.FC<LLMKnowledgeManagerProps> = ({
         <div className="p-6 border-b bg-blue-50">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold text-gray-900">
-              🤖 LLM Knowledge Management
+              🤖 Intelligent Knowledge Processing
             </h2>
             <button
               onClick={onClose}
@@ -145,7 +138,7 @@ export const LLMKnowledgeManager: React.FC<LLMKnowledgeManagerProps> = ({
             </button>
           </div>
           <p className="text-sm text-gray-600 mt-2">
-            Configure intelligent LLM-based knowledge selection and manage document summaries.
+            Configure intelligent LLM-based document processing with smart chunking and summarization.
           </p>
         </div>
 
@@ -158,26 +151,10 @@ export const LLMKnowledgeManager: React.FC<LLMKnowledgeManagerProps> = ({
 
           {/* Configuration Section */}
           <div className="mb-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">⚙️ LLM Selection Settings</h3>
-            
+            <h3 className="text-lg font-medium text-gray-900 mb-4">⚙️ Intelligent Processing Settings</h3>
+
             {config && (
               <div className="space-y-4">
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="enableLLMSelection"
-                    checked={config.enableLLMSelection || false}
-                    onChange={(e) => handleConfigChange({ enableLLMSelection: e.target.checked })}
-                    className="mr-3"
-                  />
-                  <label htmlFor="enableLLMSelection" className="text-sm font-medium text-gray-700">
-                    Enable LLM-based Intelligent Chunk Selection
-                  </label>
-                </div>
-                <p className="text-xs text-gray-500 ml-6">
-                  Use AI to intelligently select relevant knowledge chunks instead of similarity search
-                </p>
-
                 <div className="flex items-center">
                   <input
                     type="checkbox"
@@ -187,11 +164,31 @@ export const LLMKnowledgeManager: React.FC<LLMKnowledgeManagerProps> = ({
                     className="mr-3"
                   />
                   <label htmlFor="autoGenerateSummaries" className="text-sm font-medium text-gray-700">
-                    Auto-generate Summaries for New Documents
+                    Auto-process New Documents with Intelligent Chunking
                   </label>
                 </div>
+                <p className="text-xs text-gray-500 ml-6">
+                  Automatically process new documents with LLM-based intelligent chunking and summarization
+                </p>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Max Input Text Length
+                    </label>
+                    <select
+                      value={config.maxInputTextLength || 50000}
+                      onChange={(e) => handleConfigChange({ maxInputTextLength: parseInt(e.target.value) })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    >
+                      <option value={30000}>30k chars</option>
+                      <option value={50000}>50k chars (Recommended)</option>
+                      <option value={70000}>70k chars</option>
+                      <option value={100000}>100k chars</option>
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">Per LLM call limit</p>
+                  </div>
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Summary Compression Ratio
@@ -206,6 +203,7 @@ export const LLMKnowledgeManager: React.FC<LLMKnowledgeManagerProps> = ({
                       <option value={0.15}>15% (Detailed)</option>
                       <option value={0.2}>20% (Comprehensive)</option>
                     </select>
+                    <p className="text-xs text-gray-500 mt-1">Summary length</p>
                   </div>
 
                   <div>
@@ -222,41 +220,46 @@ export const LLMKnowledgeManager: React.FC<LLMKnowledgeManagerProps> = ({
                       <option value={7}>7 chunks</option>
                       <option value={10}>10 chunks</option>
                     </select>
+                    <p className="text-xs text-gray-500 mt-1">Per query limit</p>
                   </div>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Summary Statistics */}
+          {/* Processing Statistics */}
           <div className="mb-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">📊 Summary Statistics</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">📊 Processing Statistics</h3>
             <div className="bg-gray-50 rounded-lg p-4">
-              <div className="grid grid-cols-3 gap-4 text-center">
+              <div className="grid grid-cols-4 gap-4 text-center">
                 <div>
-                  <div className="text-2xl font-bold text-blue-600">{documents.length}</div>
-                  <div className="text-sm text-gray-600">Documents</div>
+                  <div className="text-2xl font-bold text-blue-600">{stats.totalDocuments}</div>
+                  <div className="text-sm text-gray-600">Total Documents</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-green-600">{stats.chunksWithSummaries}</div>
-                  <div className="text-sm text-gray-600">Summarized Chunks</div>
+                  <div className="text-2xl font-bold text-green-600">{stats.processedDocuments}</div>
+                  <div className="text-sm text-gray-600">Processed</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-orange-600">{stats.totalChunks - stats.chunksWithSummaries}</div>
-                  <div className="text-sm text-gray-600">Pending Summaries</div>
+                  <div className="text-2xl font-bold text-orange-600">{stats.pendingDocuments}</div>
+                  <div className="text-sm text-gray-600">Pending</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-purple-600">{stats.totalChunks}</div>
+                  <div className="text-sm text-gray-600">Smart Chunks</div>
                 </div>
               </div>
-              
-              {stats.totalChunks > 0 && (
+
+              {stats.totalDocuments > 0 && (
                 <div className="mt-4">
                   <div className="flex justify-between text-sm text-gray-600 mb-1">
-                    <span>Summary Progress</span>
-                    <span>{Math.round((stats.chunksWithSummaries / stats.totalChunks) * 100)}%</span>
+                    <span>Processing Progress</span>
+                    <span>{Math.round((stats.processedDocuments / stats.totalDocuments) * 100)}%</span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div 
-                      className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${(stats.chunksWithSummaries / stats.totalChunks) * 100}%` }}
+                    <div
+                      className="bg-green-600 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${(stats.processedDocuments / stats.totalDocuments) * 100}%` }}
                     ></div>
                   </div>
                 </div>
@@ -264,31 +267,32 @@ export const LLMKnowledgeManager: React.FC<LLMKnowledgeManagerProps> = ({
             </div>
           </div>
 
-          {/* Summary Generation */}
+          {/* Intelligent Processing */}
           <div className="mb-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">🔄 Generate Summaries</h3>
-            
-            {summaryProgress && (
+            <h3 className="text-lg font-medium text-gray-900 mb-4">🤖 Intelligent Document Processing</h3>
+
+            {processingProgress && (
               <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-700">
-                {summaryProgress}
+                {processingProgress}
               </div>
             )}
 
             <button
-              onClick={generateAllSummaries}
-              disabled={isGeneratingSummaries || documents.length === 0}
+              onClick={processAllDocuments}
+              disabled={isProcessing || documents.length === 0}
               className={`px-4 py-2 rounded-lg text-white font-medium ${
-                isGeneratingSummaries || documents.length === 0
+                isProcessing || documents.length === 0
                   ? 'bg-gray-400 cursor-not-allowed'
                   : 'bg-blue-600 hover:bg-blue-700'
               }`}
             >
-              {isGeneratingSummaries ? '🔄 Generating...' : '🚀 Generate All Summaries'}
+              {isProcessing ? '🔄 Processing...' : '🤖 Process All Documents'}
             </button>
-            
+
             <p className="text-xs text-gray-500 mt-2">
-              This will generate LLM summaries for all document chunks that don't have recent summaries.
-              The process may take several minutes depending on the number of chunks.
+              This will process all documents with intelligent LLM-based chunking and summarization.
+              The LLM will determine optimal chunk boundaries and create compressed summaries.
+              Processing time depends on document size and complexity.
             </p>
           </div>
 
@@ -297,26 +301,49 @@ export const LLMKnowledgeManager: React.FC<LLMKnowledgeManagerProps> = ({
             <h3 className="text-lg font-medium text-gray-900 mb-4">📚 Documents</h3>
             <div className="space-y-2">
               {documents.map(doc => {
-                const chunksWithSummaries = doc.chunks.filter(chunk => chunk.summaryGenerated && chunk.summary).length;
-                const summaryPercentage = doc.chunks.length > 0 ? Math.round((chunksWithSummaries / doc.chunks.length) * 100) : 0;
-                
+                const summaryFile = summaryFiles.find(sf => sf.documentId === doc.id);
+                const isProcessed = summaryFile && summaryFile.version === '2.0';
+
                 return (
                   <div key={doc.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div>
+                    <div className="flex-1">
                       <div className="font-medium text-gray-900">{doc.fileName}</div>
                       <div className="text-sm text-gray-600">
-                        {doc.chunks.length} chunks • {chunksWithSummaries} summarized ({summaryPercentage}%)
+                        {isProcessed ? (
+                          <>
+                            ✅ Processed • {summaryFile.totalChunks} intelligent chunks
+                            <div className="text-xs text-gray-500 mt-1">
+                              Last updated: {new Date(summaryFile.updatedAt).toLocaleDateString()}
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            ⏳ Pending processing • {doc.content.length.toLocaleString()} characters
+                            <div className="text-xs text-gray-500 mt-1">
+                              Needs intelligent chunking and summarization
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
-                    <div className={`px-2 py-1 rounded text-xs ${
-                      doc.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
-                    }`}>
-                      {doc.isActive ? 'Active' : 'Inactive'}
+                    <div className="flex items-center space-x-2">
+                      <div className={`px-2 py-1 rounded text-xs ${
+                        isProcessed
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-orange-100 text-orange-800'
+                      }`}>
+                        {isProcessed ? 'Processed' : 'Pending'}
+                      </div>
+                      <div className={`px-2 py-1 rounded text-xs ${
+                        doc.isActive ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {doc.isActive ? 'Active' : 'Inactive'}
+                      </div>
                     </div>
                   </div>
                 );
               })}
-              
+
               {documents.length === 0 && (
                 <div className="text-center py-8 text-gray-500">
                   <div className="text-4xl mb-2">📚</div>

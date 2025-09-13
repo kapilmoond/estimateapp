@@ -1,6 +1,7 @@
 import { LLMService } from './llmService';
 import { EnhancedKnowledgeBaseService, KnowledgeBaseService } from './knowledgeBaseService';
-import { DocumentChunk, KnowledgeBaseDocument, LLMSelectionResult, KnowledgeBaseConfig } from '../types';
+import { IntelligentChunkingService } from './intelligentChunkingService';
+import { DocumentChunk, KnowledgeBaseDocument, LLMSelectionResult, KnowledgeBaseConfig, DocumentSummaryFile } from '../types';
 
 /**
  * LLM-based Knowledge Selection Service
@@ -11,111 +12,121 @@ export class LLMKnowledgeService {
   private static readonly DEFAULT_MAX_SELECTED_CHUNKS = 5;
 
   /**
-   * Generate LLM summary for a document chunk (10% compression)
+   * Process document with intelligent LLM chunking and summarization
    */
-  static async generateChunkSummary(chunk: DocumentChunk, compressionRatio: number = this.DEFAULT_COMPRESSION_RATIO): Promise<string> {
-    const targetLength = Math.max(50, Math.floor(chunk.content.length * compressionRatio));
-    
-    const prompt = `Please create a concise summary of the following text. The summary should be approximately ${Math.floor(compressionRatio * 100)}% of the original length (target: ~${targetLength} characters) and capture the key technical information, concepts, and actionable details.
-
-ORIGINAL TEXT:
-${chunk.content}
-
-SUMMARY REQUIREMENTS:
-- Focus on technical specifications, procedures, and important details
-- Maintain construction/engineering terminology
-- Include specific measurements, standards, or codes mentioned
-- Keep the most actionable and reference-worthy information
-- Target length: ~${targetLength} characters
-
-CONCISE SUMMARY:`;
+  static async processDocumentIntelligently(document: KnowledgeBaseDocument): Promise<DocumentSummaryFile> {
+    console.log(`🤖 Starting intelligent processing for: ${document.fileName}`);
 
     try {
-      console.log(`📝 Generating summary for chunk ${chunk.id} (${chunk.content.length} → ~${targetLength} chars)`);
-      const summary = await LLMService.generateContent(prompt);
-      console.log(`✅ Summary generated: ${summary.length} characters`);
-      return summary.trim();
+      // Get current configuration
+      const config = await this.getLLMConfig();
+
+      // Process document with intelligent chunking
+      const summaryFile = await IntelligentChunkingService.processDocument(document, config);
+
+      console.log(`✅ Intelligent processing complete: ${summaryFile.totalChunks} chunks created`);
+      return summaryFile;
     } catch (error) {
-      console.error('Error generating chunk summary:', error);
-      // Fallback to simple truncation
-      return chunk.content.substring(0, targetLength) + '...';
+      console.error('Error in intelligent document processing:', error);
+      throw new Error(`Failed to process document intelligently: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
   /**
-   * Generate summaries for all chunks in a document
+   * Process all documents with intelligent chunking
    */
-  static async generateDocumentSummaries(
-    document: KnowledgeBaseDocument, 
-    compressionRatio: number = this.DEFAULT_COMPRESSION_RATIO
-  ): Promise<KnowledgeBaseDocument> {
-    console.log(`📚 Generating summaries for document: ${document.fileName} (${document.chunks.length} chunks)`);
-    
-    const updatedChunks = [...document.chunks];
-    let summariesGenerated = 0;
+  static async processAllDocuments(): Promise<{ processed: number; failed: number; errors: string[] }> {
+    console.log(`🤖 Starting intelligent processing for all documents...`);
 
-    for (let i = 0; i < updatedChunks.length; i++) {
-      const chunk = updatedChunks[i];
-      
-      // Skip if summary already exists and is recent
-      if (chunk.summaryGenerated && chunk.summary && chunk.lastSummaryUpdate) {
-        const daysSinceUpdate = (Date.now() - chunk.lastSummaryUpdate) / (1000 * 60 * 60 * 24);
-        if (daysSinceUpdate < 30) { // Summary is less than 30 days old
-          console.log(`⏭️ Skipping chunk ${chunk.id} - summary is recent`);
-          continue;
-        }
-      }
+    let processed = 0;
+    let failed = 0;
+    const errors: string[] = [];
 
+    try {
+      // Load documents from IndexedDB or localStorage
+      let documents;
       try {
-        const summary = await this.generateChunkSummary(chunk, compressionRatio);
-        updatedChunks[i] = {
-          ...chunk,
-          summary,
-          summaryGenerated: true,
-          lastSummaryUpdate: Date.now()
-        };
-        summariesGenerated++;
-        
-        // Add small delay to avoid overwhelming the LLM service
-        if (i < updatedChunks.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
+        documents = await EnhancedKnowledgeBaseService.loadDocuments();
+        console.log(`✅ Loaded ${documents.length} documents from IndexedDB`);
       } catch (error) {
-        console.error(`Error generating summary for chunk ${chunk.id}:`, error);
-        // Mark as attempted but failed
-        updatedChunks[i] = {
-          ...chunk,
-          summaryGenerated: false,
-          lastSummaryUpdate: Date.now()
-        };
+        console.log('🔄 Falling back to localStorage...');
+        documents = KnowledgeBaseService.loadDocuments();
+        console.log(`✅ Loaded ${documents.length} documents from localStorage`);
       }
+
+      const activeDocuments = documents.filter(doc => doc.isActive);
+      console.log(`📄 Processing ${activeDocuments.length} active documents...`);
+
+      for (let i = 0; i < activeDocuments.length; i++) {
+        const doc = activeDocuments[i];
+
+        try {
+          console.log(`🔄 Processing ${i + 1}/${activeDocuments.length}: ${doc.fileName}`);
+
+          // Check if already processed
+          const existingSummary = await IntelligentChunkingService.loadSummaryFile(doc.id);
+          if (existingSummary && existingSummary.version === '2.0') {
+            console.log(`⏭️ Skipping ${doc.fileName} - already processed with v2.0`);
+            processed++;
+            continue;
+          }
+
+          // Process with intelligent chunking
+          await this.processDocumentIntelligently(doc);
+          processed++;
+
+          // Add delay between documents to avoid overwhelming LLM
+          if (i < activeDocuments.length - 1) {
+            console.log(`⏸️ Waiting 2 seconds before next document...`);
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        } catch (error) {
+          failed++;
+          const errorMsg = `Failed to process ${doc.fileName}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+          console.error(errorMsg);
+          errors.push(errorMsg);
+        }
+      }
+
+      console.log(`✅ Batch processing complete: ${processed} processed, ${failed} failed`);
+      return { processed, failed, errors };
+    } catch (error) {
+      console.error('Error in batch document processing:', error);
+      throw new Error(`Failed to process documents: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-
-    console.log(`✅ Generated ${summariesGenerated} new summaries for ${document.fileName}`);
-
-    return {
-      ...document,
-      chunks: updatedChunks,
-      updatedAt: new Date()
-    };
   }
 
   /**
    * Use LLM to intelligently select relevant chunks based on user query
    */
   static async selectRelevantChunks(
-    userQuery: string, 
-    documents: KnowledgeBaseDocument[],
+    userQuery: string,
     maxChunks: number = this.DEFAULT_MAX_SELECTED_CHUNKS
   ): Promise<LLMSelectionResult> {
-    // Collect all chunks with summaries
-    const chunksWithSummaries: Array<{chunk: DocumentChunk, document: KnowledgeBaseDocument}> = [];
-    
-    documents.forEach(doc => {
-      doc.chunks.forEach(chunk => {
-        if (chunk.summaryGenerated && chunk.summary) {
-          chunksWithSummaries.push({ chunk, document: doc });
-        }
+    console.log(`🤖 LLM Selection: Starting intelligent chunk selection for query: "${userQuery}"`);
+
+    // Load all processed documents (summary files)
+    const summaryFiles = await IntelligentChunkingService.listSummaryFiles();
+
+    if (summaryFiles.length === 0) {
+      console.log('❌ No processed documents available for selection');
+      return {
+        selectedChunkIds: [],
+        reasoning: 'No processed documents available for evaluation. Please process documents first.',
+        confidence: 0,
+        totalChunksEvaluated: 0
+      };
+    }
+
+    // Collect all chunks with summaries from summary files
+    const chunksWithSummaries: Array<{chunk: DocumentChunk, fileName: string}> = [];
+
+    summaryFiles.forEach(summaryFile => {
+      summaryFile.chunks.forEach(chunk => {
+        chunksWithSummaries.push({
+          chunk,
+          fileName: summaryFile.fileName
+        });
       });
     });
 
@@ -129,12 +140,14 @@ CONCISE SUMMARY:`;
       };
     }
 
-    console.log(`🤖 LLM Selection: Evaluating ${chunksWithSummaries.length} chunks for query: "${userQuery}"`);
+    console.log(`🤖 LLM Selection: Evaluating ${chunksWithSummaries.length} chunks from ${summaryFiles.length} documents`);
 
     // Create selection prompt with all summaries
     const summariesList = chunksWithSummaries.map((item, index) => {
-      return `${index + 1}. [${item.document.fileName}] Chunk ${item.chunk.chunkIndex + 1}:
-${item.chunk.summary}
+      return `${index + 1}. [${item.fileName}] Chunk ${item.chunk.chunkIndex + 1}:
+Summary: ${item.chunk.summary}
+Start: "${item.chunk.startText}"
+End: "${item.chunk.endText}"
 ID: ${item.chunk.id}`;
     }).join('\n\n');
 
@@ -142,7 +155,7 @@ ID: ${item.chunk.id}`;
 
 USER QUERY: "${userQuery}"
 
-AVAILABLE KNOWLEDGE CHUNKS (summaries):
+AVAILABLE KNOWLEDGE CHUNKS (${chunksWithSummaries.length} total):
 ${summariesList}
 
 SELECTION CRITERIA:
@@ -151,6 +164,7 @@ SELECTION CRITERIA:
 - Consider construction standards, codes, materials, and methods
 - Select up to ${maxChunks} most relevant chunks
 - Focus on practical applicability to the query
+- Use the summary, start text, and end text to understand chunk content
 
 Please respond in this exact JSON format:
 {
@@ -164,7 +178,7 @@ IMPORTANT: Only include chunk IDs that appear in the list above. Confidence shou
     try {
       const response = await LLMService.generateContent(selectionPrompt);
       console.log(`🤖 LLM Selection Response: ${response.substring(0, 200)}...`);
-      
+
       // Parse JSON response
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
@@ -172,10 +186,10 @@ IMPORTANT: Only include chunk IDs that appear in the list above. Confidence shou
       }
 
       const selectionResult = JSON.parse(jsonMatch[0]);
-      
+
       // Validate selected chunk IDs
       const validChunkIds = chunksWithSummaries.map(item => item.chunk.id);
-      const validSelectedIds = selectionResult.selectedChunkIds.filter((id: string) => 
+      const validSelectedIds = selectionResult.selectedChunkIds.filter((id: string) =>
         validChunkIds.includes(id)
       );
 
@@ -205,34 +219,48 @@ IMPORTANT: Only include chunk IDs that appear in the list above. Confidence shou
    * Get full content of selected chunks for prompt enhancement
    */
   static async getSelectedChunksContent(
-    selectedChunkIds: string[],
-    documents: KnowledgeBaseDocument[]
+    selectedChunkIds: string[]
   ): Promise<{content: string, sources: string[]}> {
+    if (selectedChunkIds.length === 0) {
+      return { content: '', sources: [] };
+    }
+
+    // Load all summary files to find selected chunks
+    const summaryFiles = await IntelligentChunkingService.listSummaryFiles();
     const selectedChunks: Array<{chunk: DocumentChunk, source: string}> = [];
-    
-    documents.forEach(doc => {
-      doc.chunks.forEach(chunk => {
+
+    summaryFiles.forEach(summaryFile => {
+      summaryFile.chunks.forEach(chunk => {
         if (selectedChunkIds.includes(chunk.id)) {
           selectedChunks.push({
             chunk,
-            source: doc.fileName
+            source: summaryFile.fileName
           });
         }
       });
     });
 
     if (selectedChunks.length === 0) {
+      console.log('❌ No selected chunks found in summary files');
       return { content: '', sources: [] };
     }
 
+    // Sort chunks by their original order
+    selectedChunks.sort((a, b) => a.chunk.chunkIndex - b.chunk.chunkIndex);
+
     const contentParts = selectedChunks.map(item => {
-      return `--- FROM: ${item.source} (Chunk ${item.chunk.chunkIndex + 1}) ---\n${item.chunk.content}`;
+      return `--- FROM: ${item.source} (Chunk ${item.chunk.chunkIndex + 1}) ---
+Start: "${item.chunk.startText}"
+End: "${item.chunk.endText}"
+
+${item.chunk.content}`;
     });
 
     const content = contentParts.join('\n\n');
     const sources = [...new Set(selectedChunks.map(item => item.source))];
 
     console.log(`📄 Selected content: ${content.length} characters from ${sources.length} sources`);
+    console.log(`📊 Selected chunks: ${selectedChunks.map(item => `${item.source}:${item.chunk.chunkIndex + 1}`).join(', ')}`);
 
     return { content, sources };
   }

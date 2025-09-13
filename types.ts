@@ -154,13 +154,14 @@ export interface DocumentChunk {
   documentId: string;
   content: string;
   chunkIndex: number;
-  startPosition: number;
-  endPosition: number;
-  embedding?: number[];
+  startText: string; // First few words of the chunk (LLM-determined boundary)
+  endText: string; // Last few words of the chunk (LLM-determined boundary)
+  startPosition: number; // Character position in original document
+  endPosition: number; // Character position in original document
+  summary: string; // LLM-generated summary
+  summaryGenerated: boolean; // Always true for new system
+  lastSummaryUpdate: number; // Timestamp of summary generation
   metadata: ChunkMetadata;
-  summary?: string; // LLM-generated 10% summary
-  summaryGenerated?: boolean; // Whether summary has been generated
-  lastSummaryUpdate?: number; // Timestamp of last summary generation
 }
 
 export interface DocumentMetadata {
@@ -189,17 +190,19 @@ export interface ChunkMetadata {
 }
 
 export interface KnowledgeBaseConfig {
-  chunkSize: number;
-  chunkOverlap: number;
-  maxChunks: number;
-  enableEmbeddings: boolean;
-  embeddingModel: string;
-  similarityThreshold: number;
-  // LLM-based selection settings
-  enableLLMSelection: boolean; // Enable LLM-based chunk selection instead of RAG
-  autoGenerateSummaries: boolean; // Automatically generate summaries for new chunks
+  // LLM-based intelligent processing settings
+  maxInputTextLength: number; // Maximum text length to send to LLM in one go (default: 50000)
   summaryCompressionRatio: number; // Target compression ratio (0.1 = 10%)
   maxSelectedChunks: number; // Maximum chunks to include in final prompt
+  autoGenerateSummaries: boolean; // Automatically generate summaries for new documents
+  enableLLMSelection: boolean; // Always true for new system
+  // Deprecated fields (kept for migration)
+  chunkSize?: number;
+  chunkOverlap?: number;
+  maxChunks?: number;
+  enableEmbeddings?: boolean;
+  embeddingModel?: string;
+  similarityThreshold?: number;
 }
 
 export interface LLMSelectionResult {
@@ -207,6 +210,32 @@ export interface LLMSelectionResult {
   reasoning: string;
   confidence: number;
   totalChunksEvaluated: number;
+}
+
+export interface LLMChunkingResult {
+  chunks: LLMChunkData[];
+  totalChunks: number;
+  processingComplete: boolean;
+  documentSummary: string; // Overall document summary
+}
+
+export interface LLMChunkData {
+  chunkIndex: number;
+  startText: string; // First 10-15 words of chunk
+  endText: string; // Last 10-15 words of chunk
+  summary: string; // Compressed summary of the chunk
+  estimatedTokens: number; // Estimated token count
+}
+
+export interface DocumentSummaryFile {
+  documentId: string;
+  fileName: string;
+  documentSummary: string;
+  chunks: DocumentChunk[];
+  totalChunks: number;
+  createdAt: number;
+  updatedAt: number;
+  version: string; // Version for future compatibility
 }
 
 export interface RAGContext {

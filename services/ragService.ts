@@ -65,7 +65,6 @@ export class RAGService {
       console.log(`🤖 LLM Selection: Selecting relevant chunks (max: ${maxChunks})...`);
       const selectionResult = await LLMKnowledgeService.selectRelevantChunks(
         originalPrompt,
-        activeDocuments,
         maxChunks
       );
 
@@ -76,8 +75,7 @@ export class RAGService {
 
       // Get full content of selected chunks
       const { content: contextText, sources } = await LLMKnowledgeService.getSelectedChunksContent(
-        selectionResult.selectedChunkIds,
-        activeDocuments
+        selectionResult.selectedChunkIds
       );
 
       console.log(`✅ LLM Selection: Selected ${selectionResult.selectedChunkIds.length} chunks`);
