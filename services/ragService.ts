@@ -120,40 +120,50 @@ export class RAGService {
         return { enhancedPrompt: originalPrompt, ragContext: null };
       }
 
-      // Create summaries list for Stage 1
+      // Create comprehensive summaries list for Stage 1 - include ALL chunk summaries
       const allSummaries = summaryFiles.map(file => {
+        const chunkSummaries = file.chunks.map((chunk, index) => {
+          return `  Chunk ${index + 1}: ${chunk.summary}`;
+        }).join('\n');
+
         return `Document: ${file.fileName}
-Summary: ${file.documentSummary}
-Chunks: ${file.totalChunks} available
-Document ID: ${file.documentId}`;
-      }).join('\n\n');
+Document Summary: ${file.documentSummary}
+Total Chunks: ${file.totalChunks}
+Document ID: ${file.documentId}
+
+Individual Chunk Summaries:
+${chunkSummaries}`;
+      }).join('\n\n---\n\n');
 
       // Stage 1 Prompt: LLM selects relevant documents/chunks
-      const stage1Prompt = `You are an expert knowledge curator for a construction estimation system. Your task is to analyze the user's query and select the most relevant document chunks that would help provide an accurate response.
+      const stage1Prompt = `You are an expert knowledge curator for a construction estimation system. Your task is to analyze the user's query and select the most relevant document chunks from the complete knowledge base that would help provide an accurate response.
 
 USER QUERY: "${originalPrompt}"
 
-AVAILABLE DOCUMENTS (${summaryFiles.length} total):
+COMPLETE KNOWLEDGE BASE (${summaryFiles.length} documents with ALL chunk summaries):
 ${allSummaries}
 
 SELECTION TASK:
-1. Analyze the user's query to understand what information they need
-2. Review the document summaries to identify which documents contain relevant information
-3. Select the most relevant chunks that would help answer the query
-4. Focus on technical specifications, procedures, standards, and actionable information
+1. Analyze the user's query to understand exactly what information they need
+2. Review ALL chunk summaries from ALL documents to identify relevant content
+3. Select specific chunks (by number) that contain information relevant to the query
+4. Look for technical specifications, procedures, standards, rates, materials, and actionable information
+5. Consider chunks from ANY document that might be relevant, not just the most obvious ones
+6. Select up to 10 chunks total from across all documents
 
 Please respond in this exact JSON format:
 {
-  "selectedDocuments": [
+  "selectedChunks": [
     {
       "documentId": "document_id_here",
       "fileName": "filename.xlsx",
-      "relevanceReason": "Why this document is relevant to the query",
-      "suggestedChunkCount": 3
+      "chunkNumbers": [1, 3, 5],
+      "relevanceReason": "Why these specific chunks are relevant to the query"
     }
   ],
-  "overallReasoning": "Brief explanation of the selection strategy and how these documents relate to the query",
-  "confidence": 0.85
+  "overallReasoning": "Brief explanation of the selection strategy and how these chunks relate to the query",
+  "confidence": 0.85,
+  "totalChunksSelected": 6
 }
 
 RESPOND WITH ONLY THE JSON OBJECT:`;
@@ -164,12 +174,12 @@ RESPOND WITH ONLY THE JSON OBJECT:`;
 
       // Parse Stage 1 response
       const stage1Result = this.parseStage1Response(stage1Response);
-      if (!stage1Result || stage1Result.selectedDocuments.length === 0) {
-        console.log('🎯 Stage 1: No documents selected');
+      if (!stage1Result || stage1Result.selectedChunks.length === 0) {
+        console.log('🎯 Stage 1: No chunks selected');
         return { enhancedPrompt: originalPrompt, ragContext: null };
       }
 
-      console.log(`🎯 Stage 1: Selected ${stage1Result.selectedDocuments.length} documents`);
+      console.log(`🎯 Stage 1: Selected ${stage1Result.totalChunksSelected || stage1Result.selectedChunks.length} chunks from ${stage1Result.selectedChunks.length} documents`);
 
       // STAGE 2: Get actual chunks from selected documents and create final prompt
       return await this.executeStage2(originalPrompt, stage1Result, summaryFiles);
@@ -469,7 +479,7 @@ ${documentList}`;
   }
 
   /**
-   * Parse Stage 1 LLM response for document selection
+   * Parse Stage 1 LLM response for chunk selection
    */
   private static parseStage1Response(response: string): any {
     try {
@@ -481,9 +491,25 @@ ${documentList}`;
         const jsonStr = response.substring(firstBrace, lastBrace + 1);
         const parsed = JSON.parse(jsonStr);
 
-        // Validate structure
-        if (parsed.selectedDocuments && Array.isArray(parsed.selectedDocuments)) {
+        // Validate structure - now looking for selectedChunks instead of selectedDocuments
+        if (parsed.selectedChunks && Array.isArray(parsed.selectedChunks)) {
           return parsed;
+        }
+
+        // Fallback: if old format is used, convert it
+        if (parsed.selectedDocuments && Array.isArray(parsed.selectedDocuments)) {
+          console.log('🔄 Converting old format to new chunk selection format');
+          return {
+            selectedChunks: parsed.selectedDocuments.map(doc => ({
+              documentId: doc.documentId,
+              fileName: doc.fileName,
+              chunkNumbers: Array.from({length: doc.suggestedChunkCount || 3}, (_, i) => i + 1),
+              relevanceReason: doc.relevanceReason
+            })),
+            overallReasoning: parsed.overallReasoning,
+            confidence: parsed.confidence,
+            totalChunksSelected: parsed.selectedDocuments.reduce((sum, doc) => sum + (doc.suggestedChunkCount || 3), 0)
+          };
         }
       }
 
@@ -500,23 +526,35 @@ ${documentList}`;
    */
   private static async executeStage2(originalPrompt: string, stage1Result: any, summaryFiles: any[]): Promise<{ enhancedPrompt: string; ragContext: RAGContext | null }> {
     try {
-      console.log('🎯 Stage 2: Retrieving selected chunks...');
+      console.log('🎯 Stage 2: Retrieving specifically selected chunks...');
 
       const selectedChunks = [];
       const sources = [];
 
-      // Get chunks from selected documents
-      for (const selectedDoc of stage1Result.selectedDocuments) {
-        const summaryFile = summaryFiles.find(file => file.documentId === selectedDoc.documentId);
+      // Get specific chunks from selected documents based on chunk numbers
+      for (const selectedChunkGroup of stage1Result.selectedChunks) {
+        const summaryFile = summaryFiles.find(file => file.documentId === selectedChunkGroup.documentId);
         if (summaryFile) {
-          // Get the suggested number of chunks or default to 3
-          const chunkCount = Math.min(selectedDoc.suggestedChunkCount || 3, summaryFile.chunks.length);
-          const docChunks = summaryFile.chunks.slice(0, chunkCount);
+          // Get the specific chunks by their numbers (convert to 0-based index)
+          const chunkNumbers = selectedChunkGroup.chunkNumbers || [1, 2, 3]; // fallback
 
-          selectedChunks.push(...docChunks);
+          for (const chunkNumber of chunkNumbers) {
+            const chunkIndex = chunkNumber - 1; // Convert to 0-based index
+            if (chunkIndex >= 0 && chunkIndex < summaryFile.chunks.length) {
+              const chunk = summaryFile.chunks[chunkIndex];
+              selectedChunks.push({
+                ...chunk,
+                sourceFileName: summaryFile.fileName,
+                chunkNumber: chunkNumber,
+                relevanceReason: selectedChunkGroup.relevanceReason
+              });
+            }
+          }
+
           sources.push(summaryFile.fileName);
-
-          console.log(`🎯 Stage 2: Added ${docChunks.length} chunks from ${summaryFile.fileName}`);
+          console.log(`🎯 Stage 2: Added ${chunkNumbers.length} specific chunks from ${summaryFile.fileName} (chunks: ${chunkNumbers.join(', ')})`);
+        } else {
+          console.warn(`🎯 Stage 2: Document ${selectedChunkGroup.documentId} not found`);
         }
       }
 
@@ -525,12 +563,17 @@ ${documentList}`;
         return { enhancedPrompt: originalPrompt, ragContext: null };
       }
 
-      // Create context text from selected chunks
+      // Create context text from selected chunks with more detail
       const contextText = selectedChunks.map((chunk, index) => {
-        return `[Chunk ${index + 1}] ${chunk.summary}\n\nContent: ${chunk.content}`;
+        return `[Source: ${chunk.sourceFileName} - Chunk ${chunk.chunkNumber}]
+Summary: ${chunk.summary}
+Relevance: ${chunk.relevanceReason || 'Selected by AI'}
+
+Full Content:
+${chunk.content}`;
       }).join('\n\n---\n\n');
 
-      console.log(`🎯 Stage 2: Created context with ${selectedChunks.length} chunks (${contextText.length} chars)`);
+      console.log(`🎯 Stage 2: Created context with ${selectedChunks.length} specific chunks (${contextText.length} chars)`);
 
       // Create RAG context
       const ragContext: RAGContext = {
@@ -545,7 +588,7 @@ ${documentList}`;
       const enhancedPrompt = this.createTwoStageEnhancedPrompt(originalPrompt, contextText, stage1Result, sources);
 
       console.log(`✅ Two-Stage LLM: Final prompt length: ${enhancedPrompt.length} characters`);
-      console.log(`📊 Two-Stage LLM: Used ${selectedChunks.length} chunks from ${sources.length} documents`);
+      console.log(`📊 Two-Stage LLM: Used ${selectedChunks.length} specific chunks from ${sources.length} documents`);
 
       return { enhancedPrompt, ragContext };
 
