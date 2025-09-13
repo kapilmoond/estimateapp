@@ -267,7 +267,7 @@ export const KnowledgeBaseDisplay: React.FC<KnowledgeBaseDisplayProps> = ({
                       <div>
                         <div className="font-medium text-sm text-gray-800">{doc.fileName}</div>
                         <div className="text-xs text-gray-500">
-                          {formatFileSize(doc.metadata.fileSize)} • {doc.chunks.length} chunks
+                          {formatFileSize(doc.metadata?.fileSize || 0)} • {doc.chunks?.length || 0} chunks
                         </div>
                       </div>
                     </div>

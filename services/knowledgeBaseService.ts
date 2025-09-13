@@ -38,11 +38,35 @@ export class EnhancedKnowledgeBaseService {
   static async loadDocuments(): Promise<KnowledgeBaseDocument[]> {
     try {
       const documents = await IndexedDBService.loadAll<KnowledgeBaseDocument>('knowledgeBase');
-      return documents.map((doc: any) => ({
-        ...doc,
-        createdAt: new Date(doc.createdAt),
-        updatedAt: new Date(doc.updatedAt)
-      }));
+      return documents.map((doc: any) => {
+        // Skip summary files (they have version field)
+        if (doc.version) return doc;
+
+        // Ensure metadata exists and has required fields
+        if (!doc.metadata) {
+          doc.metadata = {
+            fileSize: 0,
+            title: doc.fileName || 'Unknown',
+            fileType: doc.fileType || 'unknown'
+          };
+        }
+
+        // Ensure fileSize exists
+        if (typeof doc.metadata.fileSize !== 'number') {
+          doc.metadata.fileSize = 0;
+        }
+
+        // Ensure chunks array exists
+        if (!Array.isArray(doc.chunks)) {
+          doc.chunks = [];
+        }
+
+        return {
+          ...doc,
+          createdAt: new Date(doc.createdAt),
+          updatedAt: new Date(doc.updatedAt)
+        };
+      });
     } catch (error) {
       console.error('Error loading knowledge base documents from IndexedDB:', error);
       return [];
@@ -257,8 +281,11 @@ export class EnhancedKnowledgeBaseService {
       const documents = await this.loadDocuments();
       const activeDocuments = documents.filter(doc => doc.isActive);
 
-      const totalSize = documents.reduce((sum, doc) => sum + (doc.metadata.fileSize || 0), 0);
-      const totalChunks = documents.reduce((sum, doc) => sum + doc.chunks.length, 0);
+      const totalSize = documents.reduce((sum, doc) => {
+        const fileSize = doc.metadata?.fileSize || 0;
+        return sum + fileSize;
+      }, 0);
+      const totalChunks = documents.reduce((sum, doc) => sum + (doc.chunks?.length || 0), 0);
 
       return {
         totalDocuments: documents.length,
@@ -818,12 +845,15 @@ export class KnowledgeBaseService {
   static getStats(): KnowledgeBaseStats {
     const documents = this.loadDocuments();
     const activeDocuments = documents.filter(doc => doc.isActive);
-    const totalChunks = documents.reduce((sum, doc) => sum + doc.chunks.length, 0);
-    const totalSize = documents.reduce((sum, doc) => sum + doc.metadata.fileSize, 0);
-    const lastUpdated = documents.length > 0 
+    const totalChunks = documents.reduce((sum, doc) => sum + (doc.chunks?.length || 0), 0);
+    const totalSize = documents.reduce((sum, doc) => {
+      const fileSize = doc.metadata?.fileSize || 0;
+      return sum + fileSize;
+    }, 0);
+    const lastUpdated = documents.length > 0
       ? new Date(Math.max(...documents.map(doc => doc.updatedAt.getTime())))
       : new Date();
-    
+
     return {
       totalDocuments: documents.length,
       totalChunks,
