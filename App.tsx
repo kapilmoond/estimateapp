@@ -17,6 +17,7 @@ import { DXFService, DXFStorageService } from './services/dxfService';
 import { SimpleDrawingGenerator } from './services/simpleDrawingGenerator';
 import { HTMLService } from './services/htmlService';
 import { TemplateService, MasterTemplate } from './services/templateService';
+import { RAGService } from './services/ragService';
 import { Spinner } from './components/Spinner';
 import { ResultDisplay } from './components/ResultDisplay';
 import { KeywordsDisplay } from './components/KeywordsDisplay';
@@ -28,8 +29,7 @@ import { DesignDisplay } from './components/DesignDisplay';
 import { DrawingDisplay } from './components/DrawingDisplay';
 import { ContextManager } from './components/ContextManager';
 import { LLMProviderSelector } from './components/LLMProviderSelector';
-import { KnowledgeBaseManager } from './components/KnowledgeBaseManager';
-import { KnowledgeBaseDisplay } from './components/KnowledgeBaseDisplay';
+import { RAGKnowledgeManager } from './components/RAGKnowledgeManager';
 import { DiscussionContextManager } from './components/DiscussionContextManager';
 import { TemplateSelector } from './components/TemplateSelector';
 import { TemplateManager } from './components/TemplateManager';
@@ -48,7 +48,6 @@ import { DrawingSettingsService } from './services/drawingSettingsService';
 import { DrawingSettingsPanel } from './components/DrawingSettingsPanel';
 import { CompactFileUpload } from './components/CompactFileUpload';
 import { LLMService } from './services/llmService';
-import { RAGService } from './services/ragService';
 import { DrawingContextSelector } from './components/DrawingContextSelector';
 
 import { SystemStatus } from './components/SystemStatus';
@@ -703,7 +702,7 @@ const App: React.FC = () => {
 
         // Add knowledge base context if enabled
         if (includeKnowledgeBase) {
-          const { enhancedPrompt } = await RAGService.enhancePromptWithKnowledgeBase(
+          const { enhancedPrompt } = await RAGService.enhancePromptWithRAG(
             currentMessage,
             includeKnowledgeBase
           );
@@ -851,7 +850,7 @@ const App: React.FC = () => {
       // Enhance user input with knowledge base if enabled
       let enhancedUserInput = userInput;
       if (includeKnowledgeBase) {
-        const { enhancedPrompt } = await RAGService.enhancePromptWithKnowledgeBase(
+        const { enhancedPrompt } = await RAGService.enhancePromptWithRAG(
           userInput,
           includeKnowledgeBase
         );
@@ -975,7 +974,7 @@ const App: React.FC = () => {
       let enhancedDrawingInput = inputText;
       if (includeKnowledgeBase) {
         console.log('🔍 Enhancing drawing request with knowledge base context...');
-        const { enhancedPrompt } = await RAGService.enhancePromptWithKnowledgeBase(
+        const { enhancedPrompt } = await RAGService.enhancePromptWithRAG(
           inputText,
           includeKnowledgeBase
         );
@@ -1833,11 +1832,22 @@ Create a new cost abstract that addresses the remake instructions using the exis
 
 
         {isKnowledgeBaseOpen && (
-          <KnowledgeBaseManager
-            isOpen={isKnowledgeBaseOpen}
-            onClose={() => setIsKnowledgeBaseOpen(false)}
-            onKnowledgeBaseUpdate={handleKnowledgeBaseUpdate}
-          />
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+              <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                <h2 className="text-xl font-semibold">Knowledge Base Manager</h2>
+                <button
+                  onClick={() => setIsKnowledgeBaseOpen(false)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="p-4">
+                <RAGKnowledgeManager onKnowledgeBaseUpdate={handleKnowledgeBaseUpdate} />
+              </div>
+            </div>
+          </div>
         )}
 
         {isContextManagerOpen && (

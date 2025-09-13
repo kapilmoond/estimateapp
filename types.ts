@@ -136,127 +136,64 @@ export interface ProjectData {
   guidelines: UserGuideline[];
 }
 
-// Knowledge Base Types
-export interface KnowledgeBaseDocument {
+// Professional RAG System Types
+export interface RAGDocument {
   id: string;
   fileName: string;
-  fileType: 'pdf' | 'docx' | 'txt' | 'xlsx' | 'xls';
   content: string;
-  chunks: DocumentChunk[];
-  metadata: DocumentMetadata;
-  createdAt: Date;
-  updatedAt: Date;
+  fileType: 'pdf' | 'docx' | 'txt' | 'xlsx' | 'xls';
+  uploadDate: Date;
+  metadata: {
+    fileSize: number;
+    wordCount: number;
+    chunkCount: number;
+    processingStatus: 'pending' | 'processing' | 'completed' | 'failed';
+  };
   isActive: boolean;
 }
 
-export interface DocumentChunk {
+export interface RAGChunk {
   id: string;
   documentId: string;
   content: string;
   chunkIndex: number;
-  startText: string; // First few words of the chunk (LLM-determined boundary)
-  endText: string; // Last few words of the chunk (LLM-determined boundary)
-  startPosition: number; // Character position in original document
-  endPosition: number; // Character position in original document
-  summary: string; // LLM-generated summary
-  summaryGenerated: boolean; // Always true for new system
-  lastSummaryUpdate: number; // Timestamp of summary generation
-  metadata: ChunkMetadata;
-}
-
-export interface DocumentMetadata {
-  fileSize: number;
-  pageCount?: number;
-  author?: string;
-  title?: string;
-  subject?: string;
-  keywords?: string[];
-  language?: string;
-  fileType?: string;
-  parsedAt?: number;
-  parsingMetadata?: {
-    sheets?: string[];
-    pages?: number;
-    encoding?: string;
-    structure?: any;
+  embedding?: number[];
+  metadata: {
+    startChar: number;
+    endChar: number;
+    tokenCount: number;
   };
 }
 
-export interface ChunkMetadata {
-  pageNumber?: number;
-  sectionTitle?: string;
-  wordCount: number;
-  characterCount: number;
+export interface RAGSearchResult {
+  chunks: RAGChunk[];
+  scores: number[];
+  query: string;
+  totalResults: number;
+  processingTime: number;
 }
 
-export interface KnowledgeBaseConfig {
-  // LLM-based intelligent processing settings
-  maxInputTextLength: number; // Maximum text length to send to LLM in one go (default: 50000)
-  summaryCompressionRatio: number; // Target compression ratio (0.1 = 10%)
-  maxSelectedChunks: number; // Maximum chunks to include in final prompt
-  autoGenerateSummaries: boolean; // Automatically generate summaries for new documents
-  enableLLMSelection: boolean; // Always true for new system
-  // Deprecated fields (kept for migration)
-  chunkSize?: number;
-  chunkOverlap?: number;
-  maxChunks?: number;
-  enableEmbeddings?: boolean;
-  embeddingModel?: string;
-  similarityThreshold?: number;
+export interface RAGConfig {
+  chunkSize: number;
+  chunkOverlap: number;
+  maxResults: number;
+  similarityThreshold: number;
+  embeddingModel: string;
 }
 
-export interface LLMSelectionResult {
-  selectedChunkIds: string[];
-  reasoning: string;
-  confidence: number;
-  totalChunksEvaluated: number;
-}
-
-export interface LLMChunkingResult {
-  chunks: LLMChunkData[];
-  totalChunks: number;
-  processingComplete: boolean;
-  documentSummary: string; // Overall document summary
-}
-
-export interface LLMChunkData {
-  chunkIndex: number;
-  startPosition: number; // Character position where chunk starts
-  endPosition: number; // Character position where chunk ends
-  startText: string; // First 10-15 words of chunk (for reference)
-  endText: string; // Last 10-15 words of chunk (for reference)
-  summary: string; // Compressed summary of the chunk
-  estimatedTokens: number; // Estimated token count
-}
-
-export interface DocumentSummaryFile {
-  documentId: string;
-  fileName: string;
-  documentSummary: string;
-  chunks: DocumentChunk[];
-  totalChunks: number;
-  createdAt: number;
-  updatedAt: number;
-  version: string; // Version for future compatibility
+export interface RAGServerStatus {
+  isRunning: boolean;
+  port: number;
+  documentsCount: number;
+  chunksCount: number;
+  embeddingModel: string;
 }
 
 export interface RAGContext {
   query: string;
-  relevantChunks?: DocumentChunk[]; // Optional for backward compatibility
-  totalDocuments?: number; // Optional for backward compatibility
-  searchScore?: number; // Optional for backward compatibility
-  contextLength?: number; // Optional for backward compatibility
-  // New unified fields
-  context: string; // The actual context text to include in prompt
-  sources: string[]; // List of source document names
-  chunkCount: number; // Number of chunks included
-  totalTokens: number; // Estimated token count
-}
-
-export interface KnowledgeBaseStats {
-  totalDocuments: number;
-  totalChunks: number;
-  totalSize: number;
-  lastUpdated: Date;
-  activeDocuments: number;
+  context: string;
+  sources: string[];
+  chunkCount: number;
+  totalTokens: number;
+  processingTime: number;
 }
