@@ -106,9 +106,9 @@ export const LLMKnowledgeManager: React.FC<LLMKnowledgeManagerProps> = ({
   };
 
   const getProcessingStats = () => {
-    const totalDocuments = documents.filter(doc => doc.isActive).length;
-    const processedDocuments = summaryFiles.length;
-    const totalChunks = summaryFiles.reduce((sum, file) => sum + file.totalChunks, 0);
+    const totalDocuments = documents?.filter(doc => doc.isActive).length || 0;
+    const processedDocuments = summaryFiles?.length || 0;
+    const totalChunks = summaryFiles?.reduce((sum, file) => sum + (file.totalChunks || 0), 0) || 0;
 
     return {
       totalDocuments,
@@ -300,8 +300,8 @@ export const LLMKnowledgeManager: React.FC<LLMKnowledgeManagerProps> = ({
           <div>
             <h3 className="text-lg font-medium text-gray-900 mb-4">📚 Documents</h3>
             <div className="space-y-2">
-              {documents.map(doc => {
-                const summaryFile = summaryFiles.find(sf => sf.documentId === doc.id);
+              {documents && documents.length > 0 ? documents.map(doc => {
+                const summaryFile = summaryFiles?.find(sf => sf.documentId === doc.id);
                 const isProcessed = summaryFile && summaryFile.version === '2.0';
 
                 return (
@@ -311,14 +311,14 @@ export const LLMKnowledgeManager: React.FC<LLMKnowledgeManagerProps> = ({
                       <div className="text-sm text-gray-600">
                         {isProcessed ? (
                           <>
-                            ✅ Processed • {summaryFile.totalChunks} intelligent chunks
+                            ✅ Processed • {summaryFile?.totalChunks || 0} intelligent chunks
                             <div className="text-xs text-gray-500 mt-1">
-                              Last updated: {new Date(summaryFile.updatedAt).toLocaleDateString()}
+                              Last updated: {summaryFile?.updatedAt ? new Date(summaryFile.updatedAt).toLocaleDateString() : 'Unknown'}
                             </div>
                           </>
                         ) : (
                           <>
-                            ⏳ Pending processing • {doc.content.length.toLocaleString()} characters
+                            ⏳ Pending processing • {doc.content?.length?.toLocaleString() || 0} characters
                             <div className="text-xs text-gray-500 mt-1">
                               Needs intelligent chunking and summarization
                             </div>
@@ -342,9 +342,7 @@ export const LLMKnowledgeManager: React.FC<LLMKnowledgeManagerProps> = ({
                     </div>
                   </div>
                 );
-              })}
-
-              {documents.length === 0 && (
+              }) : (
                 <div className="text-center py-8 text-gray-500">
                   <div className="text-4xl mb-2">📚</div>
                   <p>No documents in knowledge base</p>
