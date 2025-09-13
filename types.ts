@@ -221,8 +221,10 @@ export interface LLMChunkingResult {
 
 export interface LLMChunkData {
   chunkIndex: number;
-  startText: string; // First 10-15 words of chunk
-  endText: string; // Last 10-15 words of chunk
+  startPosition: number; // Character position where chunk starts
+  endPosition: number; // Character position where chunk ends
+  startText: string; // First 10-15 words of chunk (for reference)
+  endText: string; // Last 10-15 words of chunk (for reference)
   summary: string; // Compressed summary of the chunk
   estimatedTokens: number; // Estimated token count
 }

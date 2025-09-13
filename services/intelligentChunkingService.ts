@@ -191,9 +191,11 @@ INSTRUCTIONS:
    - Logical information units
 
 2. **Boundary Identification**: For each chunk, identify:
-   - Start text: First 10-15 words of the chunk
-   - End text: Last 10-15 words of the chunk
-   - These boundaries should be at natural breaking points
+   - Start position: Character position where chunk begins (0-based)
+   - End position: Character position where chunk ends (0-based)
+   - Start text: First 10-15 words of the chunk (for reference)
+   - End text: Last 10-15 words of the chunk (for reference)
+   - Ensure boundaries are at natural breaking points
 
 3. **Summary Creation**: Create ${compressionPercent}% summaries that:
    - Capture key technical information
@@ -207,6 +209,8 @@ INSTRUCTIONS:
   "chunks": [
     {
       "chunkIndex": 0,
+      "startPosition": 0,
+      "endPosition": 1250,
       "startText": "First 10-15 words of chunk...",
       "endText": "...last 10-15 words of chunk",
       "summary": "Concise ${compressionPercent}% summary focusing on technical details",
@@ -220,9 +224,12 @@ INSTRUCTIONS:
 IMPORTANT:
 - Create 3-8 chunks depending on content complexity
 - Each summary should be approximately ${compressionPercent}% of original chunk length
-- Ensure chunk boundaries are at natural breaking points
+- Calculate accurate character positions (0-based indexing)
+- Ensure chunk boundaries are at natural breaking points (paragraph breaks, section headers)
 - Include all critical technical information in summaries
 - Estimate token count for each summary (roughly 4 characters = 1 token)
+- Position calculation: Count characters from the beginning of the text
+- Example: If text starts "Construction materials include..." and chunk starts at "materials", position would be 12
 
 Begin analysis and chunking:`;
   }
@@ -273,19 +280,28 @@ Begin analysis and chunking:`;
     baseIndex: number = 0
   ): Promise<DocumentChunk[]> {
     const chunks: DocumentChunk[] = [];
-    
+
     for (let i = 0; i < llmChunks.length; i++) {
       const llmChunk = llmChunks[i];
-      
-      // Find actual positions in source text based on start/end text
-      const { startPos, endPos, actualContent } = this.findChunkBoundaries(
-        sourceText,
-        llmChunk.startText,
-        llmChunk.endText,
-        i,
-        llmChunks.length
-      );
-      
+
+      // Use LLM-provided positions directly, with validation
+      let startPos = llmChunk.startPosition || 0;
+      let endPos = llmChunk.endPosition || sourceText.length;
+
+      // Validate and adjust positions
+      startPos = Math.max(0, Math.min(startPos, sourceText.length));
+      endPos = Math.max(startPos + 100, Math.min(endPos, sourceText.length)); // Minimum 100 chars
+
+      // If positions seem invalid, fall back to proportional positioning
+      if (endPos <= startPos || startPos < 0) {
+        console.warn(`⚠️ Invalid positions for chunk ${i}, using proportional positioning`);
+        const chunkSize = Math.floor(sourceText.length / llmChunks.length);
+        startPos = i * chunkSize;
+        endPos = Math.min((i + 1) * chunkSize, sourceText.length);
+      }
+
+      const actualContent = sourceText.substring(startPos, endPos).trim();
+
       const chunk: DocumentChunk = {
         id: `${document.id}-chunk-${baseIndex + i}`,
         documentId: document.id,
@@ -303,56 +319,16 @@ Begin analysis and chunking:`;
           processingVersion: '2.0'
         }
       };
-      
+
       chunks.push(chunk);
+      console.log(`📄 Chunk ${i + 1}: positions ${startPos}-${endPos} (${actualContent.length} chars)`);
     }
-    
-    console.log(`📄 Created ${chunks.length} document chunks with intelligent boundaries`);
+
+    console.log(`📄 Created ${chunks.length} document chunks with position-based boundaries`);
     return chunks;
   }
 
-  /**
-   * Find actual chunk boundaries in source text
-   */
-  private static findChunkBoundaries(
-    sourceText: string,
-    startText: string,
-    endText: string,
-    chunkIndex: number,
-    totalChunks: number
-  ): { startPos: number; endPos: number; actualContent: string } {
-    // Clean up the boundary texts
-    const cleanStartText = startText.trim().toLowerCase();
-    const cleanEndText = endText.trim().toLowerCase();
-    const cleanSourceText = sourceText.toLowerCase();
-    
-    // Find start position
-    let startPos = cleanSourceText.indexOf(cleanStartText);
-    if (startPos === -1) {
-      // Fallback: use proportional positioning
-      startPos = Math.floor((chunkIndex / totalChunks) * sourceText.length);
-      console.warn(`⚠️ Could not find start text "${startText}", using proportional position: ${startPos}`);
-    }
-    
-    // Find end position
-    let endPos = cleanSourceText.indexOf(cleanEndText, startPos);
-    if (endPos === -1) {
-      // Fallback: use proportional positioning
-      endPos = Math.floor(((chunkIndex + 1) / totalChunks) * sourceText.length);
-      console.warn(`⚠️ Could not find end text "${endText}", using proportional position: ${endPos}`);
-    } else {
-      // Include the end text in the chunk
-      endPos += cleanEndText.length;
-    }
-    
-    // Ensure valid boundaries
-    startPos = Math.max(0, startPos);
-    endPos = Math.min(sourceText.length, Math.max(startPos + 100, endPos)); // Minimum 100 chars
-    
-    const actualContent = sourceText.substring(startPos, endPos).trim();
-    
-    return { startPos, endPos, actualContent };
-  }
+
 
   /**
    * Split text intelligently for multi-pass processing
@@ -447,7 +423,9 @@ DOCUMENT SUMMARY:`;
    */
   private static async saveSummaryFile(summaryFile: DocumentSummaryFile): Promise<void> {
     try {
-      await IndexedDBService.saveData(this.SUMMARY_STORE, summaryFile.documentId, summaryFile);
+      // Add id field for IndexedDB compatibility
+      const summaryWithId = { ...summaryFile, id: summaryFile.documentId };
+      await IndexedDBService.save('knowledgeBase', summaryWithId);
       console.log(`💾 Saved summary file for document: ${summaryFile.fileName}`);
     } catch (error) {
       console.error('Error saving summary file:', error);
@@ -460,7 +438,7 @@ DOCUMENT SUMMARY:`;
    */
   static async loadSummaryFile(documentId: string): Promise<DocumentSummaryFile | null> {
     try {
-      const summaryFile = await IndexedDBService.getData(this.SUMMARY_STORE, documentId);
+      const summaryFile = await IndexedDBService.load('knowledgeBase', documentId);
       return summaryFile as DocumentSummaryFile || null;
     } catch (error) {
       console.error('Error loading summary file:', error);
@@ -473,7 +451,7 @@ DOCUMENT SUMMARY:`;
    */
   static async deleteSummaryFile(documentId: string): Promise<void> {
     try {
-      await IndexedDBService.deleteData(this.SUMMARY_STORE, documentId);
+      await IndexedDBService.delete('knowledgeBase', documentId);
       console.log(`🗑️ Deleted summary file for document: ${documentId}`);
     } catch (error) {
       console.error('Error deleting summary file:', error);
@@ -485,8 +463,9 @@ DOCUMENT SUMMARY:`;
    */
   static async listSummaryFiles(): Promise<DocumentSummaryFile[]> {
     try {
-      const allData = await IndexedDBService.getAllData(this.SUMMARY_STORE);
-      return allData as DocumentSummaryFile[];
+      const allData = await IndexedDBService.loadAll('knowledgeBase');
+      // Filter for summary files (they have version field)
+      return allData.filter(item => item.version && item.chunks) as DocumentSummaryFile[];
     } catch (error) {
       console.error('Error listing summary files:', error);
       return [];
