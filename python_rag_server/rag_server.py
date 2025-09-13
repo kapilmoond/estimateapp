@@ -14,13 +14,34 @@ import asyncio
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import chromadb
-from chromadb.config import Settings
+try:
+    import chromadb
+    from chromadb.config import Settings
+    CHROMADB_AVAILABLE = True
+except ImportError:
+    CHROMADB_AVAILABLE = False
+    print("Warning: ChromaDB not available, using FAISS fallback")
+
 from sentence_transformers import SentenceTransformer
 import uvicorn
 
 from document_processor import DocumentProcessor
-from vector_store import VectorStore
+
+# Try ChromaDB first, fallback to FAISS
+if CHROMADB_AVAILABLE:
+    try:
+        from vector_store import VectorStore
+        VECTOR_STORE_CLASS = VectorStore
+        VECTOR_STORE_TYPE = "ChromaDB"
+    except Exception as e:
+        print(f"ChromaDB failed to load: {e}")
+        from faiss_vector_store import FAISSVectorStore
+        VECTOR_STORE_CLASS = FAISSVectorStore
+        VECTOR_STORE_TYPE = "FAISS"
+else:
+    from faiss_vector_store import FAISSVectorStore
+    VECTOR_STORE_CLASS = FAISSVectorStore
+    VECTOR_STORE_TYPE = "FAISS"
 from models import (
     RAGDocument, RAGChunk, RAGSearchResult, RAGConfig, 
     RAGServerStatus, DocumentUploadResponse, SearchRequest
@@ -76,10 +97,12 @@ class RAGServer:
             self.embedding_model = SentenceTransformer(self.config.embeddingModel)
             
             # Initialize vector store
-            self.vector_store = VectorStore(
+            self.vector_store = VECTOR_STORE_CLASS(
                 data_dir=self.data_dir,
                 embedding_model=self.embedding_model
             )
+
+            logger.info(f"Using vector store: {VECTOR_STORE_TYPE}")
             
             # Initialize document processor
             self.document_processor = DocumentProcessor(

@@ -68,36 +68,55 @@ def install_dependencies():
 
 def check_dependencies():
     """Check if all required dependencies are installed"""
+    # Core required packages
     required_packages = [
         "fastapi",
         "uvicorn",
-        "chromadb",
         "sentence_transformers",
         "python_multipart",
         "python_docx",
         "PyPDF2",
         "openpyxl",
-        "pandas",
         "numpy",
-        "torch",
-        "transformers",
         "pydantic",
         "httpx",
         "aiofiles"
     ]
+
+    # Optional packages (vector stores)
+    optional_packages = [
+        "chromadb",
+        "faiss",
+        "pandas",
+        "torch",
+        "transformers"
+    ]
     
     missing_packages = []
-    
+    missing_optional = []
+
+    # Check required packages
     for package in required_packages:
         try:
             __import__(package.replace("-", "_"))
         except ImportError:
             missing_packages.append(package)
-    
+
+    # Check optional packages
+    for package in optional_packages:
+        try:
+            __import__(package.replace("-", "_"))
+        except ImportError:
+            missing_optional.append(package)
+
     if missing_packages:
-        logger.warning(f"Missing packages: {missing_packages}")
+        logger.warning(f"Missing required packages: {missing_packages}")
         return False
-    
+
+    if missing_optional:
+        logger.info(f"Missing optional packages: {missing_optional}")
+        logger.info("Server will use available vector store (FAISS fallback if ChromaDB unavailable)")
+
     logger.info("All required packages are installed")
     return True
 

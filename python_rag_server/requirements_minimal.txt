@@ -1,17 +1,17 @@
-# Minimal requirements for Python 3.13 compatibility
-# Use this if the main requirements.txt fails
+# Python 3.13 compatible requirements with FAISS fallback
+# Use this if ChromaDB fails due to NumPy 2.0 compatibility
 
-fastapi
-uvicorn[standard]
-chromadb
-sentence-transformers
-python-multipart
-python-docx
-PyPDF2
-openpyxl
-numpy
-pydantic
-httpx
-aiofiles
-chardet
-tiktoken
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+numpy<2.0.0,>=1.21.0
+faiss-cpu==1.9.0
+sentence-transformers==3.3.1
+python-multipart==0.0.12
+python-docx==1.1.2
+PyPDF2==3.0.1
+openpyxl==3.1.5
+pydantic==2.10.3
+httpx==0.28.1
+aiofiles==24.1.0
+chardet==5.2.0
+tiktoken==0.8.0

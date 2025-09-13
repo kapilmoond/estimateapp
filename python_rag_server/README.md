@@ -5,7 +5,9 @@ A professional Retrieval-Augmented Generation (RAG) system with vector database 
 ## 🎯 Features
 
 ### **Professional Vector Database**
-- **ChromaDB**: Industry-standard vector database for semantic search
+- **ChromaDB**: Industry-standard vector database (Python 3.11/3.12)
+- **FAISS**: High-performance alternative for Python 3.13 compatibility
+- **Automatic Fallback**: System chooses best available vector store
 - **Sentence Transformers**: High-quality text embeddings using `all-MiniLM-L6-v2` model
 - **Local Storage**: All data stays on your computer for privacy and security
 
@@ -30,21 +32,37 @@ A professional Retrieval-Augmented Generation (RAG) system with vector database 
 ## 🚀 Quick Start
 
 ### **1. Python Version Compatibility**
-- **Recommended**: Python 3.11 or 3.12
-- **Python 3.13**: May have package compatibility issues (use `start_rag_server_py311.bat` if available)
+- **Recommended**: Python 3.11 or 3.12 (full compatibility)
+- **Python 3.13**: Supported with FAISS fallback (ChromaDB has NumPy 2.0 issues)
 - **Minimum**: Python 3.8+
 
-### **2. Start the Server**
+### **2. Start the Server (Multiple Options)**
+
+#### **Option 1: Interactive Startup (Recommended)**
 ```bash
-# Windows (Python 3.11/3.12)
 cd python_rag_server
 start_rag_server.bat
+# Choose from 4 startup methods
+```
 
-# Windows (Python 3.13 - if main fails)
-start_rag_server_py311.bat
+#### **Option 2: Python 3.13 Compatible**
+```bash
+start_rag_server_py313.bat
+# Uses FAISS instead of ChromaDB
+```
 
-# Or manually
-python start_server.py
+#### **Option 3: Direct Start**
+```bash
+python start_direct.py
+# Bypasses dependency checking
+```
+
+#### **Option 4: Manual Installation**
+```bash
+pip install fastapi uvicorn sentence-transformers python-multipart
+pip install python-docx PyPDF2 openpyxl pydantic httpx aiofiles
+pip install "numpy<2.0.0" faiss-cpu
+python start_direct.py
 ```
 
 ### **2. Server Information**
