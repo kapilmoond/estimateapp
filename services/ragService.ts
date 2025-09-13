@@ -114,11 +114,18 @@ export class RAGService {
       console.log('🎯 Two-Stage LLM: Starting Stage 1 - Document Selection...');
 
       // STAGE 1: Get all document summaries and let LLM select relevant documents
-      const summaryFiles = await IntelligentChunkingService.listSummaryFiles();
-      if (summaryFiles.length === 0) {
-        console.log('🎯 Two-Stage LLM: No processed documents found');
+      const allSummaryFiles = await IntelligentChunkingService.listSummaryFiles();
+
+      // Filter out inactive documents and clean up orphaned summaries
+      const activeSummaryFiles = await this.filterActiveDocuments(allSummaryFiles);
+
+      if (activeSummaryFiles.length === 0) {
+        console.log('🎯 Two-Stage LLM: No active processed documents found');
         return { enhancedPrompt: originalPrompt, ragContext: null };
       }
+
+      console.log(`🎯 Two-Stage LLM: Using ${activeSummaryFiles.length} active documents (${allSummaryFiles.length - activeSummaryFiles.length} inactive excluded)`);
+      const summaryFiles = activeSummaryFiles;
 
       // Create comprehensive summaries list for Stage 1 - include ALL chunk summaries with IDs
       const allSummaries = summaryFiles.map(file => {
@@ -569,7 +576,7 @@ ${documentList}`;
 
       console.log(`🎯 Stage 2: Created lookup map with ${chunkLookupMap.size} chunks from ${summaryFiles.length} documents`);
 
-      // Retrieve chunks by their exact IDs
+      // Retrieve chunks by their exact IDs - ID-based system only
       for (const selectedChunk of stage1Result.selectedChunkIds) {
         const chunkId = selectedChunk.chunkId;
         const chunk = chunkLookupMap.get(chunkId);
@@ -586,14 +593,16 @@ ${documentList}`;
           }
 
           console.log(`✅ Stage 2: Found chunk ID "${chunkId}" from ${chunk.sourceFileName}`);
+          console.log(`📄 Content preview: ${chunk.content.substring(0, 100)}...`);
         } else {
           notFoundChunkIds.push(chunkId);
-          console.warn(`❌ Stage 2: Chunk ID "${chunkId}" not found in knowledge base`);
+          console.error(`❌ Stage 2: Chunk ID "${chunkId}" not found in knowledge base`);
         }
       }
 
       if (notFoundChunkIds.length > 0) {
-        console.warn(`🎯 Stage 2: ${notFoundChunkIds.length} chunk IDs not found: [${notFoundChunkIds.join(', ')}]`);
+        console.error(`🎯 Stage 2: ${notFoundChunkIds.length} chunk IDs not found: [${notFoundChunkIds.join(', ')}]`);
+        console.error('🔧 This indicates a problem with chunk ID generation or storage. Check chunk processing.');
       }
 
       if (selectedChunks.length === 0) {
@@ -664,6 +673,88 @@ USER REQUEST:
 ${originalPrompt}
 
 Please use the intelligently selected knowledge base context above to provide a comprehensive and accurate response. The content was specifically chosen through a two-stage AI selection process to be most relevant to your request. Reference the source documents when applicable and build upon the technical information provided.`;
+  }
+
+
+
+  /**
+   * Filter active documents and clean up orphaned summaries
+   */
+  private static async filterActiveDocuments(summaryFiles: any[]): Promise<any[]> {
+    try {
+      // Get current active documents from knowledge base
+      const currentDocuments = await EnhancedKnowledgeBaseService.loadDocuments();
+      const activeDocumentIds = new Set(
+        currentDocuments
+          .filter(doc => doc.isActive)
+          .map(doc => doc.id)
+      );
+
+      console.log(`📋 Knowledge Base: ${currentDocuments.length} total documents, ${activeDocumentIds.size} active`);
+
+      // Filter summary files to only include active documents
+      const activeSummaryFiles = summaryFiles.filter(summaryFile => {
+        const isActive = activeDocumentIds.has(summaryFile.documentId);
+        if (!isActive) {
+          console.log(`🗑️ Excluding inactive/deleted document: ${summaryFile.fileName}`);
+        }
+        return isActive;
+      });
+
+      // Clean up orphaned summaries (summaries without corresponding documents)
+      const orphanedSummaries = summaryFiles.filter(summaryFile =>
+        !currentDocuments.some(doc => doc.id === summaryFile.documentId)
+      );
+
+      if (orphanedSummaries.length > 0) {
+        console.log(`🧹 Found ${orphanedSummaries.length} orphaned summaries, cleaning up...`);
+        await this.cleanupOrphanedSummaries(orphanedSummaries);
+      }
+
+      return activeSummaryFiles;
+
+    } catch (error) {
+      console.error('Error filtering active documents:', error);
+      // Fallback: return all summary files if filtering fails
+      return summaryFiles;
+    }
+  }
+
+  /**
+   * Clean up orphaned summary files
+   */
+  private static async cleanupOrphanedSummaries(orphanedSummaries: any[]): Promise<void> {
+    try {
+      for (const orphanedSummary of orphanedSummaries) {
+        await IntelligentChunkingService.deleteSummaryFile(orphanedSummary.documentId);
+        console.log(`🗑️ Deleted orphaned summary: ${orphanedSummary.fileName}`);
+      }
+    } catch (error) {
+      console.error('Error cleaning up orphaned summaries:', error);
+    }
+  }
+
+  /**
+   * Clear complete knowledge base including summaries and chunks
+   */
+  static async clearCompleteKnowledgeBase(): Promise<void> {
+    try {
+      console.log('🧹 Clearing complete knowledge base...');
+
+      // Clear all documents from knowledge base
+      await EnhancedKnowledgeBaseService.clearAll();
+      console.log('✅ Cleared all documents from knowledge base');
+
+      // Clear all summary files
+      await IntelligentChunkingService.clearAllSummaryFiles();
+      console.log('✅ Cleared all summary files and chunks');
+
+      console.log('🎯 Complete knowledge base cleared successfully');
+
+    } catch (error) {
+      console.error('Error clearing complete knowledge base:', error);
+      throw new Error(`Failed to clear knowledge base: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   /**

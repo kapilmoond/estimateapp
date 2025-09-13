@@ -234,16 +234,7 @@ export class EnhancedKnowledgeBaseService {
     }
   }
 
-  // Clear all knowledge base data
-  static async clearAll(): Promise<void> {
-    try {
-      await IndexedDBService.clearStore('knowledgeBase');
-      await IndexedDBService.delete('settings', this.CONFIG_KEY);
-    } catch (error) {
-      console.error('Error clearing knowledge base:', error);
-      throw new Error('Failed to clear knowledge base');
-    }
-  }
+
 
   // Export knowledge base data
   static async exportData(): Promise<string> {
@@ -613,6 +604,43 @@ export class EnhancedKnowledgeBaseService {
     }
 
     return chunks;
+  }
+
+  /**
+   * Delete document and its associated summary/chunks
+   */
+  static async deleteDocument(documentId: string): Promise<void> {
+    try {
+      // Delete the document from knowledge base
+      await IndexedDBService.delete('knowledgeBase', documentId);
+      console.log(`🗑️ Deleted document: ${documentId}`);
+
+      // Delete associated summary file and chunks
+      try {
+        const { IntelligentChunkingService } = await import('./intelligentChunkingService');
+        await IntelligentChunkingService.deleteSummaryFile(documentId);
+        console.log(`🗑️ Deleted associated summary for: ${documentId}`);
+      } catch (summaryError) {
+        console.warn(`⚠️ Could not delete summary for ${documentId}:`, summaryError);
+      }
+
+    } catch (error) {
+      console.error('Error deleting document:', error);
+      throw new Error(`Failed to delete document: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Clear all knowledge base data from IndexedDB
+   */
+  static async clearAll(): Promise<void> {
+    try {
+      await IndexedDBService.clear('knowledgeBase');
+      console.log('🧹 Cleared all knowledge base data from IndexedDB');
+    } catch (error) {
+      console.error('Error clearing knowledge base:', error);
+      throw new Error(`Failed to clear knowledge base: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 }
 

@@ -200,7 +200,13 @@ export class IntelligentChunkingService {
       updatedAt: Date.now(),
       version: '2.0'
     };
-    
+
+    // Log chunk IDs for debugging
+    console.log(`📋 Multi-pass summary file created with ${allChunks.length} chunks:`);
+    allChunks.forEach((chunk, index) => {
+      console.log(`  ${index + 1}. ID: ${chunk.id} | Summary: ${chunk.summary.substring(0, 50)}...`);
+    });
+
     // Save to IndexedDB
     await this.saveSummaryFile(summaryFile);
     console.log(`✅ Multi Pass Complete: Created ${allChunks.length} intelligent chunks from ${textParts.length} parts`);
@@ -398,8 +404,11 @@ RESPOND WITH ONLY THE JSON OBJECT:`;
 
       const actualContent = sourceText.substring(startPos, endPos).trim();
 
+      // Generate simple, reliable chunk ID
+      const chunkId = `${document.id}-chunk-${baseIndex + i}`;
+
       const chunk: DocumentChunk = {
-        id: `${document.id}-chunk-${baseIndex + i}`,
+        id: chunkId,
         documentId: document.id,
         content: actualContent,
         chunkIndex: baseIndex + i,
@@ -417,7 +426,9 @@ RESPOND WITH ONLY THE JSON OBJECT:`;
       };
 
       chunks.push(chunk);
-      console.log(`📄 Chunk ${i + 1}: positions ${startPos}-${endPos} (${actualContent.length} chars)`);
+      console.log(`📄 Chunk ${i + 1}: ID="${chunkId}", positions ${startPos}-${endPos} (${actualContent.length} chars)`);
+      console.log(`📝 Summary: ${llmChunk.summary.substring(0, 100)}...`);
+      console.log(`📖 Content preview: ${actualContent.substring(0, 100)}...`);
     }
 
     console.log(`📄 Created ${chunks.length} document chunks with position-based boundaries`);
@@ -530,6 +541,32 @@ DOCUMENT SUMMARY:`;
   }
 
   /**
+   * Delete summary file by document ID
+   */
+  static async deleteSummaryFile(documentId: string): Promise<void> {
+    try {
+      await IndexedDBService.delete('knowledgeBase', documentId);
+      console.log(`🗑️ Deleted summary file for document: ${documentId}`);
+    } catch (error) {
+      console.error('Error deleting summary file:', error);
+      throw new Error(`Failed to delete summary file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Clear all summary files and chunks
+   */
+  static async clearAllSummaryFiles(): Promise<void> {
+    try {
+      await IndexedDBService.clear('knowledgeBase');
+      console.log(`🧹 Cleared all summary files and chunks from IndexedDB`);
+    } catch (error) {
+      console.error('Error clearing all summary files:', error);
+      throw new Error(`Failed to clear summary files: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
    * Load summary file from IndexedDB
    */
   static async loadSummaryFile(documentId: string): Promise<DocumentSummaryFile | null> {
@@ -542,17 +579,7 @@ DOCUMENT SUMMARY:`;
     }
   }
 
-  /**
-   * Delete summary file from IndexedDB
-   */
-  static async deleteSummaryFile(documentId: string): Promise<void> {
-    try {
-      await IndexedDBService.delete('knowledgeBase', documentId);
-      console.log(`🗑️ Deleted summary file for document: ${documentId}`);
-    } catch (error) {
-      console.error('Error deleting summary file:', error);
-    }
-  }
+
 
   /**
    * List all summary files

@@ -178,13 +178,19 @@ export const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({
 
   const handleRemoveDocument = async (documentId: string) => {
     try {
-      // Try IndexedDB first
-      await EnhancedKnowledgeBaseService.removeDocument(documentId);
-      console.log(`Removed document ${documentId} from IndexedDB`);
+      // Use the enhanced delete method that automatically cleans up summaries
+      await EnhancedKnowledgeBaseService.deleteDocument(documentId);
+      console.log(`Removed document and associated summaries for ${documentId}`);
     } catch (error) {
-      console.error('Error removing from IndexedDB, trying localStorage:', error);
-      // Fallback to localStorage
-      KnowledgeBaseService.removeDocument(documentId);
+      console.error('Error removing document and summaries:', error);
+      // Fallback to basic removal
+      try {
+        await EnhancedKnowledgeBaseService.removeDocument(documentId);
+        console.log(`Removed document ${documentId} from IndexedDB (fallback)`);
+      } catch (fallbackError) {
+        console.error('Error with fallback removal, trying localStorage:', fallbackError);
+        KnowledgeBaseService.removeDocument(documentId);
+      }
     }
     await loadData();
     onKnowledgeBaseUpdate();
@@ -220,18 +226,30 @@ export const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({
   };
 
   const handleClearAll = async () => {
-    if (confirm('Are you sure you want to clear all knowledge base documents? This action cannot be undone.')) {
+    if (confirm('Are you sure you want to clear the complete knowledge base including all documents, summaries, and chunks? This action cannot be undone.')) {
       try {
-        // Try IndexedDB first
-        await EnhancedKnowledgeBaseService.clearAll();
-        console.log('Cleared all documents from IndexedDB');
+        setIsUploading(true);
+        setUploadProgress('Clearing complete knowledge base...');
+
+        // Use the comprehensive clear function from RAGService
+        const { RAGService } = await import('../services/ragService');
+        await RAGService.clearCompleteKnowledgeBase();
+
+        setUploadProgress('Knowledge base cleared successfully');
+        await loadData();
+        onKnowledgeBaseUpdate();
+
+        setTimeout(() => {
+          setIsUploading(false);
+          setUploadProgress('');
+        }, 1000);
+
       } catch (error) {
-        console.error('Error clearing IndexedDB, trying localStorage:', error);
-        // Fallback to localStorage
-        KnowledgeBaseService.clearAll();
+        console.error('Error clearing complete knowledge base:', error);
+        setError(`Failed to clear knowledge base: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        setIsUploading(false);
+        setUploadProgress('');
       }
-      await loadData();
-      onKnowledgeBaseUpdate();
     }
   };
 
