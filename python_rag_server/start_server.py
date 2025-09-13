@@ -26,27 +26,42 @@ def install_dependencies():
     """Install required dependencies"""
     try:
         logger.info("Installing dependencies...")
-        
+
         # Get the directory of this script
         script_dir = Path(__file__).parent
         requirements_file = script_dir / "requirements.txt"
-        
+        requirements_minimal = script_dir / "requirements_minimal.txt"
+
         if not requirements_file.exists():
             logger.error(f"Requirements file not found: {requirements_file}")
             return False
-        
-        # Install dependencies
+
+        # Try main requirements first
+        logger.info("Attempting to install main requirements...")
         result = subprocess.run([
             sys.executable, "-m", "pip", "install", "-r", str(requirements_file)
         ], capture_output=True, text=True)
-        
+
         if result.returncode != 0:
-            logger.error(f"Failed to install dependencies: {result.stderr}")
-            return False
-        
+            logger.warning(f"Main requirements failed: {result.stderr}")
+
+            # Try minimal requirements for Python 3.13 compatibility
+            if requirements_minimal.exists():
+                logger.info("Trying minimal requirements for Python 3.13 compatibility...")
+                result = subprocess.run([
+                    sys.executable, "-m", "pip", "install", "-r", str(requirements_minimal)
+                ], capture_output=True, text=True)
+
+                if result.returncode != 0:
+                    logger.error(f"Minimal requirements also failed: {result.stderr}")
+                    return False
+            else:
+                logger.error("No fallback requirements file found")
+                return False
+
         logger.info("Dependencies installed successfully")
         return True
-        
+
     except Exception as e:
         logger.error(f"Error installing dependencies: {e}")
         return False

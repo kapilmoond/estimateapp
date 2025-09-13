@@ -11,7 +11,13 @@ import asyncio
 
 import PyPDF2
 from docx import Document
-import pandas as pd
+try:
+    import pandas as pd
+    PANDAS_AVAILABLE = True
+except ImportError:
+    PANDAS_AVAILABLE = False
+    print("Warning: pandas not available. Excel .xls files will not be supported.")
+
 import openpyxl
 import tiktoken
 
@@ -151,21 +157,27 @@ class DocumentProcessor:
                         if row_text:
                             text += " | ".join(row_text) + "\n"
             else:
-                # Use pandas for .xls files
-                excel_data = pd.read_excel(excel_file, sheet_name=None, engine='xlrd')
-                text = ""
-                
-                for sheet_name, df in excel_data.items():
-                    text += f"\n--- Sheet: {sheet_name} ---\n"
-                    
-                    # Convert DataFrame to text
-                    for _, row in df.iterrows():
-                        row_text = []
-                        for value in row:
-                            if pd.notna(value) and str(value).strip():
-                                row_text.append(str(value).strip())
-                        if row_text:
-                            text += " | ".join(row_text) + "\n"
+                # Use pandas for .xls files (if available)
+                if PANDAS_AVAILABLE:
+                    try:
+                        excel_data = pd.read_excel(excel_file, sheet_name=None, engine='xlrd')
+                        text = ""
+
+                        for sheet_name, df in excel_data.items():
+                            text += f"\n--- Sheet: {sheet_name} ---\n"
+
+                            # Convert DataFrame to text
+                            for _, row in df.iterrows():
+                                row_text = []
+                                for value in row:
+                                    if pd.notna(value) and str(value).strip():
+                                        row_text.append(str(value).strip())
+                                if row_text:
+                                    text += " | ".join(row_text) + "\n"
+                    except Exception as e:
+                        raise ValueError(f"Failed to process .xls file: {e}")
+                else:
+                    raise ValueError("pandas is required for .xls files but is not installed. Please use .xlsx format instead.")
             
             return text
             

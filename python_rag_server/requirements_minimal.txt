@@ -1,0 +1,17 @@
+# Minimal requirements for Python 3.13 compatibility
+# Use this if the main requirements.txt fails
+
+fastapi
+uvicorn[standard]
+chromadb
+sentence-transformers
+python-multipart
+python-docx
+PyPDF2
+openpyxl
+numpy
+pydantic
+httpx
+aiofiles
+chardet
+tiktoken

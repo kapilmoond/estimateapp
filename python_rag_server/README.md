@@ -29,11 +29,19 @@ A professional Retrieval-Augmented Generation (RAG) system with vector database 
 
 ## 🚀 Quick Start
 
-### **1. Start the Server**
+### **1. Python Version Compatibility**
+- **Recommended**: Python 3.11 or 3.12
+- **Python 3.13**: May have package compatibility issues (use `start_rag_server_py311.bat` if available)
+- **Minimum**: Python 3.8+
+
+### **2. Start the Server**
 ```bash
-# Windows
+# Windows (Python 3.11/3.12)
 cd python_rag_server
 start_rag_server.bat
+
+# Windows (Python 3.13 - if main fails)
+start_rag_server_py311.bat
 
 # Or manually
 python start_server.py
@@ -169,8 +177,15 @@ Default: `all-MiniLM-L6-v2`
 
 ## 🐛 Troubleshooting
 
+### **Python 3.13 Compatibility Issues**
+If you see compilation errors with pandas or other packages:
+1. **Use Python 3.11 or 3.12**: Download from https://python.org
+2. **Try the minimal installer**: Use `start_rag_server_py311.bat`
+3. **Manual installation**: Install packages one by one
+4. **Alternative**: Use conda instead of pip
+
 ### **Server Won't Start**
-- Check Python version (3.8+ required)
+- Check Python version (3.8+ required, 3.11-3.12 recommended)
 - Ensure all dependencies are installed
 - Check port 8001 is not in use
 - Review console output for errors
