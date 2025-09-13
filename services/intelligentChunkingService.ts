@@ -43,46 +43,62 @@ export class IntelligentChunkingService {
   }
 
   /**
-   * Process document in single LLM call
+   * Process document in single LLM call with retry logic
    */
   private static async processSinglePass(
     document: KnowledgeBaseDocument,
     compressionRatio: number
   ): Promise<DocumentSummaryFile> {
-    const prompt = this.createChunkingPrompt(document.content, compressionRatio, true);
-    
-    try {
-      console.log(`🤖 LLM Processing: Sending ${document.content.length} characters for intelligent chunking...`);
-      const response = await LLMService.generateContent(prompt);
-      console.log(`✅ LLM Response: Received ${response.length} characters`);
-      
-      const chunkingResult = this.parseChunkingResponse(response);
-      const chunks = await this.createDocumentChunks(
-        chunkingResult.chunks,
-        document,
-        document.content
-      );
-      
-      const summaryFile: DocumentSummaryFile = {
-        documentId: document.id,
-        fileName: document.fileName,
-        documentSummary: chunkingResult.documentSummary,
-        chunks,
-        totalChunks: chunks.length,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        version: '2.0'
-      };
-      
-      // Save to IndexedDB
-      await this.saveSummaryFile(summaryFile);
-      console.log(`✅ Single Pass Complete: Created ${chunks.length} intelligent chunks`);
-      
-      return summaryFile;
-    } catch (error) {
-      console.error('Error in single pass processing:', error);
-      throw new Error(`Failed to process document: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    const maxRetries = 3;
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`🤖 LLM Processing: Attempt ${attempt}/${maxRetries} - Sending ${document.content.length} characters for intelligent chunking...`);
+
+        const prompt = this.createChunkingPrompt(document.content, compressionRatio, true, undefined, undefined, lastError);
+        const response = await LLMService.generateContent(prompt);
+        console.log(`✅ LLM Response: Received ${response.length} characters`);
+
+        const chunkingResult = this.parseChunkingResponse(response, attempt);
+        const chunks = await this.createDocumentChunks(
+          chunkingResult.chunks,
+          document,
+          document.content
+        );
+
+        const summaryFile: DocumentSummaryFile = {
+          documentId: document.id,
+          fileName: document.fileName,
+          documentSummary: chunkingResult.documentSummary,
+          chunks,
+          totalChunks: chunks.length,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          version: '2.0'
+        };
+
+        // Save to IndexedDB
+        await this.saveSummaryFile(summaryFile);
+        console.log(`✅ Single Pass Complete: Created ${chunks.length} intelligent chunks`);
+
+        return summaryFile;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error('Unknown error');
+        console.error(`❌ Single Pass Attempt ${attempt} Failed:`, lastError.message);
+
+        if (attempt === maxRetries) {
+          console.error('❌ All retry attempts failed for single pass processing');
+          throw new Error(`Failed to process document after ${maxRetries} attempts: ${lastError.message}`);
+        }
+
+        // Wait before retry
+        console.log(`⏸️ Waiting 2 seconds before retry attempt ${attempt + 1}...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
     }
+
+    throw new Error('Unexpected end of retry loop');
   }
 
   /**
@@ -113,30 +129,58 @@ export class IntelligentChunkingService {
         textParts.length
       );
       
-      try {
-        const response = await LLMService.generateContent(prompt);
-        const chunkingResult = this.parseChunkingResponse(response);
-        
-        const partChunks = await this.createDocumentChunks(
-          chunkingResult.chunks,
-          document,
-          part.content,
-          part.startPosition,
-          allChunks.length
-        );
-        
-        allChunks.push(...partChunks);
-        documentSummaries.push(chunkingResult.documentSummary);
-        
-        console.log(`✅ Part ${i + 1} Complete: Created ${partChunks.length} chunks`);
-        
-        // Add delay between calls to avoid overwhelming LLM
-        if (i < textParts.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
+      // Retry logic for each part
+      const maxRetries = 3;
+      let partProcessed = false;
+      let lastError: Error | null = null;
+
+      for (let attempt = 1; attempt <= maxRetries && !partProcessed; attempt++) {
+        try {
+          console.log(`🤖 Part ${i + 1} Processing: Attempt ${attempt}/${maxRetries}`);
+
+          const promptWithRetry = this.createChunkingPrompt(
+            part.content,
+            compressionRatio,
+            isLastPart,
+            i + 1,
+            textParts.length,
+            lastError
+          );
+
+          const response = await LLMService.generateContent(promptWithRetry);
+          const chunkingResult = this.parseChunkingResponse(response, attempt);
+
+          const partChunks = await this.createDocumentChunks(
+            chunkingResult.chunks,
+            document,
+            part.content,
+            part.startPosition,
+            allChunks.length
+          );
+
+          allChunks.push(...partChunks);
+          documentSummaries.push(chunkingResult.documentSummary);
+
+          console.log(`✅ Part ${i + 1} Complete: Created ${partChunks.length} chunks`);
+          partProcessed = true;
+
+          // Add delay between calls to avoid overwhelming LLM
+          if (i < textParts.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error('Unknown error');
+          console.error(`❌ Part ${i + 1} Attempt ${attempt} Failed:`, lastError.message);
+
+          if (attempt === maxRetries) {
+            console.error(`❌ All retry attempts failed for part ${i + 1}`);
+            throw new Error(`Failed to process document part ${i + 1}: ${lastError.message}`);
+          }
+
+          // Wait before retry
+          console.log(`⏸️ Waiting 2 seconds before retry attempt ${attempt + 1}...`);
+          await new Promise(resolve => setTimeout(resolve, 2000));
         }
-      } catch (error) {
-        console.error(`Error processing part ${i + 1}:`, error);
-        throw new Error(`Failed to process document part ${i + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
     
@@ -165,19 +209,33 @@ export class IntelligentChunkingService {
   }
 
   /**
-   * Create LLM prompt for intelligent chunking and summarization
+   * Create LLM prompt for intelligent chunking and summarization with error feedback
    */
   private static createChunkingPrompt(
     content: string,
     compressionRatio: number,
     isComplete: boolean,
     partNumber?: number,
-    totalParts?: number
+    totalParts?: number,
+    previousError?: Error | null
   ): string {
     const compressionPercent = Math.round(compressionRatio * 100);
     const partInfo = partNumber ? ` (Part ${partNumber}/${totalParts})` : '';
-    
-    return `You are an expert document analyzer specializing in construction and technical documents. Your task is to intelligently divide the following text into logical chunks and create concise summaries.
+
+    // Add error feedback if this is a retry
+    const errorFeedback = previousError ? `
+
+⚠️ PREVIOUS ATTEMPT FAILED: ${previousError.message}
+Please ensure your response contains ONLY valid JSON with no additional text before or after the JSON object.
+Common issues to avoid:
+- Extra explanations or comments outside the JSON
+- Malformed JSON syntax (missing quotes, trailing commas)
+- Text after the closing brace }
+- Invalid character positions or missing required fields
+
+` : '';
+
+    return `You are an expert document analyzer specializing in construction and technical documents. Your task is to intelligently divide the following text into logical chunks and create concise summaries.${errorFeedback}
 
 DOCUMENT CONTENT${partInfo}:
 ${content}
@@ -203,7 +261,8 @@ INSTRUCTIONS:
    - Include specific measurements, codes, standards
    - Focus on actionable and reference-worthy content
 
-4. **Output Format**: Respond with this exact JSON structure:
+4. **Output Format**: Respond with ONLY this exact JSON structure (no additional text before or after):
+
 {
   "documentSummary": "Overall summary of the ${isComplete ? 'entire document' : 'document section'}",
   "chunks": [
@@ -221,7 +280,8 @@ INSTRUCTIONS:
   "processingComplete": ${isComplete}
 }
 
-IMPORTANT:
+CRITICAL REQUIREMENTS:
+- Respond with ONLY the JSON object - no explanations, comments, or additional text
 - Create 3-8 chunks depending on content complexity
 - Each summary should be approximately ${compressionPercent}% of original chunk length
 - Calculate accurate character positions (0-based indexing)
@@ -229,33 +289,66 @@ IMPORTANT:
 - Include all critical technical information in summaries
 - Estimate token count for each summary (roughly 4 characters = 1 token)
 - Position calculation: Count characters from the beginning of the text
-- Example: If text starts "Construction materials include..." and chunk starts at "materials", position would be 12
+- All string values must be properly quoted
+- No trailing commas in JSON
+- Ensure valid JSON syntax
 
-Begin analysis and chunking:`;
+RESPOND WITH ONLY THE JSON OBJECT:`;
   }
 
   /**
-   * Parse LLM response and extract chunking data
+   * Parse LLM response and extract chunking data with retry capability
    */
-  private static parseChunkingResponse(response: string): LLMChunkingResult {
+  private static parseChunkingResponse(response: string, attempt: number = 1): LLMChunkingResult {
     try {
-      // Extract JSON from response
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('No valid JSON found in LLM response');
+      // Try multiple JSON extraction methods
+      let jsonStr = '';
+
+      // Method 1: Find JSON between first { and last }
+      const firstBrace = response.indexOf('{');
+      const lastBrace = response.lastIndexOf('}');
+
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        jsonStr = response.substring(firstBrace, lastBrace + 1);
+      } else {
+        // Method 2: Use regex to find JSON block
+        const jsonMatch = response.match(/\{[\s\S]*?\}(?=\s*$|\s*[^}])/);
+        if (jsonMatch) {
+          jsonStr = jsonMatch[0];
+        } else {
+          throw new Error('No valid JSON structure found in LLM response');
+        }
       }
-      
-      const parsed = JSON.parse(jsonMatch[0]);
-      
+
+      // Clean up common JSON issues
+      jsonStr = jsonStr
+        .replace(/,(\s*[}\]])/g, '$1') // Remove trailing commas
+        .replace(/([{,]\s*)(\w+):/g, '$1"$2":') // Quote unquoted keys
+        .trim();
+
+      const parsed = JSON.parse(jsonStr);
+
       // Validate required fields
       if (!parsed.chunks || !Array.isArray(parsed.chunks)) {
         throw new Error('Invalid chunks array in LLM response');
       }
-      
+
       if (!parsed.documentSummary) {
         throw new Error('Missing document summary in LLM response');
       }
-      
+
+      // Validate chunk structure
+      for (let i = 0; i < parsed.chunks.length; i++) {
+        const chunk = parsed.chunks[i];
+        if (typeof chunk.chunkIndex !== 'number') chunk.chunkIndex = i;
+        if (typeof chunk.startPosition !== 'number') chunk.startPosition = 0;
+        if (typeof chunk.endPosition !== 'number') chunk.endPosition = 1000;
+        if (!chunk.summary) chunk.summary = 'Summary not provided';
+        if (!chunk.startText) chunk.startText = 'Start text not provided';
+        if (!chunk.endText) chunk.endText = 'End text not provided';
+        if (typeof chunk.estimatedTokens !== 'number') chunk.estimatedTokens = Math.ceil(chunk.summary.length / 4);
+      }
+
       return {
         chunks: parsed.chunks,
         totalChunks: parsed.totalChunks || parsed.chunks.length,
@@ -263,8 +356,11 @@ Begin analysis and chunking:`;
         documentSummary: parsed.documentSummary
       };
     } catch (error) {
-      console.error('Error parsing LLM chunking response:', error);
-      console.log('Raw response:', response.substring(0, 500) + '...');
+      console.error(`Error parsing LLM chunking response (attempt ${attempt}):`, error);
+      console.log('Raw response length:', response.length);
+      console.log('Raw response preview:', response.substring(0, 500) + '...');
+      console.log('Raw response ending:', '...' + response.substring(Math.max(0, response.length - 200)));
+
       throw new Error(`Failed to parse LLM response: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
