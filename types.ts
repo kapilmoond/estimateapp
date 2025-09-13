@@ -158,6 +158,9 @@ export interface DocumentChunk {
   endPosition: number;
   embedding?: number[];
   metadata: ChunkMetadata;
+  summary?: string; // LLM-generated 10% summary
+  summaryGenerated?: boolean; // Whether summary has been generated
+  lastSummaryUpdate?: number; // Timestamp of last summary generation
 }
 
 export interface DocumentMetadata {
@@ -192,14 +195,31 @@ export interface KnowledgeBaseConfig {
   enableEmbeddings: boolean;
   embeddingModel: string;
   similarityThreshold: number;
+  // LLM-based selection settings
+  enableLLMSelection: boolean; // Enable LLM-based chunk selection instead of RAG
+  autoGenerateSummaries: boolean; // Automatically generate summaries for new chunks
+  summaryCompressionRatio: number; // Target compression ratio (0.1 = 10%)
+  maxSelectedChunks: number; // Maximum chunks to include in final prompt
+}
+
+export interface LLMSelectionResult {
+  selectedChunkIds: string[];
+  reasoning: string;
+  confidence: number;
+  totalChunksEvaluated: number;
 }
 
 export interface RAGContext {
   query: string;
-  relevantChunks: DocumentChunk[];
-  totalDocuments: number;
-  searchScore: number;
-  contextLength: number;
+  relevantChunks?: DocumentChunk[]; // Optional for backward compatibility
+  totalDocuments?: number; // Optional for backward compatibility
+  searchScore?: number; // Optional for backward compatibility
+  contextLength?: number; // Optional for backward compatibility
+  // New unified fields
+  context: string; // The actual context text to include in prompt
+  sources: string[]; // List of source document names
+  chunkCount: number; // Number of chunks included
+  totalTokens: number; // Estimated token count
 }
 
 export interface KnowledgeBaseStats {

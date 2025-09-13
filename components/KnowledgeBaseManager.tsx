@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { KnowledgeBaseDocument, KnowledgeBaseStats, KnowledgeBaseConfig } from '../types';
 import { EnhancedKnowledgeBaseService, KnowledgeBaseService } from '../services/knowledgeBaseService';
+import { LLMKnowledgeManager } from './LLMKnowledgeManager';
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -26,6 +27,7 @@ export const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({
   const [uploadProgress, setUploadProgress] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'documents' | 'settings' | 'stats'>('documents');
+  const [isLLMManagerOpen, setIsLLMManagerOpen] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -248,12 +250,21 @@ export const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({
       <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <h2 className="text-2xl font-bold text-gray-900">Knowledge Base Manager</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 text-2xl font-bold"
-          >
-            ×
-          </button>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => setIsLLMManagerOpen(true)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+              title="Configure LLM-based intelligent knowledge selection"
+            >
+              🤖 LLM Settings
+            </button>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 text-2xl font-bold"
+            >
+              ×
+            </button>
+          </div>
         </div>
 
         {/* Tab Navigation */}
@@ -495,6 +506,13 @@ export const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({
           </div>
         </div>
       </div>
+
+      {/* LLM Knowledge Manager Modal */}
+      <LLMKnowledgeManager
+        isOpen={isLLMManagerOpen}
+        onClose={() => setIsLLMManagerOpen(false)}
+        onConfigUpdate={loadData}
+      />
     </div>
   );
 };

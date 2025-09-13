@@ -1,6 +1,7 @@
 import { RAGContext, DocumentChunk } from '../types';
 import { EnhancedKnowledgeBaseService, KnowledgeBaseService } from './knowledgeBaseService';
 import { FileParsingService, ParsedFile } from './fileParsingService';
+import { LLMKnowledgeService } from './llmKnowledgeService';
 
 export class RAGService {
   private static readonly MAX_CONTEXT_LENGTH = 8000; // Maximum characters for context
@@ -14,43 +15,131 @@ export class RAGService {
     includeKnowledgeBase: boolean = false,
     maxContextLength: number = this.MAX_CONTEXT_LENGTH
   ): Promise<{ enhancedPrompt: string; ragContext: RAGContext | null }> {
-    console.log(`🔍 RAG Enhancement: includeKnowledgeBase=${includeKnowledgeBase}, prompt="${originalPrompt.substring(0, 100)}..."`);
+    console.log(`🔍 Knowledge Enhancement: includeKnowledgeBase=${includeKnowledgeBase}, prompt="${originalPrompt.substring(0, 100)}..."`);
 
     if (!includeKnowledgeBase) {
-      console.log('❌ RAG Enhancement: Knowledge base not enabled');
+      console.log('❌ Knowledge Enhancement: Knowledge base not enabled');
       return { enhancedPrompt: originalPrompt, ragContext: null };
     }
 
+    // Check if LLM-based selection is enabled
+    const isLLMSelectionEnabled = await LLMKnowledgeService.isLLMSelectionEnabled();
+    console.log(`🤖 Knowledge Enhancement: LLM Selection ${isLLMSelectionEnabled ? 'ENABLED' : 'DISABLED'}`);
+
+    if (isLLMSelectionEnabled) {
+      return await this.enhanceWithLLMSelection(originalPrompt);
+    } else {
+      return await this.enhanceWithRAGSearch(originalPrompt);
+    }
+  }
+
+  /**
+   * Enhanced prompt using LLM-based intelligent chunk selection
+   */
+  private static async enhanceWithLLMSelection(originalPrompt: string): Promise<{ enhancedPrompt: string; ragContext: RAGContext | null }> {
+    try {
+      console.log('🤖 LLM Selection: Loading documents...');
+
+      // Load documents from IndexedDB or localStorage
+      let documents;
+      try {
+        documents = await EnhancedKnowledgeBaseService.loadDocuments();
+        console.log(`✅ LLM Selection: Loaded ${documents.length} documents from IndexedDB`);
+      } catch (error) {
+        console.log('🔄 LLM Selection: Falling back to localStorage...');
+        documents = KnowledgeBaseService.loadDocuments();
+        console.log(`✅ LLM Selection: Loaded ${documents.length} documents from localStorage`);
+      }
+
+      const activeDocuments = documents.filter(doc => doc.isActive);
+      if (activeDocuments.length === 0) {
+        console.log('❌ LLM Selection: No active documents found');
+        return { enhancedPrompt: originalPrompt, ragContext: null };
+      }
+
+      // Get configuration
+      const config = await LLMKnowledgeService.getLLMConfig();
+      const maxChunks = config.maxSelectedChunks || 5;
+
+      // Use LLM to select relevant chunks
+      console.log(`🤖 LLM Selection: Selecting relevant chunks (max: ${maxChunks})...`);
+      const selectionResult = await LLMKnowledgeService.selectRelevantChunks(
+        originalPrompt,
+        activeDocuments,
+        maxChunks
+      );
+
+      if (selectionResult.selectedChunkIds.length === 0) {
+        console.log('❌ LLM Selection: No relevant chunks selected');
+        return { enhancedPrompt: originalPrompt, ragContext: null };
+      }
+
+      // Get full content of selected chunks
+      const { content: contextText, sources } = await LLMKnowledgeService.getSelectedChunksContent(
+        selectionResult.selectedChunkIds,
+        activeDocuments
+      );
+
+      console.log(`✅ LLM Selection: Selected ${selectionResult.selectedChunkIds.length} chunks`);
+      console.log(`📊 LLM Selection: Context length: ${contextText.length} characters`);
+      console.log(`📊 LLM Selection: Sources: [${sources.join(', ')}]`);
+      console.log(`🎯 LLM Selection: Confidence: ${selectionResult.confidence}, Reasoning: ${selectionResult.reasoning}`);
+
+      // Create RAG context for compatibility
+      const ragContext: RAGContext = {
+        query: originalPrompt,
+        context: contextText,
+        sources,
+        chunkCount: selectionResult.selectedChunkIds.length,
+        totalTokens: contextText.length
+      };
+
+      // Create enhanced prompt
+      const enhancedPrompt = this.createEnhancedPromptWithLLMSelection(originalPrompt, contextText, selectionResult, sources);
+      console.log(`✅ LLM Selection: Enhanced prompt length: ${enhancedPrompt.length} characters (${enhancedPrompt.length - originalPrompt.length} added)`);
+
+      return { enhancedPrompt, ragContext };
+    } catch (error) {
+      console.error('Error in LLM-based knowledge enhancement:', error);
+      console.log('🔄 LLM Selection: Falling back to RAG search...');
+      return await this.enhanceWithRAGSearch(originalPrompt);
+    }
+  }
+
+  /**
+   * Enhanced prompt using traditional RAG similarity search
+   */
+  private static async enhanceWithRAGSearch(originalPrompt: string): Promise<{ enhancedPrompt: string; ragContext: RAGContext | null }> {
     // Search for relevant context using enhanced service
     let ragContext: RAGContext;
     try {
-      console.log('🔍 RAG Enhancement: Searching IndexedDB...');
+      console.log('🔍 RAG Search: Searching IndexedDB...');
       ragContext = await EnhancedKnowledgeBaseService.getRAGContext(originalPrompt, this.MAX_CHUNKS);
-      console.log(`✅ RAG Enhancement: IndexedDB search completed, found ${ragContext.chunkCount} chunks`);
+      console.log(`✅ RAG Search: IndexedDB search completed, found ${ragContext.chunkCount} chunks`);
     } catch (error) {
       console.error('Error getting RAG context from IndexedDB, falling back to localStorage:', error);
       // Fallback to localStorage
-      console.log('🔄 RAG Enhancement: Falling back to localStorage...');
+      console.log('🔄 RAG Search: Falling back to localStorage...');
       ragContext = KnowledgeBaseService.searchRelevantChunks(
         originalPrompt,
         this.MAX_CHUNKS
       );
-      console.log(`✅ RAG Enhancement: localStorage search completed, found ${ragContext.chunkCount || ragContext.relevantChunks?.length || 0} chunks`);
+      console.log(`✅ RAG Search: localStorage search completed, found ${ragContext.chunkCount || ragContext.relevantChunks?.length || 0} chunks`);
     }
 
     if (ragContext.chunkCount === 0) {
-      console.log('❌ RAG Enhancement: No relevant chunks found after progressive search');
+      console.log('❌ RAG Search: No relevant chunks found after progressive search');
       return { enhancedPrompt: originalPrompt, ragContext };
     }
 
     // Use the context directly from RAG service
     const contextText = ragContext.context;
-    console.log(`✅ RAG Enhancement: Context text length: ${contextText.length} characters`);
-    console.log(`📊 RAG Enhancement: Sources used: [${ragContext.sources.join(', ')}]`);
+    console.log(`✅ RAG Search: Context text length: ${contextText.length} characters`);
+    console.log(`📊 RAG Search: Sources used: [${ragContext.sources.join(', ')}]`);
 
     // Create enhanced prompt
     const enhancedPrompt = this.createEnhancedPrompt(originalPrompt, contextText, ragContext);
-    console.log(`✅ RAG Enhancement: Enhanced prompt length: ${enhancedPrompt.length} characters (${enhancedPrompt.length - originalPrompt.length} added)`);
+    console.log(`✅ RAG Search: Enhanced prompt length: ${enhancedPrompt.length} characters (${enhancedPrompt.length - originalPrompt.length} added)`);
 
     return { enhancedPrompt, ragContext };
   }
@@ -151,6 +240,40 @@ USER REQUEST:
 ${originalPrompt}
 
 Please use the knowledge base context above when relevant to provide a more informed response. If the knowledge base contains relevant information, reference it in your response and mention which source documents you're drawing from. If the context is not directly relevant, proceed with your general knowledge but acknowledge that you've reviewed the available knowledge base.`;
+
+    return enhancedPrompt;
+  }
+
+  /**
+   * Create enhanced prompt with LLM-selected knowledge base context
+   */
+  private static createEnhancedPromptWithLLMSelection(
+    originalPrompt: string,
+    contextText: string,
+    selectionResult: any,
+    sources: string[]
+  ): string {
+    const sourcesList = sources.length > 0
+      ? `\nSources: ${sources.join(', ')}`
+      : '';
+
+    const contextHeader = `KNOWLEDGE BASE CONTEXT:
+The following information was intelligently selected from the user's personal knowledge base documents using LLM-powered analysis. ${selectionResult.selectedChunkIds.length} most relevant chunks were chosen from ${selectionResult.totalChunksEvaluated} available chunks with ${Math.round(selectionResult.confidence * 100)}% confidence.
+
+Selection Reasoning: ${selectionResult.reasoning}${sourcesList}
+
+${contextText}
+
+--- END OF KNOWLEDGE BASE CONTEXT ---
+
+`;
+
+    const enhancedPrompt = `${contextHeader}
+
+USER REQUEST:
+${originalPrompt}
+
+Please use the intelligently selected knowledge base context above to provide a more informed response. The content was specifically chosen as most relevant to your request. Reference the source documents when applicable and build upon the technical information provided. If the selected context doesn't fully address the request, supplement with your general knowledge while acknowledging the knowledge base review.`;
 
     return enhancedPrompt;
   }

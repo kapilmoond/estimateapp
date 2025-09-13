@@ -23,7 +23,12 @@ export class EnhancedKnowledgeBaseService {
     maxChunks: 100,
     enableEmbeddings: false,
     embeddingModel: 'text-embedding-ada-002',
-    similarityThreshold: 0.7
+    similarityThreshold: 0.7,
+    // LLM-based selection settings
+    enableLLMSelection: true, // Enable LLM-based chunk selection by default
+    autoGenerateSummaries: true, // Automatically generate summaries for new chunks
+    summaryCompressionRatio: 0.1, // 10% compression ratio
+    maxSelectedChunks: 5 // Maximum chunks to include in final prompt
   };
 
   // Load all knowledge base documents from IndexedDB
