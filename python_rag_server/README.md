@@ -2,11 +2,29 @@
 
 A professional Retrieval-Augmented Generation (RAG) system with vector database capabilities for the HSR Construction Estimator app.
 
+## 🚀 Quick Start
+
+### **Single Command Startup**
+```bash
+# Windows - Double-click or run in command prompt
+start_rag.bat
+
+# Or run Python script directly
+python start_rag.py
+```
+
+### **Command Line Options**
+```bash
+python start_rag.py                    # Full installation and startup
+python start_rag.py --skip-install     # Skip dependency installation
+python start_rag.py --test-only        # Test dependencies only, don't start server
+```
+
 ## 🎯 Features
 
 ### **Professional Vector Database**
-- **ChromaDB**: Industry-standard vector database (Python 3.11/3.12)
-- **FAISS**: High-performance alternative for Python 3.13 compatibility
+- **ChromaDB**: Industry-standard vector database (Primary choice)
+- **FAISS**: High-performance alternative (Automatic fallback)
 - **Automatic Fallback**: System chooses best available vector store
 - **Sentence Transformers**: High-quality text embeddings using `all-MiniLM-L6-v2` model
 - **Local Storage**: All data stays on your computer for privacy and security
@@ -36,34 +54,34 @@ A professional Retrieval-Augmented Generation (RAG) system with vector database 
 - **Python 3.13**: Supported with FAISS fallback (ChromaDB has NumPy 2.0 issues)
 - **Minimum**: Python 3.8+
 
-### **2. Start the Server (Multiple Options)**
+### **2. Start the Server**
 
-#### **Option 1: Interactive Startup (Recommended)**
+#### **Simple One-Click Startup**
 ```bash
 cd python_rag_server
-start_rag_server.bat
-# Choose from 4 startup methods
+
+# Windows - Double-click or run in command prompt
+start_rag.bat
+
+# Cross-platform - Run Python script directly
+python start_rag.py
 ```
 
-#### **Option 2: Python 3.13 Compatible**
+**Command Line Options:**
 ```bash
-start_rag_server_py313.bat
-# Uses FAISS instead of ChromaDB
+python start_rag.py                    # Full installation and startup
+python start_rag.py --skip-install     # Skip dependency installation
+python start_rag.py --test-only        # Test dependencies only, don't start server
 ```
 
-#### **Option 3: Direct Start**
-```bash
-python start_direct.py
-# Bypasses dependency checking
-```
-
-#### **Option 4: Manual Installation**
-```bash
-pip install fastapi uvicorn sentence-transformers python-multipart
-pip install python-docx PyPDF2 openpyxl pydantic httpx aiofiles
-pip install "numpy<2.0.0" faiss-cpu
-python start_direct.py
-```
+**What it does:**
+- ✅ Checks Python version compatibility
+- ✅ Automatically installs/updates all required packages
+- ✅ Resolves version conflicts (tokenizers, NumPy, etc.)
+- ✅ Tests all imports and functionality
+- ✅ Creates necessary data directories
+- ✅ Starts server with proper CORS settings
+- ✅ Works with your GitHub Pages deployment
 
 ### **2. Server Information**
 - **URL**: http://127.0.0.1:8001
@@ -85,9 +103,11 @@ python_rag_server/
 ├── models.py               # Pydantic data models
 ├── document_processor.py   # Document parsing and chunking
 ├── vector_store.py         # ChromaDB vector operations
-├── start_server.py         # Server startup script
-├── start_rag_server.bat    # Windows batch file
+├── faiss_vector_store.py   # FAISS fallback vector operations
+├── start_rag.py            # Smart startup script (NEW)
+├── start_rag.bat           # Windows batch file (NEW)
 ├── requirements.txt        # Python dependencies
+├── requirements_minimal.txt # Minimal FAISS-only requirements
 ├── rag_data/              # Local data storage
 │   ├── chroma_db/         # Vector database files
 │   └── documents.json     # Document metadata
@@ -236,6 +256,53 @@ Modify the embedding model in `rag_server.py` initialization.
 
 ### **Database Configuration**
 Adjust ChromaDB settings in `vector_store.py`.
+
+## 🔧 Troubleshooting
+
+### **Common Issues**
+
+#### **"No module named 'chromadb'" or "No module named 'faiss'"**
+```bash
+# Run the startup script to auto-install dependencies
+python start_rag.py
+
+# Or install manually
+pip install chromadb  # Primary choice
+pip install faiss-cpu  # Fallback option
+```
+
+#### **Tokenizers Version Conflict**
+```bash
+# The startup script handles this automatically, but if needed:
+pip install --upgrade transformers tokenizers
+```
+
+#### **NumPy 2.0 Compatibility Issues**
+```bash
+# Install compatible NumPy version
+pip install "numpy<2.0.0,>=1.21.0"
+```
+
+#### **Server Won't Start**
+```bash
+# Test dependencies first
+python start_rag.py --test-only
+
+# Check if port 8001 is in use
+netstat -an | findstr 8001  # Windows
+lsof -i :8001               # macOS/Linux
+```
+
+#### **Import Errors**
+```bash
+# Skip installation and test imports
+python start_rag.py --skip-install --test-only
+```
+
+### **Getting Help**
+- Check the server logs for detailed error messages
+- Use `--test-only` flag to diagnose issues
+- Ensure Python 3.8+ is installed and in PATH
 
 ## 🔒 Security & Privacy
 

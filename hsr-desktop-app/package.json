@@ -1,0 +1,107 @@
+{
+  "name": "hsr-construction-estimator-desktop",
+  "version": "1.0.0",
+  "description": "Professional HSR Construction Estimator - Secure Windows Desktop Application",
+  "main": "dist/main.js",
+  "homepage": "./",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:react\" \"npm run dev:electron\"",
+    "dev:react": "vite",
+    "dev:electron": "wait-on http://localhost:5173 && electron .",
+    "build": "npm run build:react && npm run build:electron",
+    "build:react": "vite build",
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "build:win": "npm run build && electron-builder --win",
+    "build:win-portable": "npm run build && electron-builder --win portable",
+    "dist": "npm run build && electron-builder",
+    "pack": "npm run build && electron-builder --dir",
+    "postinstall": "electron-builder install-app-deps",
+    "license:generate": "node scripts/generate-license.js",
+    "license:verify": "node scripts/verify-license.js"
+  },
+  "build": {
+    "appId": "com.hsrestimator.desktop",
+    "productName": "HSR Construction Estimator",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "assets/**/*",
+      "node_modules/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "publisherName": "HSR Construction Estimator",
+      "verifyUpdateCodeSignature": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "HSR Construction Estimator"
+    },
+    "portable": {
+      "artifactName": "HSR-Construction-Estimator-Portable.exe"
+    }
+  },
+  "dependencies": {
+    "@google/genai": "^1.14.0",
+    "@types/xlsx": "^0.0.35",
+    "electron-updater": "^6.1.7",
+    "electron-store": "^8.1.0",
+    "electron-window-state": "^5.0.3",
+    "mammoth": "1.7.2",
+    "pdfjs-dist": "^5.4.54",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "xlsx": "^0.18.5",
+    "framer-motion": "^10.16.16",
+    "lucide-react": "^0.294.0",
+    "react-hot-toast": "^2.4.1",
+    "zustand": "^4.4.7",
+    "tailwindcss": "^3.3.6",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.32",
+    "crypto-js": "^4.2.0",
+    "node-machine-id": "^1.1.12",
+    "axios": "^1.6.2",
+    "date-fns": "^2.30.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.4",
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@vitejs/plugin-react": "^4.2.1",
+    "concurrently": "^8.2.2",
+    "electron": "^28.1.0",
+    "electron-builder": "^24.9.1",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.8",
+    "wait-on": "^7.2.0"
+  },
+  "author": {
+    "name": "HSR Construction Estimator Team",
+    "email": "support@hsrestimator.com"
+  },
+  "license": "MIT",
+  "keywords": [
+    "construction",
+    "estimation",
+    "HSR",
+    "desktop",
+    "windows",
+    "electron"
+  ]
+}

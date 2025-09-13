@@ -80,9 +80,15 @@ class RAGServer:
         """Setup CORS middleware"""
         self.app.add_middleware(
             CORSMiddleware,
-            allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+            allow_origins=[
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
+                "https://kapilmoond.github.io",
+                "http://localhost:3000",
+                "http://127.0.0.1:3000"
+            ],
             allow_credentials=True,
-            allow_methods=["*"],
+            allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             allow_headers=["*"],
         )
     
@@ -123,21 +129,40 @@ class RAGServer:
         async def health_check():
             """Health check endpoint"""
             return {"status": "healthy", "timestamp": datetime.now().isoformat()}
-        
+
+        @self.app.options("/health")
+        async def health_options():
+            """Handle OPTIONS for health endpoint"""
+            return {"message": "OK"}
+
         @self.app.get("/status", response_model=RAGServerStatus)
         async def get_status():
             """Get server status"""
-            documents = self.load_documents()
-            total_chunks = sum(doc.metadata.chunkCount for doc in documents)
-            
-            return RAGServerStatus(
-                isRunning=True,
-                port=8001,
-                documentsCount=len(documents),
-                chunksCount=total_chunks,
-                embeddingModel=self.config.embeddingModel
-            )
+            try:
+                documents = self.load_documents()
+                total_chunks = sum(doc.metadata.get("chunkCount", 0) for doc in documents)
+
+                return RAGServerStatus(
+                    isRunning=True,
+                    port=8001,
+                    documentsCount=len(documents),
+                    chunksCount=total_chunks,
+                    embeddingModel=self.config.embeddingModel
+                )
+            except Exception as e:
+                logger.error(f"Error in get_status: {e}")
+                raise HTTPException(status_code=500, detail=f"Status error: {str(e)}")
+
+        @self.app.options("/status")
+        async def status_options():
+            """Handle OPTIONS for status endpoint"""
+            return {"message": "OK"}
         
+        @self.app.options("/upload")
+        async def upload_options():
+            """Handle OPTIONS for upload endpoint"""
+            return {"message": "OK"}
+
         @self.app.post("/upload", response_model=DocumentUploadResponse)
         async def upload_document(
             background_tasks: BackgroundTasks,
@@ -192,6 +217,11 @@ class RAGServer:
                 logger.error(f"Error uploading document: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
         
+        @self.app.options("/search")
+        async def search_options():
+            """Handle OPTIONS for search endpoint"""
+            return {"message": "OK"}
+
         @self.app.post("/search", response_model=RAGSearchResult)
         async def search_documents(request: SearchRequest):
             """Search documents using semantic similarity"""
@@ -222,11 +252,21 @@ class RAGServer:
                 logger.error(f"Error searching documents: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
         
+        @self.app.options("/documents")
+        async def documents_options():
+            """Handle OPTIONS for documents endpoint"""
+            return {"message": "OK"}
+
         @self.app.get("/documents", response_model=List[RAGDocument])
         async def get_documents():
             """Get all documents"""
             return self.load_documents()
-        
+
+        @self.app.options("/documents/{document_id}")
+        async def document_options(document_id: str):
+            """Handle OPTIONS for document endpoint"""
+            return {"message": "OK"}
+
         @self.app.delete("/documents/{document_id}")
         async def delete_document(document_id: str):
             """Delete a document and its chunks"""
@@ -246,6 +286,17 @@ class RAGServer:
                 logger.error(f"Error deleting document: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
         
+        @self.app.options("/clear")
+        async def clear_options():
+            """Handle OPTIONS for clear endpoint"""
+            return {"message": "OK"}
+
+        # Global OPTIONS handler for any missed endpoints
+        @self.app.options("/{path:path}")
+        async def global_options(path: str):
+            """Handle OPTIONS for any endpoint"""
+            return {"message": "OK"}
+
         @self.app.delete("/clear")
         async def clear_all_documents():
             """Clear all documents and reset the knowledge base"""
